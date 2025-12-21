@@ -47,7 +47,6 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
   const handleSearch = (e) => {
     e.preventDefault();
     console.log("Searching for:", searchValue);
-    // Implement your search logic here
   };
 
   const unreadCount = notifications?.filter((n) => n.unread).length;
