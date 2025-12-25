@@ -41,13 +41,7 @@ export const registerVendorByAdmin = async (vendorData) => {
 export const vendorLogin = async (data) => {
   try {
     const res = await apiClient.post(`/auth/vendor/login`, data);
-    if (res.data.status === 1) {
-      notifyOnSuccess(res.data.message);
-    } else if (res.data.status === 2) {
-      notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
+
     return res.data;
   } catch (error) {
     //default fallback for error
