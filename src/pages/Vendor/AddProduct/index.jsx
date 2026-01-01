@@ -27,9 +27,12 @@ import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
 import { getSettings } from "../../../services/api.settings";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import { useAppContext } from "../../../context/AppContext";
 
 const AddEditProduct = () => {
-  const { id, vendorId } = useParams();
+  const { id } = useParams();
+  const { user } = useAppContext();
+  const vendorId = user.id;
   const navigate = useNavigate();
   const isEditMode = !!id;
 
@@ -1967,6 +1970,49 @@ const AddEditProduct = () => {
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h2 className="text-lg font-semibold mb-4">Additional Settings</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
+                Visibility
+                <TooltipHint
+                  id="visibility-tooltip"
+                  text="This controls whether or not your product will be visible to customers."
+                />
+              </label>
+              <select
+                name="visibility"
+                value={formData.visibility}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+              >
+                <option value="Hidden">Hidden</option>
+                <option value="Published">Published</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="is_featured"
+                  checked={formData.is_featured}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300"
+                />
+                <label className="text-sm text-gray-700 flex items-center gap-1">
+                  Featured Product
+                  <TooltipHint
+                    id="is-featured-tooltip"
+                    text="This product will be highlighted on the homepage."
+                  />
+                </label>
               </div>
             </div>
           </div>
