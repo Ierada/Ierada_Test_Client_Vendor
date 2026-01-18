@@ -80,6 +80,7 @@ const AddEditProduct = () => {
     package_height: 0,
     package_depth: 0,
     gst: 0,
+    shipping_charges: 0,
     visibility: "Hidden",
     category_id: "",
     sub_category_id: "",
@@ -123,8 +124,8 @@ const AddEditProduct = () => {
     url: "",
     type: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ====== DATA FETCHING ======
   useEffect(() => {
     const fetchData = async () => {
       const [catRes, subRes, innerRes, colorRes, settingsRes, attrRes] =
@@ -170,6 +171,7 @@ const AddEditProduct = () => {
         setFormData((prev) => ({
           ...prev,
           platform_fee: settingsRes.data.platform_fee,
+          shipping_charges: settingsRes.data.shipping_charge || 0,
         }));
       }
     };
@@ -195,9 +197,8 @@ const AddEditProduct = () => {
         }
 
         const res = await getAllSizes(query);
-        if (res.status === 1) {
-          setSizes(res.data);
-        }
+        if (res.status === 1)
+          setSizes(res.data?.map((s) => ({ ...s, id: String(s.id) })) || []);
       } catch (error) {
         console.error("Error fetching sizes:", error);
       }
@@ -736,6 +737,10 @@ const AddEditProduct = () => {
       return;
     }
 
+    const sellingPrice = parseFloat(formData.discounted_price) || 0;
+    const tdsAmount = sellingPrice * 0.02;
+    const bankSettlementAmount = sellingPrice - tdsAmount;
+
     const formDataToSend = new FormData();
     Object.entries(formData).forEach(([key, val]) => {
       if (["productFiles", "variations", "specifications"].includes(key))
@@ -756,6 +761,14 @@ const AddEditProduct = () => {
     if (deletedMediaIds.length > 0) {
       formDataToSend.append("delete_media", JSON.stringify(deletedMediaIds));
     }
+
+    formDataToSend.delete("tds_amount");
+    formDataToSend.delete("bank_settlement_amount");
+    formDataToSend.append("tds_amount", parseFloat(tdsAmount));
+    formDataToSend.append(
+      "bank_settlement_amount",
+      parseFloat(bankSettlementAmount)
+    );
 
     const allNewFiles = [];
     const variationMediaMapping = [];
@@ -831,6 +844,7 @@ const AddEditProduct = () => {
       formDataToSend.append("files", file);
     });
 
+    setIsSubmitting(true);
     try {
       const response = isEditMode
         ? await updateProduct(id, formDataToSend)
@@ -841,6 +855,8 @@ const AddEditProduct = () => {
     } catch (error) {
       console.error("Error submitting product:", error);
       notifyOnFail("Error submitting product");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -860,15 +876,15 @@ const AddEditProduct = () => {
           <img
             src={file.preview || file.url}
             alt="preview"
-            className="w-20 h-20 object-cover rounded-lg border"
+            className="w-20 h-20 object-cover rounded-2xl border"
           />
         ) : (
           <video
             src={file.preview || file.url}
-            className="w-20 h-20 object-cover rounded-lg border"
+            className="w-20 h-20 object-cover rounded-2xl border"
           />
         )}
-        <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
+        <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-2">
           <button
             onClick={handlePreview}
             className="p-1 bg-white rounded-full text-gray-700 hover:text-gray-900"
@@ -889,7 +905,7 @@ const AddEditProduct = () => {
   const renderMediaSection = (varIdx = null) => (
     <div className="space-y-4">
       <div className="flex gap-4">
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
+        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
           <CiImageOn size={20} /> Add Images{" "}
           <span className="text-red-500">*</span>
           <input
@@ -900,7 +916,7 @@ const AddEditProduct = () => {
             onChange={(e) => handleFileChange(e, varIdx)}
           />
         </label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
+        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
           <CiVideoOn size={20} /> Add Videos
           <input
             type="file"
@@ -923,7 +939,7 @@ const AddEditProduct = () => {
   const renderMediaUploadSection = (variationIndex = null) => (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
+        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
           <CiImageOn size={20} />
           <span>Add Images</span> <span className=" text-red-500">*</span>
           <input
@@ -934,7 +950,7 @@ const AddEditProduct = () => {
             onChange={(e) => handleFileChange(e, variationIndex)}
           />
         </label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-md cursor-pointer hover:bg-gray-200">
+        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
           <CiVideoOn size={20} />
           <span>Add Videos</span>
           <input
@@ -962,7 +978,7 @@ const AddEditProduct = () => {
   const renderPreviewModal = () =>
     previewModal.isOpen && (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-4 rounded-lg max-w-4xl max-h-[90vh] overflow-auto">
+        <div className="bg-white p-4 rounded-2xl max-w-4xl max-h-[90vh] overflow-auto">
           <div className="flex justify-end mb-2">
             <button
               onClick={() =>
@@ -1014,15 +1030,19 @@ const AddEditProduct = () => {
   ];
 
   return (
-    <div className="flex flex-col sm:flex-row h-screen">
-      <div className="container px-4 py-2 space-y-6 max-w-[75%] max-h-[100%] flex-1 overflow-y-scroll scrollbar-hide">
-        <h1 className="text-3xl font-bold mb-8">
+    <div className="flex gap-6 p-6 min-h-screen">
+      {isSubmitting && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-blue-500 animate-[pulse_2s_ease-in-out_infinite]"></div>
+      )}
+
+      <div className="flex-1 space-y-6 overflow-y-auto scrollbar-hide">
+        <h1 className="text-3xl font-bold mb-4">
           {isEditMode ? "Edit Product" : "Create a New Product"}
         </h1>
 
         {/* Basic Information */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-lg font-semibold mb-4">Basic Information</h2>
+        <div className="bg-white p-6 rounded-2xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Product Information</h2>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
@@ -1037,7 +1057,7 @@ const AddEditProduct = () => {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="mt-1 capitalize block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 capitalize block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
 
@@ -1057,7 +1077,7 @@ const AddEditProduct = () => {
                   name="category_id"
                   value={formData.category_id}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 >
                   <option value="" disabled>
                     Select Category
@@ -1082,7 +1102,7 @@ const AddEditProduct = () => {
                   name="sub_category_id"
                   value={formData.sub_category_id}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                   disabled={!formData.category_id}
                 >
                   <option value="" disabled>
@@ -1108,7 +1128,7 @@ const AddEditProduct = () => {
                   name="inner_sub_category_id"
                   value={formData.inner_sub_category_id}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                   disabled={!formData.sub_category_id}
                 >
                   <option value="" disabled>
@@ -1137,7 +1157,7 @@ const AddEditProduct = () => {
                   name="fabric_id"
                   value={formData.fabric_id}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 >
                   <option value="" disabled>
                     Select Fabric
@@ -1166,7 +1186,7 @@ const AddEditProduct = () => {
                   name="hsn_code"
                   value={formData.hsn_code}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                   // readOnly
                 />
                 {/* <p className="text-xs text-gray-500 mt-1">
@@ -1193,7 +1213,7 @@ const AddEditProduct = () => {
                     name="gst"
                     value={formData.gst}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                    className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                     // readOnly
                   />
                 </div>
@@ -1251,7 +1271,7 @@ const AddEditProduct = () => {
         </div>
 
         {/* Specifications */}
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-1">
             Product Specifications
             <TooltipHint
@@ -1260,7 +1280,7 @@ const AddEditProduct = () => {
             />
           </h2>
           <div className="space-y-4">
-            {specifications?.map((spec, index) => (
+            {/* {specifications?.map((spec, index) => (
               <div key={index} className="flex gap-4 items-start">
                 <div className="flex-1">
                   <input
@@ -1274,7 +1294,7 @@ const AddEditProduct = () => {
                       )
                     }
                     placeholder="Feature"
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                    className="w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                   />
                 </div>
                 <div className="flex-1">
@@ -1289,7 +1309,7 @@ const AddEditProduct = () => {
                       )
                     }
                     placeholder="Specification"
-                    className="w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                    className="w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                   />
                 </div>
                 <button
@@ -1299,10 +1319,10 @@ const AddEditProduct = () => {
                   <X />
                 </button>
               </div>
-            ))}
+            ))} */}
             <button
               onClick={addSpecification}
-              className="flex items-center gap-2 text-blue-500 hover:text-blue-700"
+              className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
             >
               <Plus size={20} /> Add Specification
             </button>
@@ -1310,7 +1330,7 @@ const AddEditProduct = () => {
         </div>
 
         {/* Pricing and Inventory */}
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Pricing & Inventory</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* <div>
@@ -1323,7 +1343,7 @@ const AddEditProduct = () => {
                 name="base_price"
                 value={formData.base_price}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div> */}
 
@@ -1341,7 +1361,7 @@ const AddEditProduct = () => {
                 name="original_price"
                 value={formData.original_price}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
 
@@ -1360,14 +1380,14 @@ const AddEditProduct = () => {
                 name="discounted_price"
                 value={formData.discounted_price}
                 onChange={handleInputChange}
-                className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black ${
+                className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
                   priceErrors.main ? "border-red-500" : ""
                 }`}
               />
               {priceErrors.main && (
                 <p className="mt-1 text-sm text-red-600">{priceErrors.main}</p>
               )}
-              {/* <div className="bg-blue-200 p-2 mt-2 rounded-md">
+              {/* <div className="bg-blue-200 p-2 mt-2 rounded-2xl">
                 <label className="block text-sm font-medium text-gray-700 ">
                   Profit Margin: ₹
                   {(formData.original_price || 0) -
@@ -1389,7 +1409,7 @@ const AddEditProduct = () => {
                 name="stock"
                 value={formData.stock}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
 
@@ -1407,7 +1427,7 @@ const AddEditProduct = () => {
                 value={formData.low_stock_threshold}
                 onChange={handleInputChange}
                 max={formData.stock}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
 
@@ -1420,7 +1440,7 @@ const AddEditProduct = () => {
                 name="sku"
                 value={formData.sku}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 required
               />
             </div>
@@ -1434,7 +1454,7 @@ const AddEditProduct = () => {
                 name="barcode"
                 value={formData.barcode}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
           </div>
@@ -1442,7 +1462,7 @@ const AddEditProduct = () => {
 
         {/* Render media section only if variations are disabled */}
         {!formData.is_variation && (
-          <div className="bg-white p-6 rounded-lg shadow">
+          <div className="bg-white p-6 rounded-2xl shadow">
             <div className="flex items-center gap-2 mb-4">
               <h2 className="text-lg font-semibold">Media</h2>
               <button
@@ -1457,7 +1477,7 @@ const AddEditProduct = () => {
         )}
 
         {/* Variations */}
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-2xl shadow">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Variations</h2>
             <div className="flex items-center gap-6">
@@ -1498,7 +1518,7 @@ const AddEditProduct = () => {
           {formData.is_variation && variationMode === "color_size" && (
             <div className="space-y-6">
               {variations?.map((variation, colorIndex) => (
-                <div key={colorIndex} className="border rounded-lg p-4">
+                <div key={colorIndex} className="border rounded-2xl p-4">
                   <div className="flex gap-4 mb-4">
                     <div className="flex-1">
                       <label className="block text-sm font-medium text-gray-700">
@@ -1513,7 +1533,7 @@ const AddEditProduct = () => {
                             e.target.value
                           )
                         }
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                        className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                       >
                         <option value="">Select Color</option>
                         {colors.map((color) => (
@@ -1567,7 +1587,7 @@ const AddEditProduct = () => {
                                 e.target.value
                               )
                             }
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           >
                             <option value="">Select Size</option>
                             {sizes.map((size) => (
@@ -1592,7 +1612,7 @@ const AddEditProduct = () => {
                                 e.target.value
                               )
                             }
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           />
                         </div>
                         <div>
@@ -1610,7 +1630,7 @@ const AddEditProduct = () => {
                                 e.target.value
                               )
                             }
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           />
                         </div>
                         <div>
@@ -1628,7 +1648,7 @@ const AddEditProduct = () => {
                                 e.target.value
                               )
                             }
-                            className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black ${
+                            className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
                               priceErrors.variations[colorIndex]?.sizes[
                                 sizeIndex
                               ]
@@ -1663,7 +1683,7 @@ const AddEditProduct = () => {
                                 e.target.value
                               )
                             }
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           />
                         </div>
                         <div className="flex gap-2">
@@ -1682,7 +1702,7 @@ const AddEditProduct = () => {
                                   e.target.value
                                 )
                               }
-                              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                              className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                               required
                             />
                           </div>
@@ -1699,7 +1719,7 @@ const AddEditProduct = () => {
                     ))}
                     <button
                       onClick={() => addSizeToColor(colorIndex)}
-                      className="flex items-center gap-2 text-blue-500 hover:text-blue-700"
+                      className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
                     >
                       <Plus size={20} /> Add Size
                     </button>
@@ -1708,7 +1728,7 @@ const AddEditProduct = () => {
               ))}
               <button
                 onClick={addColorVariation}
-                className="flex items-center gap-2 text-blue-500 hover:text-blue-700"
+                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
               >
                 <Plus size={20} /> Add Color Variation
               </button>
@@ -1718,7 +1738,7 @@ const AddEditProduct = () => {
           {formData.is_variation && variationMode === "custom" && (
             <div className="space-y-6">
               {variations.map((variation, index) => (
-                <div key={index} className="border rounded-lg p-6 bg-gray-50">
+                <div key={index} className="border rounded-2xl p-6 bg-gray-50">
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">
@@ -1733,7 +1753,7 @@ const AddEditProduct = () => {
                             e.target.value
                           )
                         }
-                        className="mt-1 block w-full rounded-md border-gray-300"
+                        className="mt-1 block w-full rounded-2xl border-gray-300"
                       >
                         <option value="">Select Attribute</option>
                         {attributes.map((attr) => (
@@ -1758,7 +1778,7 @@ const AddEditProduct = () => {
                             e.target.value
                           )
                         }
-                        className="mt-1 block w-full rounded-md border-gray-300"
+                        className="mt-1 block w-full rounded-2xl border-gray-300"
                       />
                     </div>
                   </div>
@@ -1791,7 +1811,7 @@ const AddEditProduct = () => {
                               e.target.value
                             )
                           }
-                          className="rounded-md border-gray-300"
+                          className="rounded-2xl border-gray-300"
                         />
                         <input
                           placeholder="Original Price *"
@@ -1805,7 +1825,7 @@ const AddEditProduct = () => {
                               e.target.value
                             )
                           }
-                          className="rounded-md border-gray-300"
+                          className="rounded-2xl border-gray-300"
                         />
                         <input
                           placeholder="Selling Price *"
@@ -1819,7 +1839,7 @@ const AddEditProduct = () => {
                               e.target.value
                             )
                           }
-                          className="rounded-md border-gray-300"
+                          className="rounded-2xl border-gray-300"
                         />
                         <input
                           placeholder="SKU *"
@@ -1828,7 +1848,7 @@ const AddEditProduct = () => {
                           onChange={(e) =>
                             handleSizeChange(index, sIdx, "sku", e.target.value)
                           }
-                          className="rounded-md border-gray-300"
+                          className="rounded-2xl border-gray-300"
                         />
                         <input
                           placeholder="Barcode"
@@ -1842,7 +1862,7 @@ const AddEditProduct = () => {
                               e.target.value
                             )
                           }
-                          className="rounded-md border-gray-300"
+                          className="rounded-2xl border-gray-300"
                         />
                         {/* <button
                                     onClick={() => removeSizeFromColor(index, sIdx)}
@@ -1882,13 +1902,13 @@ const AddEditProduct = () => {
           )}
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Charges & Shipping</h2>
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Other Charges (Default from Admin)
+                  Other Charges (Default)
                 </label>
                 <input
                   type="number"
@@ -1896,7 +1916,20 @@ const AddEditProduct = () => {
                   value={formData.platform_fee}
                   onChange={handleInputChange}
                   disabled
-                  className="mt-1 block w-full bg-gray-200 rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Shipping Charges (Default)
+                </label>
+                <input
+                  type="number"
+                  name="shipping_charges"
+                  value={formData.shipping_charges}
+                  onChange={handleInputChange}
+                  disabled
+                  className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1908,7 +1941,7 @@ const AddEditProduct = () => {
                   name="package_weight"
                   value={formData.package_weight}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1920,7 +1953,7 @@ const AddEditProduct = () => {
                   name="volumetric_weight"
                   value={formData.volumetric_weight}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1932,7 +1965,7 @@ const AddEditProduct = () => {
                   name="package_length"
                   value={formData.package_length}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1944,7 +1977,7 @@ const AddEditProduct = () => {
                   name="package_width"
                   value={formData.package_width}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1956,7 +1989,7 @@ const AddEditProduct = () => {
                   name="package_height"
                   value={formData.package_height}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
               <div>
@@ -1968,14 +2001,14 @@ const AddEditProduct = () => {
                   name="package_depth"
                   value={formData.package_depth}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
+        <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Additional Settings</h2>
           <div className="space-y-4">
             <div>
@@ -1990,7 +2023,7 @@ const AddEditProduct = () => {
                 name="visibility"
                 value={formData.visibility}
                 onChange={handleInputChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               >
                 <option value="Hidden">Hidden</option>
                 <option value="Published">Published</option>
@@ -2022,31 +2055,229 @@ const AddEditProduct = () => {
         <div className="flex justify-between py-4">
           <button
             onClick={() => navigate(-1)}
-            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+            className="px-6 py-2 bg-gray-200 text-gray-700 rounded-2xl hover:bg-gray-300"
           >
             Cancel
           </button>
           <button
             onClick={() => handleSubmit(true)}
-            className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+            className="px-6 py-2 bg-[#F47954] text-white rounded-md flex items-center justify-center gap-2"
+            disabled={isSubmitting}
           >
-            {isEditMode ? "Update Product" : "Create Product"}
+            {isSubmitting ? (
+              <>
+                <svg
+                  className="animate-spin h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                {isEditMode ? "Updating..." : "Creating..."}
+              </>
+            ) : isEditMode ? (
+              "Update Product"
+            ) : (
+              "Create Product"
+            )}
           </button>
         </div>
       </div>
 
-      {/* Advertisement Section */}
-      <div className="flex flex-col items-end h-full w-[250px] space-y-6 ml-5">
-        {create_add.map((item) => (
-          <div
-            key={item.id}
-            style={{ backgroundImage: `url(${advertisement})` }}
-            className="px-8 py-18 bg-cover h-full w-full bg-center rounded-lg text-white"
-          >
-            <p className="text-3xl font-bold">{item.title}</p>
-            <p className="font-medium">{item.subtitle}</p>
+      <div className="w-[420px] space-y-6 flex-shrink-0">
+        {/* Bank Settlement Breakdown */}
+
+        <div className="sticky top-24 space-y-6">
+          {/* Image Product Section */}
+          {/* <div className="bg-white p-6 rounded-2xl shadow">
+            <h2 className="text-lg font-semibold mb-4">Image Product</h2>
+            <p className="text-sm text-yellow-600 mb-4">
+              Note: Format photos SVG, PNG, or JPG (Max size 4mb)
+            </p>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {[1, 2, 3, 4].map((num) => (
+                <div
+                  key={num}
+                  className="border-2 border-dashed border-orange-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-orange-50"
+                >
+                  <CiImageOn className="text-orange-400 text-3xl mb-2" />
+                  <span className="text-xs text-gray-500">Photo {num}</span>
+                </div>
+              ))}
+            </div>
+
+            <button className="w-full bg-orange-500 text-white py-3 rounded-2xl font-semibold hover:bg-orange-600">
+              Save Product
+            </button>
+          </div> */}
+
+          <div className="bg-white p-6 rounded-2xl shadow">
+            <h2 className="text-lg font-semibold mb-6">
+              Bank Settlement Breakdown
+            </h2>
+
+            <div className="border-b mb-4 pb-4">
+              <div className="space-y-2 text-sm">
+                {(() => {
+                  const total = parseFloat(formData.discounted_price) || 0;
+                  const gstRate = parseFloat(formData.gst) || 0;
+                  const base =
+                    gstRate > 0 ? total / (1 + gstRate / 100) : total;
+                  const taxes = total - base;
+                  return (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Ierada Price</span>
+                        <span>₹{base.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">
+                          Commission fee (0%)
+                        </span>
+                        <span>₹0</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">
+                          Tax ( GST, TCS,TDS)
+                        </span>
+                        <span>-₹{taxes.toFixed(2)}</span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex justify-between font-semibold">
+                  <span>Bank Settlement Amount</span>
+                  <span>
+                    ₹
+                    {(
+                      parseFloat(formData.discounted_price || 0) -
+                      parseFloat(formData.discounted_price || 0) * 0.02
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b pb-4 mb-4">
+              <h3 className="font-semibold mb-4">Customer Price Breakdown</h3>
+              <div className="space-y-2 text-sm">
+                {(() => {
+                  const total = parseFloat(formData.discounted_price) || 0;
+                  const gstRate = parseFloat(formData.gst) || 0;
+                  const base =
+                    gstRate > 0 ? total / (1 + gstRate / 100) : total;
+                  const taxes = total - base;
+                  return (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Sale Amount</span>
+                        <span>₹{base.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Taxes (Rs.)</span>
+                        <span>₹{taxes.toFixed(2)}</span>
+                      </div>
+                      {formData.shipping_charges ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">
+                            Shipping Fee (Rs.)
+                          </span>
+                          <span>
+                            ₹{parseFloat(formData.shipping_charges).toFixed(2)}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">
+                          Other Charges (Rs.)
+                        </span>
+                        <span className="font-medium">
+                          ₹{parseFloat(formData.platform_fee || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 font-semibold">MRP</span>
+                <span className="font-medium">
+                  ₹{parseFloat(formData.original_price || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 font-semibold">Sale Amount</span>
+                <span className="font-medium">
+                  ₹{parseFloat(formData.discounted_price || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">TDS (Rs.)</span>
+                <span className="font-medium">
+                  -₹
+                  {(parseFloat(formData.discounted_price || 0) * 0.02).toFixed(
+                    2
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Settlement Value</span>
+                <span className="font-medium">
+                  ₹
+                  {(
+                    parseFloat(formData.discounted_price || 0) -
+                    parseFloat(formData.discounted_price || 0) * 0.02
+                  ).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  Shipping Fee (Chargable from Customer)
+                </span>
+                <span className="font-medium">
+                  ₹{parseFloat(formData.shipping_charges || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Other Charges (Rs.)</span>
+                <span className="font-medium">
+                  ₹{parseFloat(formData.platform_fee || 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm font-bold border-t pt-2">
+                <span className="text-gray-600">Listing Price</span>
+                <span className="font-medium">
+                  ₹
+                  {(
+                    parseFloat(formData.discounted_price || 0) -
+                    parseFloat(formData.discounted_price || 0) * 0.02 +
+                    parseFloat(formData.shipping_charges || 0) +
+                    parseFloat(formData.platform_fee || 0)
+                  ).toFixed(2)}
+                </span>
+              </div>
+            </div>
           </div>
-        ))}
+        </div>
       </div>
 
       {/* Preview modal */}

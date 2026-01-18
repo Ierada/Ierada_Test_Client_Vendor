@@ -39,9 +39,11 @@ export const getProductBySlug = async (slug, variationId = null) => {
   }
 };
 
-export const getProductsByVendorId = async (id) => {
+export const getProductsByVendorId = async (id, params) => {
   try {
-    const res = await apiClient.get(`/product/getProductsByVendorId/${id}`);
+    const res = await apiClient.get(`/product/getProductsByVendorId/${id}`, {
+      params,
+    });
     if (res.data.status === 1) {
       // notifyOnSuccess(res.data.message);
     } else {
