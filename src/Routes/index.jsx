@@ -35,6 +35,7 @@ import VendorLogoutPage from "../pages/Vendor/Logout/index.jsx";
 import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
+// import CreateInvoice from "../pages/Vendor/Invoice/Create.jsx";
 
 const VendorProtectedRoute = ({ children }) => {
   const navigate = useNavigate();
@@ -87,12 +88,13 @@ const VendorRoutes = () => {
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: "/dashboard", element: <Dashboard /> },
         { path: "/product", element: <Product /> },
-        { path: "/product/addProduct/:vendorId", element: <AddEditProduct /> },
+        { path: "/product/add", element: <AddEditProduct /> },
         { path: "/product/edit/:id", element: <AddEditProduct /> },
         { path: "/bulk-upload", element: <ProductFilesManager /> },
         { path: "/settings", element: <Setting /> },
         { path: "/orders", element: <Order /> },
         { path: "/invoice", element: <Invoice /> },
+        // { path: "/invoice/create", element: <CreateInvoice /> },
         { path: "/coupons", element: <Coupons /> },
         { path: "/report", element: <Report /> },
         { path: "/chat", element: <ChatLayout /> },
