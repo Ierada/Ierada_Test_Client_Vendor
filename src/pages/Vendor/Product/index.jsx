@@ -1,11 +1,4 @@
-import React, { useState, useMemo } from "react";
-import {
-  useTable,
-  usePagination,
-  useSortBy,
-  useGlobalFilter,
-} from "react-table";
-
+import React, { useState, useEffect } from "react";
 import {
   Eye,
   Edit,
@@ -14,11 +7,13 @@ import {
   Package,
   ChevronLeft,
   ChevronRight,
+  Filter,
+  MoreVertical,
+  MessageSquare,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ProductModal from "../../../components/Vendor/Models/ProductModal";
 import DeleteConfirmationModal from "../../../components/Vendor/Models/DeleteConfirmationModal";
-import { useEffect } from "react";
 import {
   deleteProduct,
   getProductsByVendorId,
@@ -29,18 +24,15 @@ import config from "../../../config/config";
 import { motion } from "framer-motion";
 
 const LoadingSkeleton = () => (
-  <div className="animate-pulse">
-    <div className="h-12 bg-gray-200 rounded mb-4" />
+  <div className="animate-pulse space-y-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {[...Array(4)].map((_, idx) => (
+        <div key={idx} className="h-32 bg-gray-200 rounded-lg" />
+      ))}
+    </div>
+    <div className="h-12 bg-gray-200 rounded-lg" />
     {[...Array(5)].map((_, idx) => (
-      <div key={idx} className="h-20 bg-gray-100 rounded mb-2 p-4">
-        <div className="flex items-center space-x-4">
-          <div className="w-16 h-16 bg-gray-200 rounded" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 bg-gray-200 rounded w-1/4" />
-            <div className="h-4 bg-gray-200 rounded w-1/2" />
-          </div>
-        </div>
-      </div>
+      <div key={idx} className="h-20 bg-gray-100 rounded-lg" />
     ))}
   </div>
 );
@@ -49,15 +41,26 @@ const EmptyState = () => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    className="text-center py-12"
+    className="text-center py-16 bg-white rounded-lg"
   >
-    <Package className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-    <h3 className="text-xl font-medium text-gray-900 mb-2">
+    <Package className="w-20 h-20 mx-auto text-gray-300 mb-4" />
+    <h3 className="text-xl font-semibold text-gray-700 mb-2">
       No Products Found
     </h3>
     <p className="text-gray-500">
       Start by adding your first product to the store.
     </p>
+  </motion.div>
+);
+
+const StatCard = ({ title, value }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 relative overflow-hidden"
+  >
+    <h3 className="text-sm font-medium text-gray-600 mb-3">{title}</h3>
+    <p className="text-2xl font-bold text-gray-900">{value}</p>
   </motion.div>
 );
 
@@ -68,16 +71,31 @@ const Product = () => {
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState([]);
+  const [stats, setStats] = useState({
+    totalProducts: 0,
+    publishedProducts: 0,
+    draftProducts: 0,
+    totalStock: 0,
+    lowStockProducts: 0,
+  });
+  const [total, setTotal] = useState(0);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [visibilityFilter, setVisibilityFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const itemsPerPage = 10;
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (params = {}) => {
     setIsLoading(true);
     try {
-      const response = await getProductsByVendorId(user.id);
+      const response = await getProductsByVendorId(user.id, params);
       if (response.status === 1) {
-        setProducts(response.data);
+        setProducts(response.data.products);
+        setStats(response.data.stats);
+        setTotal(response.data.total);
       }
     } catch (error) {
       console.error("Error fetching products:", error);
@@ -88,8 +106,30 @@ const Product = () => {
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    const params = {
+      page: currentPage,
+      limit: itemsPerPage,
+      ...(searchQuery && { search: searchQuery }),
+      ...(sortConfig.key && {
+        sortBy:
+          sortConfig.key === "Category.title" ? "category" : sortConfig.key,
+      }),
+      ...(sortConfig.key && { sortDir: sortConfig.direction }),
+    };
+    if (visibilityFilter !== "all") {
+      params.visibility =
+        visibilityFilter.charAt(0).toUpperCase() + visibilityFilter.slice(1);
+    }
+    fetchProducts(params);
+  }, [currentPage, visibilityFilter, searchQuery, sortConfig, user.id]);
+
+  const getTotalStock = (variations) => {
+    return variations?.variation_combinations?.reduce((total, variation) => {
+      return total + variation.stock;
+    }, 0);
+  };
+
+  const totalPages = Math.ceil(total / itemsPerPage);
 
   const formatPrice = (price) => {
     return new Intl.NumberFormat("en-IN", {
@@ -98,209 +138,18 @@ const Product = () => {
     }).format(price);
   };
 
-  const getTotalStock = (variations) => {
-    return variations?.variation_combinations?.reduce((total, variation) => {
-      return total + variation.stock;
-    }, 0);
-  };
-
   const getMainImage = (media) => {
     return (
       media?.find((m) => m.type === "image")?.url || "/placeholder-image.jpg"
     );
   };
 
-  const columns = useMemo(
-    () => [
-      {
-        Header: "SL",
-        accessor: (row, index) => index + 1,
-        disableSortBy: true,
-      },
-      {
-        Header: "Product Photo",
-        accessor: "media",
-        Cell: ({ row }) => (
-          <motion.img
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            src={getMainImage(row.original.media)}
-            alt={row.original.name}
-            className="w-16 h-16 object-cover rounded shadow-sm"
-          />
-        ),
-      },
-      {
-        Header: "Product Name",
-        accessor: "name",
-      },
-      {
-        Header: "Category",
-        accessor: "Category.title",
-        Cell: ({ row }) => (
-          <div className="space-y-1">
-            <p>{row.original.Category?.title || "N/A"}</p>
-            <p className="text-sm text-gray-500">
-              {row.original.SubCategory?.title || "N/A"}
-            </p>
-            <p className="text-sm text-gray-500">
-              {row.original.InnerSubCategory?.title || "N/A"}
-            </p>
-          </div>
-        ),
-      },
-      {
-        Header: "Visibility",
-        accessor: "visibility",
-        Cell: ({ row }) => (
-          <motion.span
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            className={`px-3 py-1 rounded-full text-sm ${
-              row.original.visibility === "Published"
-                ? "bg-green-100 text-green-800"
-                : "bg-red-100 text-red-800"
-            }`}
-          >
-            {row.original.visibility}
-          </motion.span>
-        ),
-      },
-      {
-        Header: "Pricing",
-        accessor: "original_price",
-        Cell: ({ row }) => (
-          <div className="space-y-1">
-            <p className="font-medium">
-              {formatPrice(row.original.discounted_price)}
-            </p>
-            <p className="text-sm text-gray-500 line-through">
-              {formatPrice(row.original.original_price)}
-            </p>
-          </div>
-        ),
-      },
-      {
-        Header: "Stock",
-        accessor: "stock",
-        Cell: ({ row }) => (
-          <span className="bg-blue-50 px-3 py-1 rounded text-blue-700 font-medium">
-            {row.original.is_variation
-              ? getTotalStock(row.original.variations)
-              : row.original.stock}
-          </span>
-        ),
-      },
-      {
-        Header: "Actions",
-        accessor: "actions",
-        disableSortBy: true,
-        Cell: ({ row }) => (
-          <motion.div
-            className="flex space-x-2"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
-          >
-            <button
-              onClick={() => openModal(row.original)}
-              className="p-2 rounded-full text-green-500 hover:bg-green-600 hover:text-white transition-colors"
-            >
-              <Eye className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() =>
-                navigate(
-                  `${config.VITE_BASE_VENDOR_URL}/product/edit/${row.original.id}`
-                )
-              }
-              className="p-2 rounded-full text-blue-500 hover:bg-blue-600 hover:text-white transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => openDeleteModal(row.original)}
-              className="p-2 rounded-full text-red-500 hover:bg-red-600 hover:text-white transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </motion.div>
-        ),
-      },
-    ],
-    []
-  );
-
-  const {
-    getTableProps,
-    getTableBodyProps,
-    headerGroups,
-    prepareRow,
-    page,
-    canPreviousPage,
-    canNextPage,
-    pageOptions,
-    pageCount,
-    gotoPage,
-    nextPage,
-    previousPage,
-    setPageSize,
-    setGlobalFilter,
-    state: { pageIndex, pageSize, globalFilter },
-  } = useTable(
-    {
-      columns,
-      data: products,
-      initialState: { pageSize: 10 },
-    },
-    useGlobalFilter,
-    useSortBy,
-    usePagination
-  );
-
-  const getPageNumbers = () => {
-    const totalPages = pageCount;
-    const currentPage = pageIndex + 1;
-    let pagesToShow = [];
-
-    // Show all pages if there are 5 or fewer
-    if (totalPages <= 5) {
-      pagesToShow = Array.from({ length: totalPages }, (_, i) => i + 1);
-    } else {
-      // Always show first page
-      pagesToShow.push(1);
-
-      // Calculate range around current page
-      let start = Math.max(2, currentPage - 1);
-      let end = Math.min(totalPages - 1, currentPage + 1);
-
-      // Adjust range if at edges
-      if (currentPage <= 2) {
-        end = 4;
-      } else if (currentPage >= totalPages - 1) {
-        start = totalPages - 3;
-      }
-
-      // Add ellipsis if needed at start
-      if (start > 2) {
-        pagesToShow.push("...");
-      }
-
-      // Add pages in range
-      for (let i = start; i <= end; i++) {
-        pagesToShow.push(i);
-      }
-
-      // Add ellipsis if needed at end
-      if (end < totalPages - 1) {
-        pagesToShow.push("...");
-      }
-
-      // Always show last page
-      pagesToShow.push(totalPages);
-    }
-
-    return pagesToShow;
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+    }));
+    setCurrentPage(1);
   };
 
   const openModal = (product) => {
@@ -337,146 +186,308 @@ const Product = () => {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="container mx-auto px-4 py-6"
-    >
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl lg:text-3xl font-semibold text-gray-800">
-          All Products
-        </h2>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 text-lg transition-colors"
-          onClick={() =>
-            navigate(
-              `${config.VITE_BASE_VENDOR_URL}/product/addProduct/${user.id}`
-            )
-          }
-        >
-          + Add Product
-        </motion.button>
-      </div>
-
-      <div className="bg-white p-4 rounded-lg shadow-sm mb-6">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search products..."
-            value={globalFilter || ""}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="w-full rounded-lg pl-10 pr-4 py-3 border focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-          <Search className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-        </div>
-      </div>
-
-      {isLoading ? (
-        <LoadingSkeleton />
-      ) : products.length === 0 ? (
-        <EmptyState />
-      ) : (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-lg overflow-hidden shadow-sm border"
-        >
-          <div className="overflow-x-auto">
-            <table {...getTableProps()} className="w-full">
-              <thead className="bg-gray-50">
-                {headerGroups.map((headerGroup) => (
-                  <tr {...headerGroup.getHeaderGroupProps()}>
-                    {headerGroup.headers.map((column) => (
-                      <th
-                        {...column.getHeaderProps(
-                          column.getSortByToggleProps()
-                        )}
-                        className="px-4 py-4 text-left text-sm font-semibold text-gray-700 border-b"
-                      >
-                        <div className="flex items-center space-x-1">
-                          {column.render("Header")}
-                          <span>
-                            {column.isSorted
-                              ? column.isSortedDesc
-                                ? " ↓"
-                                : " ↑"
-                              : ""}
-                          </span>
-                        </div>
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody {...getTableBodyProps()}>
-                {page.map((row) => {
-                  prepareRow(row);
-                  return (
-                    <motion.tr
-                      {...row.getRowProps()}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.2 }}
-                      className="border-b hover:bg-gray-50 transition-colors"
-                    >
-                      {row.cells.map((cell) => (
-                        <td {...cell.getCellProps()} className="px-4 py-4">
-                          {cell.render("Cell")}
-                        </td>
-                      ))}
-                    </motion.tr>
-                  );
-                })}
-              </tbody>
-            </table>
+    <div className="min-h-screen p-6">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col lg:flex-row gap-2">
+          {/* Stats Cards */}
+          <div className="w-full lg:w-1/2 grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <StatCard title="Total Products" value={stats.totalProducts} />
+            <StatCard
+              title="Published Products"
+              value={stats.publishedProducts}
+            />
+            <StatCard title="Total Stock" value={stats.totalStock} />
+            <StatCard title="Low Stock Items" value={stats.lowStockProducts} />
           </div>
 
-          <div className="px-6 py-4 flex items-center justify-between border-t">
-            <div className="flex items-center gap-2">
-              {getPageNumbers().map((pageNumber, index) => {
-                if (pageNumber === "...") {
-                  return (
-                    <span key={`ellipsis-${index}`} className="px-2">
-                      {pageNumber}
-                    </span>
-                  );
-                }
-                return (
-                  <button
-                    key={pageNumber}
-                    onClick={() => gotoPage(pageNumber - 1)}
-                    className={`w-8 h-8 flex items-center justify-center rounded-md ${
-                      pageIndex === pageNumber - 1
-                        ? "bg-blue-600 text-white"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => previousPage()}
-                disabled={!canPreviousPage}
-                className="flex items-center gap-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 disabled:hover:text-gray-600"
-              >
-                <ChevronLeft className="w-4 h-4" /> Previous
-              </button>
-              <button
-                onClick={() => nextPage()}
-                disabled={!canNextPage}
-                className="flex items-center gap-2 text-gray-600 hover:text-blue-600 disabled:opacity-50 disabled:hover:text-gray-600"
-              >
-                Next <ChevronRight className="w-4 h-4" />
+          {/* Promotional Banner */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full lg:w-1/2 bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl p-8 mb-6 relative overflow-hidden"
+          >
+            <div className="relative z-10">
+              <h2 className="text-3xl font-bold text-white mb-2">
+                Increase your sales
+              </h2>
+              <p className="text-white/90 mb-4 max-w-2xl">
+                Discover the Proven Methods to Skyrocket Your Sales! Unleash the
+                Potential of Your Business and Achieve Remarkable Growth.
+                Whether you're a seasoned entrepreneur or just starting out
+              </p>
+              <button className="bg-white text-orange-500 px-6 py-2 rounded-lg font-semibold hover:bg-orange-50 transition-colors">
+                Learn More
               </button>
             </div>
+            <div className="absolute right-0 top-0 bottom-0 w-1/3 opacity-20">
+              <svg viewBox="0 0 200 200" className="w-full h-full">
+                <path
+                  d="M 0 100 Q 50 50 100 100 T 200 100 L 200 200 L 0 200 Z"
+                  fill="white"
+                />
+              </svg>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Filters and Search */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-white rounded-xl shadow-sm border border-gray-100 mb-6"
+        >
+          {/* Tabs */}
+          <div className="flex items-center gap-1 p-1 border-b border-gray-100">
+            <button
+              onClick={() => {
+                setVisibilityFilter("all");
+                setCurrentPage(1);
+              }}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                visibilityFilter === "all"
+                  ? "bg-orange-50 text-orange-600"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              All Products ({stats.totalProducts})
+            </button>
+            <button
+              onClick={() => {
+                setVisibilityFilter("published");
+                setCurrentPage(1);
+              }}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                visibilityFilter === "published"
+                  ? "bg-orange-50 text-orange-600"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Published ({stats.publishedProducts})
+            </button>
+            <button
+              onClick={() => {
+                setVisibilityFilter("draft");
+                setCurrentPage(1);
+              }}
+              className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                visibilityFilter === "draft"
+                  ? "bg-orange-50 text-orange-600"
+                  : "text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              Draft ({stats.draftProducts})
+            </button>
+          </div>
+
+          {/* Search and Actions */}
+          <div className="p-4 flex items-center gap-3">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search product report"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              />
+            </div>
+            <button className="p-2.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+              <Filter className="w-5 h-5 text-gray-600" />
+            </button>
+            <button
+              onClick={() =>
+                navigate(`${config.VITE_BASE_VENDOR_URL}/product/add`)
+              }
+              className="px-6 py-2.5 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 transition-colors"
+            >
+              Add Product
+            </button>
           </div>
         </motion.div>
-      )}
+
+        {/* Table */}
+        {isLoading ? (
+          <LoadingSkeleton />
+        ) : total === 0 ? (
+          <EmptyState />
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 w-16">
+                      No.
+                    </th>
+                    <th
+                      className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleSort("name")}
+                    >
+                      <div className="flex items-center gap-2">
+                        Product
+                        <span className="text-gray-400">
+                          {sortConfig.key === "name" &&
+                            (sortConfig.direction === "asc" ? "↑" : "↓")}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleSort("Category.title")}
+                    >
+                      <div className="flex items-center gap-2">
+                        Categories
+                        <span className="text-gray-400">
+                          {sortConfig.key === "Category.title" &&
+                            (sortConfig.direction === "asc" ? "↑" : "↓")}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleSort("stock")}
+                    >
+                      <div className="flex items-center gap-2">
+                        Stock
+                        <span className="text-gray-400">
+                          {sortConfig.key === "stock" &&
+                            (sortConfig.direction === "asc" ? "↑" : "↓")}
+                        </span>
+                      </div>
+                    </th>
+                    <th
+                      className="px-6 py-4 text-left text-sm font-semibold text-gray-700 cursor-pointer hover:bg-gray-50"
+                      onClick={() => handleSort("discounted_price")}
+                    >
+                      <div className="flex items-center gap-2">
+                        Price
+                        <span className="text-gray-400">
+                          {sortConfig.key === "discounted_price" &&
+                            (sortConfig.direction === "asc" ? "↑" : "↓")}
+                        </span>
+                      </div>
+                    </th>
+                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((product, idx) => (
+                    <motion.tr
+                      key={product.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="border-b border-gray-50 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {(currentPage - 1) * itemsPerPage + idx + 1}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <img
+                            src={getMainImage(product.media)}
+                            alt={product.name}
+                            className="w-12 h-12 object-cover rounded-lg"
+                          />
+                          <span className="font-medium text-gray-900">
+                            {product.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-700">
+                        {product.Category?.title || "N/A"}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                        {product.is_variation
+                          ? getTotalStock(product.variations)
+                          : product.stock}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                        {formatPrice(product.discounted_price)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openModal(product)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="View"
+                          >
+                            <MessageSquare className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              navigate(
+                                `${config.VITE_BASE_VENDOR_URL}/product/edit/${product.id}`
+                              )
+                            }
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Edit"
+                          >
+                            <Edit className="w-4 h-4 text-gray-600" />
+                          </button>
+                          <button
+                            onClick={() => openDeleteModal(product)}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4 text-gray-600" />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="px-6 py-4 flex items-center justify-between border-t border-gray-100">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Previous
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Page</span>
+                <select
+                  value={currentPage}
+                  onChange={(e) => setCurrentPage(Number(e.target.value))}
+                  className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  {[...Array(totalPages)].map((_, i) => (
+                    <option key={i} value={i + 1}>
+                      {i + 1}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-600">of {totalPages}</span>
+              </div>
+
+              <button
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </div>
 
       <ProductModal
         isOpen={showModal}
@@ -492,7 +503,7 @@ const Product = () => {
         message="Are you sure you want to delete this product? This action cannot be undone."
         isDeleting={isDeletingProduct}
       />
-    </motion.div>
+    </div>
   );
 };
 

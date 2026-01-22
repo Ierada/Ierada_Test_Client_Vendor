@@ -46,7 +46,7 @@ const AddEditProduct = () => {
   const [sizes, setSizes] = useState([]);
   const [filteredSubCategories, setFilteredSubCategories] = useState([]);
   const [filteredInnerSubCategories, setFilteredInnerSubCategories] = useState(
-    []
+    [],
   );
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [selectedCategoryDetails, setSelectedCategoryDetails] = useState(null);
@@ -125,6 +125,11 @@ const AddEditProduct = () => {
     type: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [notification, setNotification] = useState({
+    isOpen: false,
+    type: "",
+    message: "",
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -145,7 +150,7 @@ const AddEditProduct = () => {
           type: c.type,
           hsn_code: c.hsn_code,
           gst: c.gst,
-        })) || []
+        })) || [],
       );
       setSubCategories(
         subRes.data?.map((c) => ({
@@ -154,7 +159,7 @@ const AddEditProduct = () => {
           categoryId: c.cat_id,
           hsn_code: c.hsn_code,
           gst: c.gst,
-        })) || []
+        })) || [],
       );
       setInnerSubCategories(
         innerRes.data?.map((c) => ({
@@ -163,7 +168,7 @@ const AddEditProduct = () => {
           subCategoryId: c.sub_cat_id,
           hsn_code: c.hsn_code,
           gst: c.gst,
-        })) || []
+        })) || [],
       );
       setColors(colorRes.status === 1 ? colorRes.data : []);
       setAttributes(attrRes.status === 1 ? attrRes.data : []);
@@ -250,7 +255,7 @@ const AddEditProduct = () => {
   useEffect(() => {
     if (formData.category_id) {
       const category = categories.find(
-        (c) => c.id === parseInt(formData.category_id)
+        (c) => c.id === parseInt(formData.category_id),
       );
       setSelectedCategoryDetails(category);
 
@@ -268,7 +273,7 @@ const AddEditProduct = () => {
   useEffect(() => {
     if (formData.sub_category_id) {
       const subCategory = subCategories.find(
-        (sc) => sc.id === parseInt(formData.sub_category_id)
+        (sc) => sc.id === parseInt(formData.sub_category_id),
       );
       setSelectedSubCategoryDetails(subCategory);
     }
@@ -278,7 +283,7 @@ const AddEditProduct = () => {
   useEffect(() => {
     if (formData.inner_sub_category_id) {
       const innerSubCategory = innerSubCategories.find(
-        (isc) => isc.id === parseInt(formData.inner_sub_category_id)
+        (isc) => isc.id === parseInt(formData.inner_sub_category_id),
       );
       setSelectedInnerSubCategoryDetails(innerSubCategory);
     }
@@ -287,7 +292,7 @@ const AddEditProduct = () => {
   useEffect(() => {
     if (formData.category_id && subCategories.length > 0) {
       const filtered = subCategories.filter(
-        (subCat) => subCat.categoryId === parseInt(formData.category_id)
+        (subCat) => subCat.categoryId === parseInt(formData.category_id),
       );
       setFilteredSubCategories(filtered);
     } else {
@@ -299,7 +304,7 @@ const AddEditProduct = () => {
     if (formData.sub_category_id && innerSubCategories.length > 0) {
       const filtered = innerSubCategories.filter(
         (innerSubCat) =>
-          innerSubCat.subCategoryId === parseInt(formData.sub_category_id)
+          innerSubCat.subCategoryId === parseInt(formData.sub_category_id),
       );
       setFilteredInnerSubCategories(filtered);
     } else {
@@ -334,7 +339,7 @@ const AddEditProduct = () => {
       setSpecifications(
         parsedSpecs.length > 0
           ? parsedSpecs
-          : [{ feature: "", specification: "" }]
+          : [{ feature: "", specification: "" }],
       );
 
       const updatedFormData = {
@@ -435,7 +440,7 @@ const AddEditProduct = () => {
       const newSlug = generateSlug(value);
       const newMetaTitle = `${value} | IERADA`;
       const capitalizedValue = value.replace(/\b\w/g, (char) =>
-        char.toUpperCase()
+        char.toUpperCase(),
       );
       setFormData((prev) => ({
         ...prev,
@@ -463,7 +468,7 @@ const AddEditProduct = () => {
       // Ensure threshold doesn't exceed stock
       const threshold = Math.min(
         parseInt(value),
-        parseInt(formData.stock) || 0
+        parseInt(formData.stock) || 0,
       );
       setFormData((prev) => ({
         ...prev,
@@ -585,7 +590,7 @@ const AddEditProduct = () => {
     setVariations((prev) => {
       const updated = [...prev];
       updated[varIdx].sizes = updated[varIdx].sizes.filter(
-        (_, i) => i !== sizeIdx
+        (_, i) => i !== sizeIdx,
       );
       return updated;
     });
@@ -614,10 +619,10 @@ const AddEditProduct = () => {
       setVariations((prev) => {
         const updated = [...prev];
         const existingNames = new Set(
-          updated[variationIndex].media.map((m) => m.file?.name || m.url)
+          updated[variationIndex].media.map((m) => m.file?.name || m.url),
         );
         const unique = validFiles.filter(
-          (f) => !existingNames.has(f.file.name)
+          (f) => !existingNames.has(f.file.name),
         );
         updated[variationIndex].media.push(...unique);
         return updated;
@@ -715,7 +720,7 @@ const AddEditProduct = () => {
   const removeSizeFromColor = (colorIndex, sizeIndex) => {
     const newVariations = [...variations];
     newVariations[colorIndex].sizes = newVariations[colorIndex].sizes.filter(
-      (_, index) => index !== sizeIndex
+      (_, index) => index !== sizeIndex,
     );
     setVariations(newVariations);
   };
@@ -725,15 +730,27 @@ const AddEditProduct = () => {
       priceErrors.main ||
       priceErrors.variations?.some((v) => v?.sizes?.some((s) => s))
     ) {
-      notifyOnFail("Fix price errors first");
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message: "Fix price errors first",
+      });
       return;
     }
     if (!formData.is_variation && !formData.sku.trim()) {
-      notifyOnFail("SKU is required");
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message: "SKU is required",
+      });
       return;
     }
     if (!formData.hsn_code.trim()) {
-      notifyOnFail("HSN is required");
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message: "HSN is required",
+      });
       return;
     }
 
@@ -754,7 +771,7 @@ const AddEditProduct = () => {
         key,
         typeof val === "object" && key !== "specifications"
           ? JSON.stringify(val)
-          : val
+          : val,
       );
     });
     formDataToSend.append("specifications", JSON.stringify(specifications));
@@ -767,7 +784,7 @@ const AddEditProduct = () => {
     formDataToSend.append("tds_amount", parseFloat(tdsAmount));
     formDataToSend.append(
       "bank_settlement_amount",
-      parseFloat(bankSettlementAmount)
+      parseFloat(bankSettlementAmount),
     );
 
     const allNewFiles = [];
@@ -792,14 +809,14 @@ const AddEditProduct = () => {
         }
 
         const { newFiles: variationNewFiles, indices } = generateMediaIndices(
-          variation.media || []
+          variation.media || [],
         );
 
         const fileStartIndex = allNewFiles.length;
         allNewFiles.push(...variationNewFiles);
 
         const globalIndices = indices.map((idx) =>
-          typeof idx === "number" ? fileStartIndex + idx : idx
+          typeof idx === "number" ? fileStartIndex + idx : idx,
         );
 
         if (globalIndices.length > 0) {
@@ -829,7 +846,7 @@ const AddEditProduct = () => {
       formDataToSend.append("variations", JSON.stringify(variationsForSubmit));
       formDataToSend.append(
         "variation_media",
-        JSON.stringify(variationMediaMapping)
+        JSON.stringify(variationMediaMapping),
       );
     } else {
       // Non-variation: main product files
@@ -850,14 +867,40 @@ const AddEditProduct = () => {
         ? await updateProduct(id, formDataToSend)
         : await addProduct(formDataToSend);
       if (response.status === 1) {
-        navigate(`${config.VITE_BASE_VENDOR_URL}/product`);
+        setNotification({
+          isOpen: true,
+          type: "success",
+          message: isEditMode
+            ? "Product updated successfully!"
+            : "Product created successfully!",
+        });
+        // Auto-navigate after 2 seconds
+        setTimeout(() => {
+          navigate(`${config.VITE_BASE_VENDOR_URL}/product`);
+        }, 2000);
+      } else {
+        setNotification({
+          isOpen: true,
+          type: "error",
+          message: "Failed to submit product. Please try again.",
+        });
       }
     } catch (error) {
       console.error("Error submitting product:", error);
-      notifyOnFail("Error submitting product");
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message:
+          "Error submitting product. Please check your connection and try again.",
+      });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // close the notification modal
+  const closeNotification = () => {
+    setNotification({ isOpen: false, type: "", message: "" });
   };
 
   // ====== RENDER HELPERS ======
@@ -966,10 +1009,10 @@ const AddEditProduct = () => {
       <div className="flex flex-wrap gap-4">
         {variationIndex !== null
           ? variations[variationIndex]?.media?.map((file, index) =>
-              renderMediaPreview(file, index, variationIndex)
+              renderMediaPreview(file, index, variationIndex),
             )
           : formData.productFiles.map((file, index) =>
-              renderMediaPreview(file, index)
+              renderMediaPreview(file, index),
             )}
       </div>
     </div>
@@ -1032,7 +1075,45 @@ const AddEditProduct = () => {
   return (
     <div className="flex gap-6 p-6 min-h-screen">
       {isSubmitting && (
-        <div className="fixed top-0 left-0 w-full h-1 bg-blue-500 animate-[pulse_2s_ease-in-out_infinite]"></div>
+        <>
+          {/* Semi-transparent overlay */}
+          <div className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-40 pointer-events-none" />
+
+          {/* Top progress bar */}
+          <div className="fixed top-0 left-0 right-0 h-1 bg-blue-500/30 z-50 overflow-hidden">
+            <div className="h-full bg-blue-600 origin-left-right animate-progress-bar" />
+          </div>
+
+          {/* Optional: centered message */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+            <div className="bg-white/90 backdrop-blur-sm px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 text-gray-700 font-medium">
+              <svg
+                className="animate-spin h-5 w-5 text-blue-600"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <span>
+                {isEditMode ? "Updating product..." : "Creating product..."}
+                Please wait
+              </span>
+            </div>
+          </div>
+        </>
       )}
 
       <div className="flex-1 space-y-6 overflow-y-auto scrollbar-hide">
@@ -1270,6 +1351,432 @@ const AddEditProduct = () => {
           </div>
         </div>
 
+        {/* Variations */}
+        <div className="bg-white p-6 rounded-2xl shadow">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Variations</h2>
+            <div className="flex items-center gap-6">
+              {formData.is_variation && (
+                <div className="flex gap-4 items-center">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      checked={variationMode === "color_size"}
+                      onChange={() => setVariationMode("color_size")}
+                    />
+                    <span>Color + Size</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="mode"
+                      checked={variationMode === "custom"}
+                      onChange={() => setVariationMode("custom")}
+                    />
+                    <span>Custom Attribute</span>
+                  </label>
+                </div>
+              )}
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="is_variation"
+                  checked={formData.is_variation}
+                  onChange={handleInputChange}
+                />
+                <span>Enable Variations</span>
+              </label>
+            </div>
+          </div>
+
+          {formData.is_variation && variationMode === "color_size" && (
+            <div className="space-y-6">
+              {variations?.map((variation, colorIndex) => (
+                <div key={colorIndex} className="border rounded-2xl p-4">
+                  <div className="flex gap-4 mb-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Color
+                      </label>
+                      <select
+                        value={variation.color_id}
+                        onChange={(e) =>
+                          handleVariationChange(
+                            colorIndex,
+                            "color_id",
+                            e.target.value,
+                          )
+                        }
+                        className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                      >
+                        <option value="">Select Color</option>
+                        {colors.map((color) => (
+                          <option key={color.id} value={color.id}>
+                            {color.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      onClick={() => removeColorVariation(colorIndex)}
+                      className="text-red-500 hover:text-red-700 self-end"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="mt-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-sm font-medium text-gray-700">
+                        Media Files for{" "}
+                        {colors.find((c) => c.id === variation.color_id)
+                          ?.name || `Variation ${colorIndex + 1}`}
+                      </h3>
+                      <button
+                        className="flex items-center gap-1 text-sm text-gray-600"
+                        onClick={() => setIsGuideModalOpen(true)}
+                      >
+                        <BsQuestionCircle />
+                      </button>
+                    </div>
+                    {renderMediaUploadSection(colorIndex)}
+                  </div>
+
+                  <div className="space-y-4">
+                    {variation.sizes.map((size, sizeIndex) => (
+                      <div
+                        key={sizeIndex}
+                        className="grid grid-cols-6 gap-2 items-end"
+                      >
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Size
+                          </label>
+                          <select
+                            value={size.size_id}
+                            onChange={(e) =>
+                              handleSizeChange(
+                                colorIndex,
+                                sizeIndex,
+                                "size_id",
+                                e.target.value,
+                              )
+                            }
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                          >
+                            <option value="">Select Size</option>
+                            {sizes.map((size) => (
+                              <option key={size.id} value={size.id}>
+                                {size.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Stock
+                          </label>
+                          <input
+                            type="number"
+                            value={size.stock}
+                            onChange={(e) =>
+                              handleSizeChange(
+                                colorIndex,
+                                sizeIndex,
+                                "stock",
+                                e.target.value,
+                              )
+                            }
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Original Price
+                          </label>
+                          <input
+                            type="number"
+                            value={size.original_price}
+                            onChange={(e) =>
+                              handleSizeChange(
+                                colorIndex,
+                                sizeIndex,
+                                "original_price",
+                                e.target.value,
+                              )
+                            }
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Selling Price
+                          </label>
+                          <input
+                            type="number"
+                            value={size.discounted_price}
+                            onChange={(e) =>
+                              handleSizeChange(
+                                colorIndex,
+                                sizeIndex,
+                                "discounted_price",
+                                e.target.value,
+                              )
+                            }
+                            className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
+                              priceErrors.variations[colorIndex]?.sizes[
+                                sizeIndex
+                              ]
+                                ? "border-red-500"
+                                : ""
+                            }`}
+                          />
+                          {priceErrors.variations[colorIndex]?.sizes[
+                            sizeIndex
+                          ] && (
+                            <p className="mt-1 text-sm text-red-600">
+                              {
+                                priceErrors.variations[colorIndex].sizes[
+                                  sizeIndex
+                                ]
+                              }
+                            </p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700">
+                            Barcode
+                          </label>
+                          <input
+                            type="text"
+                            value={size.barcode}
+                            onChange={(e) =>
+                              handleSizeChange(
+                                colorIndex,
+                                sizeIndex,
+                                "barcode",
+                                e.target.value,
+                              )
+                            }
+                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <label className="block text-sm font-medium text-gray-700">
+                              SKU <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={size.sku}
+                              onChange={(e) =>
+                                handleSizeChange(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "sku",
+                                  e.target.value,
+                                )
+                              }
+                              className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                              required
+                            />
+                          </div>
+                          <button
+                            onClick={() =>
+                              removeSizeFromColor(colorIndex, sizeIndex)
+                            }
+                            className="text-red-500 hover:text-red-700 self-end"
+                          >
+                            <X size={20} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => addSizeToColor(colorIndex)}
+                      className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+                    >
+                      <Plus size={20} /> Add Size
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <button
+                onClick={addColorVariation}
+                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+              >
+                <Plus size={20} /> Add Color Variation
+              </button>
+            </div>
+          )}
+
+          {formData.is_variation && variationMode === "custom" && (
+            <div className="space-y-6">
+              {variations.map((variation, index) => (
+                <div key={index} className="border rounded-2xl p-6 bg-gray-50">
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Attribute <span className="text-red-600">*</span>
+                      </label>
+                      <select
+                        value={variation.attribute_id || ""}
+                        onChange={(e) =>
+                          handleVariationChange(
+                            index,
+                            "attribute_id",
+                            e.target.value,
+                          )
+                        }
+                        className="mt-1 block w-full rounded-2xl border-gray-300"
+                      >
+                        <option value="">Select Attribute</option>
+                        {attributes.map((attr) => (
+                          <option key={attr.id} value={attr.id}>
+                            {attr.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">
+                        Attribute Value <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Pure Leather, Matte Finish"
+                        value={variation.attribute_value || ""}
+                        onChange={(e) =>
+                          handleVariationChange(
+                            index,
+                            "attribute_value",
+                            e.target.value,
+                          )
+                        }
+                        className="mt-1 block w-full rounded-2xl border-gray-300"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Media Upload for this variation group */}
+                  <div className="mb-6">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">
+                      Media for: {variation.attribute_value || "this variation"}
+                    </h4>
+                    {renderMediaUploadSection(index)}
+                  </div>
+
+                  {/* Options (Sizes) Table */}
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Options</h4>
+                    {variation.sizes.map((size, sIdx) => (
+                      <div
+                        key={sIdx}
+                        className="grid grid-cols-5 gap-3 items-end bg-white p-3 rounded border"
+                      >
+                        <input
+                          placeholder="Stock *"
+                          type="number"
+                          value={size.stock}
+                          onChange={(e) =>
+                            handleSizeChange(
+                              index,
+                              sIdx,
+                              "stock",
+                              e.target.value,
+                            )
+                          }
+                          className="rounded-2xl border-gray-300"
+                        />
+                        <input
+                          placeholder="Original Price *"
+                          type="number"
+                          value={size.original_price}
+                          onChange={(e) =>
+                            handleSizeChange(
+                              index,
+                              sIdx,
+                              "original_price",
+                              e.target.value,
+                            )
+                          }
+                          className="rounded-2xl border-gray-300"
+                        />
+                        <input
+                          placeholder="Selling Price *"
+                          type="number"
+                          value={size.discounted_price}
+                          onChange={(e) =>
+                            handleSizeChange(
+                              index,
+                              sIdx,
+                              "discounted_price",
+                              e.target.value,
+                            )
+                          }
+                          className="rounded-2xl border-gray-300"
+                        />
+                        <input
+                          placeholder="SKU *"
+                          type="text"
+                          value={size.sku}
+                          onChange={(e) =>
+                            handleSizeChange(index, sIdx, "sku", e.target.value)
+                          }
+                          className="rounded-2xl border-gray-300"
+                        />
+                        <input
+                          placeholder="Barcode"
+                          type="text"
+                          value={size.barcode}
+                          onChange={(e) =>
+                            handleSizeChange(
+                              index,
+                              sIdx,
+                              "barcode",
+                              e.target.value,
+                            )
+                          }
+                          className="rounded-2xl border-gray-300"
+                        />
+                        {/* <button
+                                    onClick={() => removeSizeFromColor(index, sIdx)}
+                                    className="text-red-600 hover:text-red-700"
+                                  >
+                                    <X size={20} />
+                                  </button> */}
+                      </div>
+                    ))}
+                    {/* <button
+                                onClick={() => addSizeToColor(index)}
+                                className="text-sm text-blue-600 hover:text-blue-700"
+                              >
+                                + Add Option
+                              </button> */}
+                  </div>
+
+                  {variations.length > 1 && (
+                    <button
+                      onClick={() => removeColorVariation(index)}
+                      className="text-sm text-red-600 mt-4"
+                    >
+                      Remove This Variation Group
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <button
+                onClick={addColorVariation}
+                className="flex items-center gap-2 text-blue-600 font-medium"
+              >
+                <Plus size={20} /> Add New Variation (e.g. Material, Finish,
+                etc.)
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Specifications */}
         <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-1">
@@ -1280,7 +1787,7 @@ const AddEditProduct = () => {
             />
           </h2>
           <div className="space-y-4">
-            {/* {specifications?.map((spec, index) => (
+            {specifications?.map((spec, index) => (
               <div key={index} className="flex gap-4 items-start">
                 <div className="flex-1">
                   <input
@@ -1290,7 +1797,7 @@ const AddEditProduct = () => {
                       handleSpecificationChange(
                         index,
                         "feature",
-                        e.target.value
+                        e.target.value,
                       )
                     }
                     placeholder="Feature"
@@ -1305,7 +1812,7 @@ const AddEditProduct = () => {
                       handleSpecificationChange(
                         index,
                         "specification",
-                        e.target.value
+                        e.target.value,
                       )
                     }
                     placeholder="Specification"
@@ -1319,7 +1826,7 @@ const AddEditProduct = () => {
                   <X />
                 </button>
               </div>
-            ))} */}
+            ))}
             <button
               onClick={addSpecification}
               className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
@@ -1460,448 +1967,6 @@ const AddEditProduct = () => {
           </div>
         </div>
 
-        {/* Render media section only if variations are disabled */}
-        {!formData.is_variation && (
-          <div className="bg-white p-6 rounded-2xl shadow">
-            <div className="flex items-center gap-2 mb-4">
-              <h2 className="text-lg font-semibold">Media</h2>
-              <button
-                className="flex items-center gap-1 text-sm text-gray-600"
-                onClick={() => setIsGuideModalOpen(true)}
-              >
-                <BsQuestionCircle />
-              </button>
-            </div>
-            {renderMediaUploadSection()}
-          </div>
-        )}
-
-        {/* Variations */}
-        <div className="bg-white p-6 rounded-2xl shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Variations</h2>
-            <div className="flex items-center gap-6">
-              {formData.is_variation && (
-                <div className="flex gap-4 items-center">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={variationMode === "color_size"}
-                      onChange={() => setVariationMode("color_size")}
-                    />
-                    <span>Color + Size</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={variationMode === "custom"}
-                      onChange={() => setVariationMode("custom")}
-                    />
-                    <span>Custom Attribute</span>
-                  </label>
-                </div>
-              )}
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="is_variation"
-                  checked={formData.is_variation}
-                  onChange={handleInputChange}
-                />
-                <span>Enable Variations</span>
-              </label>
-            </div>
-          </div>
-
-          {formData.is_variation && variationMode === "color_size" && (
-            <div className="space-y-6">
-              {variations?.map((variation, colorIndex) => (
-                <div key={colorIndex} className="border rounded-2xl p-4">
-                  <div className="flex gap-4 mb-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Color
-                      </label>
-                      <select
-                        value={variation.color_id}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            colorIndex,
-                            "color_id",
-                            e.target.value
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                      >
-                        <option value="">Select Color</option>
-                        {colors.map((color) => (
-                          <option key={color.id} value={color.id}>
-                            {color.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={() => removeColorVariation(colorIndex)}
-                      className="text-red-500 hover:text-red-700 self-end"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-sm font-medium text-gray-700">
-                        Media Files for{" "}
-                        {colors.find((c) => c.id === variation.color_id)
-                          ?.name || `Variation ${colorIndex + 1}`}
-                      </h3>
-                      <button
-                        className="flex items-center gap-1 text-sm text-gray-600"
-                        onClick={() => setIsGuideModalOpen(true)}
-                      >
-                        <BsQuestionCircle />
-                      </button>
-                    </div>
-                    {renderMediaUploadSection(colorIndex)}
-                  </div>
-
-                  <div className="space-y-4">
-                    {variation.sizes.map((size, sizeIndex) => (
-                      <div
-                        key={sizeIndex}
-                        className="grid grid-cols-6 gap-2 items-end"
-                      >
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Size
-                          </label>
-                          <select
-                            value={size.size_id}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "size_id",
-                                e.target.value
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          >
-                            <option value="">Select Size</option>
-                            {sizes.map((size) => (
-                              <option key={size.id} value={size.id}>
-                                {size.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Stock
-                          </label>
-                          <input
-                            type="number"
-                            value={size.stock}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "stock",
-                                e.target.value
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Original Price
-                          </label>
-                          <input
-                            type="number"
-                            value={size.original_price}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "original_price",
-                                e.target.value
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Selling Price
-                          </label>
-                          <input
-                            type="number"
-                            value={size.discounted_price}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "discounted_price",
-                                e.target.value
-                              )
-                            }
-                            className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
-                              priceErrors.variations[colorIndex]?.sizes[
-                                sizeIndex
-                              ]
-                                ? "border-red-500"
-                                : ""
-                            }`}
-                          />
-                          {priceErrors.variations[colorIndex]?.sizes[
-                            sizeIndex
-                          ] && (
-                            <p className="mt-1 text-sm text-red-600">
-                              {
-                                priceErrors.variations[colorIndex].sizes[
-                                  sizeIndex
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Barcode
-                          </label>
-                          <input
-                            type="text"
-                            value={size.barcode}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "barcode",
-                                e.target.value
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700">
-                              SKU <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={size.sku}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "sku",
-                                  e.target.value
-                                )
-                              }
-                              className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                              required
-                            />
-                          </div>
-                          <button
-                            onClick={() =>
-                              removeSizeFromColor(colorIndex, sizeIndex)
-                            }
-                            className="text-red-500 hover:text-red-700 self-end"
-                          >
-                            <X size={20} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addSizeToColor(colorIndex)}
-                      className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
-                    >
-                      <Plus size={20} /> Add Size
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={addColorVariation}
-                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
-              >
-                <Plus size={20} /> Add Color Variation
-              </button>
-            </div>
-          )}
-
-          {formData.is_variation && variationMode === "custom" && (
-            <div className="space-y-6">
-              {variations.map((variation, index) => (
-                <div key={index} className="border rounded-2xl p-6 bg-gray-50">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Attribute <span className="text-red-600">*</span>
-                      </label>
-                      <select
-                        value={variation.attribute_id || ""}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            index,
-                            "attribute_id",
-                            e.target.value
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300"
-                      >
-                        <option value="">Select Attribute</option>
-                        {attributes.map((attr) => (
-                          <option key={attr.id} value={attr.id}>
-                            {attr.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Attribute Value <span className="text-red-600">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Pure Leather, Matte Finish"
-                        value={variation.attribute_value || ""}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            index,
-                            "attribute_value",
-                            e.target.value
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Media Upload for this variation group */}
-                  <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      Media for: {variation.attribute_value || "this variation"}
-                    </h4>
-                    {renderMediaUploadSection(index)}
-                  </div>
-
-                  {/* Options (Sizes) Table */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Options</h4>
-                    {variation.sizes.map((size, sIdx) => (
-                      <div
-                        key={sIdx}
-                        className="grid grid-cols-5 gap-3 items-end bg-white p-3 rounded border"
-                      >
-                        <input
-                          placeholder="Stock *"
-                          type="number"
-                          value={size.stock}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "stock",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Original Price *"
-                          type="number"
-                          value={size.original_price}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "original_price",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Selling Price *"
-                          type="number"
-                          value={size.discounted_price}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "discounted_price",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="SKU *"
-                          type="text"
-                          value={size.sku}
-                          onChange={(e) =>
-                            handleSizeChange(index, sIdx, "sku", e.target.value)
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Barcode"
-                          type="text"
-                          value={size.barcode}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "barcode",
-                              e.target.value
-                            )
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        {/* <button
-                                    onClick={() => removeSizeFromColor(index, sIdx)}
-                                    className="text-red-600 hover:text-red-700"
-                                  >
-                                    <X size={20} />
-                                  </button> */}
-                      </div>
-                    ))}
-                    {/* <button
-                                onClick={() => addSizeToColor(index)}
-                                className="text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                + Add Option
-                              </button> */}
-                  </div>
-
-                  {variations.length > 1 && (
-                    <button
-                      onClick={() => removeColorVariation(index)}
-                      className="text-sm text-red-600 mt-4"
-                    >
-                      Remove This Variation Group
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              <button
-                onClick={addColorVariation}
-                className="flex items-center gap-2 text-blue-600 font-medium"
-              >
-                <Plus size={20} /> Add New Variation (e.g. Material, Finish,
-                etc.)
-              </button>
-            </div>
-          )}
-        </div>
-
         <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Charges & Shipping</h2>
           <div className="space-y-4">
@@ -2008,6 +2073,21 @@ const AddEditProduct = () => {
           </div>
         </div>
 
+        {!formData.is_variation && (
+          <div className="bg-white p-6 rounded-2xl shadow">
+            <div className="flex items-center gap-2 mb-4">
+              <h2 className="text-lg font-semibold">Media</h2>
+              <button
+                className="flex items-center gap-1 text-sm text-gray-600"
+                onClick={() => setIsGuideModalOpen(true)}
+              >
+                <BsQuestionCircle />
+              </button>
+            </div>
+            {renderMediaUploadSection()}
+          </div>
+        )}
+
         <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Additional Settings</h2>
           <div className="space-y-4">
@@ -2098,8 +2178,6 @@ const AddEditProduct = () => {
       </div>
 
       <div className="w-[420px] space-y-6 flex-shrink-0">
-        {/* Bank Settlement Breakdown */}
-
         <div className="sticky top-24 space-y-6">
           {/* Image Product Section */}
           {/* <div className="bg-white p-6 rounded-2xl shadow">
@@ -2130,93 +2208,6 @@ const AddEditProduct = () => {
               Bank Settlement Breakdown
             </h2>
 
-            <div className="border-b mb-4 pb-4">
-              <div className="space-y-2 text-sm">
-                {(() => {
-                  const total = parseFloat(formData.discounted_price) || 0;
-                  const gstRate = parseFloat(formData.gst) || 0;
-                  const base =
-                    gstRate > 0 ? total / (1 + gstRate / 100) : total;
-                  const taxes = total - base;
-                  return (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Ierada Price</span>
-                        <span>₹{base.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">
-                          Commission fee (0%)
-                        </span>
-                        <span>₹0</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">
-                          Tax ( GST, TCS,TDS)
-                        </span>
-                        <span>-₹{taxes.toFixed(2)}</span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-              <div className="mt-4 pt-4 border-t">
-                <div className="flex justify-between font-semibold">
-                  <span>Bank Settlement Amount</span>
-                  <span>
-                    ₹
-                    {(
-                      parseFloat(formData.discounted_price || 0) -
-                      parseFloat(formData.discounted_price || 0) * 0.02
-                    ).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="border-b pb-4 mb-4">
-              <h3 className="font-semibold mb-4">Customer Price Breakdown</h3>
-              <div className="space-y-2 text-sm">
-                {(() => {
-                  const total = parseFloat(formData.discounted_price) || 0;
-                  const gstRate = parseFloat(formData.gst) || 0;
-                  const base =
-                    gstRate > 0 ? total / (1 + gstRate / 100) : total;
-                  const taxes = total - base;
-                  return (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Sale Amount</span>
-                        <span>₹{base.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Taxes (Rs.)</span>
-                        <span>₹{taxes.toFixed(2)}</span>
-                      </div>
-                      {formData.shipping_charges ? (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">
-                            Shipping Fee (Rs.)
-                          </span>
-                          <span>
-                            ₹{parseFloat(formData.shipping_charges).toFixed(2)}
-                          </span>
-                        </div>
-                      ) : null}
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">
-                          Other Charges (Rs.)
-                        </span>
-                        <span className="font-medium">
-                          ₹{parseFloat(formData.platform_fee || 0).toFixed(2)}
-                        </span>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
             <div className="space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600 font-semibold">MRP</span>
@@ -2231,21 +2222,35 @@ const AddEditProduct = () => {
                 </span>
               </div>
               <div className="flex justify-between text-sm">
+                <span className="text-gray-600 font-semibold">GST</span>
+                <span className="font-medium">
+                  - ₹
+                  {(
+                    (parseFloat(formData.discounted_price || 0) *
+                      parseFloat(formData.gst || 0)) /
+                    100
+                  ).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-600">TDS (Rs.)</span>
                 <span className="font-medium">
                   -₹
                   {(parseFloat(formData.discounted_price || 0) * 0.02).toFixed(
-                    2
+                    2,
                   )}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Settlement Value</span>
+                <span className="text-gray-600">Bank Settlement Value</span>
                 <span className="font-medium">
                   ₹
                   {(
                     parseFloat(formData.discounted_price || 0) -
-                    parseFloat(formData.discounted_price || 0) * 0.02
+                    parseFloat(formData.discounted_price || 0) * 0.02 -
+                    (parseFloat(formData.discounted_price || 0) *
+                      parseFloat(formData.gst || 0)) /
+                      100
                   ).toFixed(2)}
                 </span>
               </div>
@@ -2269,7 +2274,10 @@ const AddEditProduct = () => {
                   ₹
                   {(
                     parseFloat(formData.discounted_price || 0) -
-                    parseFloat(formData.discounted_price || 0) * 0.02 +
+                    parseFloat(formData.discounted_price || 0) * 0.02 -
+                    (parseFloat(formData.discounted_price || 0) *
+                      parseFloat(formData.gst || 0)) /
+                      100 +
                     parseFloat(formData.shipping_charges || 0) +
                     parseFloat(formData.platform_fee || 0)
                   ).toFixed(2)}
@@ -2288,6 +2296,70 @@ const AddEditProduct = () => {
           isOpen={isGuideModalOpen}
           onClose={() => setIsGuideModalOpen(false)}
         />
+      )}
+
+      {notification.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-auto shadow-2xl">
+            <div className="flex flex-col items-center gap-4">
+              {/* Icon */}
+              <div
+                className={`p-3 rounded-full ${
+                  notification.type === "success"
+                    ? "bg-green-100"
+                    : "bg-red-100"
+                }`}
+              >
+                {notification.type === "success" ? (
+                  <svg
+                    className="w-6 h-6 text-green-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-6 h-6 text-red-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                )}
+              </div>
+              {/* Message */}
+              <p
+                className={`text-center text-lg font-semibold ${
+                  notification.type === "success"
+                    ? "text-green-800"
+                    : "text-red-800"
+                }`}
+              >
+                {notification.message}
+              </p>
+              {/* Close Button */}
+              <button
+                onClick={closeNotification}
+                className="px-6 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition-colors w-full"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
