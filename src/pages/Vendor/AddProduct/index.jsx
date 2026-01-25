@@ -1074,48 +1074,6 @@ const AddEditProduct = () => {
 
   return (
     <div className="flex gap-6 p-6 min-h-screen">
-      {isSubmitting && (
-        <>
-          {/* Semi-transparent overlay */}
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-[2px] z-40 pointer-events-none" />
-
-          {/* Top progress bar */}
-          <div className="fixed top-0 left-0 right-0 h-1 bg-blue-500/30 z-50 overflow-hidden">
-            <div className="h-full bg-blue-600 origin-left-right animate-progress-bar" />
-          </div>
-
-          {/* Optional: centered message */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-            <div className="bg-white/90 backdrop-blur-sm px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 text-gray-700 font-medium">
-              <svg
-                className="animate-spin h-5 w-5 text-blue-600"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span>
-                {isEditMode ? "Updating product..." : "Creating product..."}
-                Please wait
-              </span>
-            </div>
-          </div>
-        </>
-      )}
-
       <div className="flex-1 space-y-6 overflow-y-auto scrollbar-hide">
         <h1 className="text-3xl font-bold mb-4">
           {isEditMode ? "Edit Product" : "Create a New Product"}
@@ -2177,7 +2135,7 @@ const AddEditProduct = () => {
         </div>
       </div>
 
-      <div className="w-[420px] space-y-6 flex-shrink-0">
+      <div className="w-[420px] space-y-6 mt-15 flex-shrink-0">
         <div className="sticky top-24 space-y-6">
           {/* Image Product Section */}
           {/* <div className="bg-white p-6 rounded-2xl shadow">
@@ -2299,7 +2257,7 @@ const AddEditProduct = () => {
       )}
 
       {notification.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-auto shadow-2xl">
             <div className="flex flex-col items-center gap-4">
               {/* Icon */}
@@ -2360,6 +2318,50 @@ const AddEditProduct = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {isSubmitting && (
+        <>
+          {/* Semi-transparent overlay */}
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            {/* Top progress bar */}
+            <div className="fixed top-0 left-0 right-0 h-1 bg-blue-500/30 z-50 overflow-hidden">
+              <div className="h-full bg-blue-600 origin-left-right animate-progress-bar" />
+            </div>
+
+            {/* centered message */}
+            <div className="relative w-full overflow-y-auto rounded-lg shadow-xl">
+              <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+                <div className="bg-white/90 backdrop-blur-sm px-6 py-4 rounded-lg shadow-xl flex items-center gap-3 text-gray-700 font-medium">
+                  <svg
+                    className="animate-spin h-5 w-5 text-blue-600"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  <span>
+                    {isEditMode ? "Updating product..." : "Creating product..."}
+                    Please wait
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
