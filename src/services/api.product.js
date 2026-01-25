@@ -76,7 +76,7 @@ export const getAllProducts = async (queryString = "") => {
 export const searchProducts = async (keyword) => {
   try {
     const res = await apiClient.get(
-      `/product/search?keyword=${encodeURIComponent(keyword)}`
+      `/product/search?keyword=${encodeURIComponent(keyword)}`,
     );
     if (res.data.status === 1) {
       return res.data.data;
@@ -94,15 +94,15 @@ export const searchProducts = async (keyword) => {
 export const addProduct = async (productData) => {
   try {
     const res = await apiClient.post(`/product/addProduct`, productData);
-    if (res.data.status === 1) {
-      notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
+    // if (res.data.status === 1) {
+    //   notifyOnSuccess(res.data.message);
+    // } else {
+    //   notifyOnFail(res.data.message);
+    // }
     return res.data;
   } catch (error) {
     notifyOnFail(
-      "There was an error adding the product. Please try again later."
+      "There was an error adding the product. Please try again later.",
     );
     return error.response || error;
   }
@@ -127,7 +127,7 @@ export const updateProductPrice = async (productId, priceData) => {
   try {
     const response = await apiClient.patch(
       `/product/updatePrice/${productId}`,
-      priceData
+      priceData,
     );
     return response.data;
   } catch (error) {
@@ -139,11 +139,22 @@ export const updateProductPrice = async (productId, priceData) => {
 export const updateProduct = async (id, data) => {
   try {
     const res = await apiClient.patch(`/product/updateProduct/${id}`, data);
-    if (res.data.status === 1) {
-      notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
+    // if (res.data.status === 1) {
+    //   notifyOnSuccess(res.data.message);
+    // } else {
+    //   notifyOnFail(res.data.message);
+    // }
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+    console.log(error);
+    return error.response || error;
+  }
+};
+
+export const patchProduct = async (id, data) => {
+  try {
+    const res = await apiClient.patch(`/product/patch/${id}`, data);
     return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
@@ -273,7 +284,7 @@ export const bulkStockPriceUpdate = async (data) => {
   try {
     const res = await apiClient.post(
       `/product/bulk/stock-price-update-template/`,
-      data
+      data,
     );
     // if (res.data.status === 1) {
     //   notifyOnSuccess(res.data.message);
@@ -301,7 +312,7 @@ export const listAllFiles = async (params = {}) => {
       queryParams.append("variation_id", params.variation_id);
 
     const response = await apiClient.get(
-      `/product/product-images/files?${queryParams.toString()}`
+      `/product/product-images/files?${queryParams.toString()}`,
     );
 
     return await response.data;
@@ -315,7 +326,7 @@ export const uploadBulkFiles = async (formData) => {
   try {
     const response = await apiClient.post(
       `/product/product-images/upload-bulk`,
-      formData
+      formData,
     );
 
     return await response.data;
@@ -328,7 +339,7 @@ export const uploadBulkFiles = async (formData) => {
 export const deleteFile = async (filename) => {
   try {
     const response = await apiClient.delete(
-      `/product/product-images/single-delete/${filename}`
+      `/product/product-images/single-delete/${filename}`,
     );
 
     return await response.data;
@@ -342,7 +353,7 @@ export const bulkDeleteFiles = async (filenames) => {
   try {
     const response = await apiClient.delete(
       `/product/product-images/bulk-delete`,
-      { data: { filenames } }
+      { data: { filenames } },
     );
 
     return await response.data;
