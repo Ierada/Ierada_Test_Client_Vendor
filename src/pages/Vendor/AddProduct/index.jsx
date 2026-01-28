@@ -130,6 +130,7 @@ const AddEditProduct = () => {
     type: "",
     message: "",
   });
+  const [expandedVariations, setExpandedVariations] = useState([]); // New state for expanded variations
 
   useEffect(() => {
     const fetchData = async () => {
@@ -901,6 +902,15 @@ const AddEditProduct = () => {
   // close the notification modal
   const closeNotification = () => {
     setNotification({ isOpen: false, type: "", message: "" });
+  };
+
+  // Toggle variation expansion
+  const toggleVariation = (index) => {
+    setExpandedVariations((prev) => {
+      const newArr = [...prev];
+      newArr[index] = !newArr[index];
+      return newArr;
+    });
   };
 
   // ====== RENDER HELPERS ======
@@ -1928,7 +1938,7 @@ const AddEditProduct = () => {
         <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Charges & Shipping</h2>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Other Charges (Default)
@@ -2048,7 +2058,7 @@ const AddEditProduct = () => {
 
         <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4">Additional Settings</h2>
-          <div className="space-y-4">
+          <div className="flex justify-between items-center gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
                 Visibility
@@ -2231,11 +2241,7 @@ const AddEditProduct = () => {
                 <span className="font-medium">
                   ₹
                   {(
-                    parseFloat(formData.discounted_price || 0) -
-                    parseFloat(formData.discounted_price || 0) * 0.02 -
-                    (parseFloat(formData.discounted_price || 0) *
-                      parseFloat(formData.gst || 0)) /
-                      100 +
+                    parseFloat(formData.discounted_price || 0) +
                     parseFloat(formData.shipping_charges || 0) +
                     parseFloat(formData.platform_fee || 0)
                   ).toFixed(2)}
@@ -2243,6 +2249,151 @@ const AddEditProduct = () => {
               </div>
             </div>
           </div>
+
+          {/* New Variations Breakdown Section */}
+          {formData.is_variation && (
+            <div className="bg-white rounded-2xl shadow mt-8 border-t p-6">
+              <h2 className="text-lg font-semibold mb-4">
+                Bank Settlement Breakdown - Variations
+              </h2>
+              <div className="space-y-4">
+                {variations.map((variation, index) => {
+                  const variationName =
+                    variationMode === "color_size"
+                      ? colors.find(
+                          (c) =>
+                            parseInt(c.id) === parseInt(variation.color_id),
+                        )?.name || `Color ${index + 1}`
+                      : attributes.find(
+                          (a) =>
+                            parseInt(a.id) === parseInt(variation.attribute_id),
+                        )?.name +
+                          ": " +
+                          variation.attribute_value || `Variation ${index + 1}`;
+                  const isExpanded = expandedVariations[index] || false;
+
+                  return (
+                    <div
+                      key={index}
+                      className="border rounded-xl overflow-hidden"
+                    >
+                      <button
+                        onClick={() => toggleVariation(index)}
+                        className="w-full px-4 py-3 flex justify-between items-center text-left bg-gray-50 hover:bg-gray-100 transition-colors"
+                      >
+                        <span className="font-medium">{variationName}</span>
+                        <svg
+                          className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${
+                            isExpanded ? "rotate-180" : "rotate-0"
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                      {isExpanded && (
+                        <div className="p-4 bg-white space-y-6">
+                          {variation.sizes.map((size, sIdx) => {
+                            const sizeName =
+                              variationMode === "color_size"
+                                ? sizes.find(
+                                    (s) =>
+                                      parseInt(s.id) === parseInt(size.size_id),
+                                  )?.name || `Size ${sIdx + 1}`
+                                : `Option ${sIdx + 1}`;
+
+                            const original = parseFloat(
+                              size.original_price || 0,
+                            );
+                            const discounted = parseFloat(
+                              size.discounted_price || 0,
+                            );
+                            const gstRate = parseFloat(formData.gst || 0);
+                            const gstAmount = (discounted * gstRate) / 100;
+                            const tds = discounted * 0.02;
+                            const settlement = discounted - tds - gstAmount;
+                            const shipping = parseFloat(
+                              formData.shipping_charges || 0,
+                            );
+                            const platform = parseFloat(
+                              formData.platform_fee || 0,
+                            );
+                            const listing = discounted + shipping + platform;
+
+                            return (
+                              <div
+                                key={sIdx}
+                                className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0"
+                              >
+                                <h3 className="text-sm font-semibold text-gray-800">
+                                  {sizeName}
+                                </h3>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600 font-medium">
+                                    MRP
+                                  </span>
+                                  <span>₹{original.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600 font-medium">
+                                    Sale Amount
+                                  </span>
+                                  <span>₹{discounted.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600 font-medium">
+                                    GST
+                                  </span>
+                                  <span>- ₹{gstAmount.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">
+                                    TDS (Rs.)
+                                  </span>
+                                  <span>-₹{tds.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">
+                                    Bank Settlement Value
+                                  </span>
+                                  <span>₹{settlement.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">
+                                    Shipping Fee
+                                  </span>
+                                  <span>₹{shipping.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-gray-600">
+                                    Other Charges (Rs.)
+                                  </span>
+                                  <span>₹{platform.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm font-bold pt-2 border-t">
+                                  <span className="text-gray-600">
+                                    Listing Price
+                                  </span>
+                                  <span>₹{listing.toFixed(2)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
