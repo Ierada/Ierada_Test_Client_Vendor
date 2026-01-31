@@ -29,7 +29,7 @@ const VendorLayout = () => {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 w-56 transform bg-white dark:bg-gray-800 transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-30 w-auto transform bg-white dark:bg-gray-800 transition-transform duration-300 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -40,7 +40,7 @@ const VendorLayout = () => {
       </div>
 
       {/* Main content */}
-      <div className="relative flex flex-1 flex-col lg:ml-56 bg-[#F5F6F8]">
+      <div className="relative flex flex-1 flex-col lg:ml-20 bg-[#FFF3EF]">
         <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}>
           <button
             onClick={toggleSidebar}

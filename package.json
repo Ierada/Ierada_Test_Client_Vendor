@@ -20,6 +20,7 @@
     "@ckeditor/ckeditor5-react": "^9.4.0",
     "@greatsumini/react-facebook-login": "^3.4.0",
     "@headlessui/react": "^2.2.0",
+    "@hookform/resolvers": "^5.2.2",
     "@pqina/pintura": "^8.89.6",
     "@pqina/react-pintura": "^9.0.3",
     "@react-google-maps/api": "^2.20.3",
@@ -66,10 +67,11 @@
     "react-datepicker": "^7.5.0",
     "react-dom": "^18.2.0",
     "react-dropzone": "^14.3.5",
+    "react-google-charts": "^5.2.1",
     "react-google-recaptcha": "^3.1.0",
     "react-google-recaptcha-v3": "^1.11.0",
     "react-helmet-async": "^2.0.5",
-    "react-hook-form": "^7.53.2",
+    "react-hook-form": "^7.71.1",
     "react-hot-toast": "^2.4.1",
     "react-i18next": "^15.0.1",
     "react-icons": "^5.4.0",
@@ -99,7 +101,8 @@
     "trix": "^2.1.8",
     "uuid": "^11.1.0",
     "victory": "^37.3.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/react": "^18.2.17",
