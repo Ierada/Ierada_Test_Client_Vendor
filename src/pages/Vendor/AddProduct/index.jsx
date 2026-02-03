@@ -323,6 +323,24 @@ const AddEditProduct = () => {
     }
   }, [formData.stock, formData.low_stock_threshold]);
 
+  useEffect(() => {
+    const l = parseFloat(formData.package_length) || 0;
+    const w = parseFloat(formData.package_width) || 0;
+    const h = parseFloat(formData.package_height) || 0;
+
+    // Standard volumetric weight formula: (L × W × H) / 5000 → grams
+    const volWeight = Math.round((l * w * h) / 5000);
+
+    setFormData((prev) => ({
+      ...prev,
+      volumetric_weight: volWeight,
+    }));
+  }, [
+    formData.package_length,
+    formData.package_width,
+    formData.package_height,
+  ]);
+
   const fetchProductData = async () => {
     try {
       const res = await getProductById(id);
@@ -1260,6 +1278,7 @@ const AddEditProduct = () => {
                   <input
                     type="number"
                     name="gst"
+                    min={0}
                     value={formData.gst}
                     onChange={handleInputChange}
                     className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
@@ -1455,6 +1474,7 @@ const AddEditProduct = () => {
                                 e.target.value,
                               )
                             }
+                            min={0}
                             className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           />
                         </div>
@@ -1473,6 +1493,7 @@ const AddEditProduct = () => {
                                 e.target.value,
                               )
                             }
+                            min={0}
                             className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                           />
                         </div>
@@ -1491,6 +1512,7 @@ const AddEditProduct = () => {
                                 e.target.value,
                               )
                             }
+                            min={0}
                             className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
                               priceErrors.variations[colorIndex]?.sizes[
                                 sizeIndex
@@ -1654,6 +1676,7 @@ const AddEditProduct = () => {
                               e.target.value,
                             )
                           }
+                          min={0}
                           className="rounded-2xl border-gray-300"
                         />
                         <input
@@ -1668,6 +1691,7 @@ const AddEditProduct = () => {
                               e.target.value,
                             )
                           }
+                          min={0}
                           className="rounded-2xl border-gray-300"
                         />
                         <input
@@ -1682,6 +1706,7 @@ const AddEditProduct = () => {
                               e.target.value,
                             )
                           }
+                          min={0}
                           className="rounded-2xl border-gray-300"
                         />
                         <input
@@ -1818,6 +1843,7 @@ const AddEditProduct = () => {
                 name="base_price"
                 value={formData.base_price}
                 onChange={handleInputChange}
+                min={0}
                 className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div> */}
@@ -1836,6 +1862,7 @@ const AddEditProduct = () => {
                 name="original_price"
                 value={formData.original_price}
                 onChange={handleInputChange}
+                min={0}
                 className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
@@ -1855,6 +1882,7 @@ const AddEditProduct = () => {
                 name="discounted_price"
                 value={formData.discounted_price}
                 onChange={handleInputChange}
+                min={0}
                 className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
                   priceErrors.main ? "border-red-500" : ""
                 }`}
@@ -1884,6 +1912,7 @@ const AddEditProduct = () => {
                 name="stock"
                 value={formData.stock}
                 onChange={handleInputChange}
+                min={0}
                 className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
@@ -1902,6 +1931,7 @@ const AddEditProduct = () => {
                 value={formData.low_stock_threshold}
                 onChange={handleInputChange}
                 max={formData.stock}
+                min={0}
                 className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
               />
             </div>
@@ -1947,6 +1977,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="platform_fee"
                   value={formData.platform_fee}
+                  min={0}
                   onChange={handleInputChange}
                   disabled
                   className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
@@ -1960,6 +1991,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="shipping_charges"
                   value={formData.shipping_charges}
+                  min={0}
                   onChange={handleInputChange}
                   disabled
                   className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
@@ -1973,6 +2005,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="package_weight"
                   value={formData.package_weight}
+                  min={0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
@@ -1981,13 +2014,9 @@ const AddEditProduct = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   Volumetric Weight (g)
                 </label>
-                <input
-                  type="number"
-                  name="volumetric_weight"
-                  value={formData.volumetric_weight}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                />
+                <div className="mt-1 block w-full rounded-2xl border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700 shadow-sm">
+                  {formData.volumetric_weight || 0} g
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -1997,6 +2026,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="package_length"
                   value={formData.package_length}
+                  min={0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
@@ -2009,6 +2039,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="package_width"
                   value={formData.package_width}
+                  min={0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
@@ -2021,6 +2052,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="package_height"
                   value={formData.package_height}
+                  min={0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
@@ -2033,6 +2065,7 @@ const AddEditProduct = () => {
                   type="number"
                   name="package_depth"
                   value={formData.package_depth}
+                  min={0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
