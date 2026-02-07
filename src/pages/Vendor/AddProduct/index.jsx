@@ -29,6 +29,14 @@ import { getSettings } from "../../../services/api.settings";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { useAppContext } from "../../../context/AppContext";
 
+const SHIPPING_RATES = [
+  { maxWeight: 500, charge: 80 },
+  { maxWeight: 1000, charge: 160 },
+  { maxWeight: 1500, charge: 240 },
+  { maxWeight: 2000, charge: 320 },
+  { maxWeight: Infinity, charge: 400 },
+];
+
 const AddEditProduct = () => {
   const { id } = useParams();
   const { user } = useAppContext();
@@ -130,7 +138,11 @@ const AddEditProduct = () => {
     type: "",
     message: "",
   });
-  const [expandedVariations, setExpandedVariations] = useState([]); // New state for expanded variations
+  const [expandedVariations, setExpandedVariations] = useState([]);
+  const [calculatedShipping, setCalculatedShipping] = useState(0);
+  const [settingsShipping, setSettingsShipping] = useState(0);
+  const [generalInfoCharCount, setGeneralInfoCharCount] = useState(0);
+  const MAX_GENERAL_INFO_CHARS = 150;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -174,10 +186,12 @@ const AddEditProduct = () => {
       setColors(colorRes.status === 1 ? colorRes.data : []);
       setAttributes(attrRes.status === 1 ? attrRes.data : []);
       if (settingsRes.status === 1) {
+        const defaultShipping = settingsRes.data.shipping_charge || 0;
+        setSettingsShipping(defaultShipping);
+
         setFormData((prev) => ({
           ...prev,
           platform_fee: settingsRes.data.platform_fee,
-          shipping_charges: settingsRes.data.shipping_charge || 0,
         }));
       }
     };
@@ -341,6 +355,27 @@ const AddEditProduct = () => {
     formData.package_height,
   ]);
 
+  useEffect(() => {
+    const deadWeight = Number(formData.package_weight) || 0;
+    const volWeight = Number(formData.volumetric_weight) || 0;
+
+    const chargeableWeight = Math.max(deadWeight, volWeight);
+    const dynamicCharge = getDynamicShippingCharge(chargeableWeight);
+
+    setCalculatedShipping(dynamicCharge);
+
+    // Store ONLY calculated value in formData
+    setFormData((prev) => ({
+      ...prev,
+      shipping_charges: dynamicCharge,
+    }));
+  }, [
+    formData.package_weight,
+    formData.package_length,
+    formData.package_width,
+    formData.package_height,
+  ]);
+
   const fetchProductData = async () => {
     try {
       const res = await getProductById(id);
@@ -423,6 +458,18 @@ const AddEditProduct = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // Helper to get dynamic shipping
+  const getDynamicShippingCharge = (weightInGrams) => {
+    if (!weightInGrams || weightInGrams <= 0) return 0;
+
+    for (const rate of SHIPPING_RATES) {
+      if (weightInGrams <= rate.maxWeight) {
+        return rate.charge;
+      }
+    }
+    return SHIPPING_RATES[SHIPPING_RATES.length - 1].charge;
   };
 
   // ====== HELPER FUNCTIONS ======
@@ -564,57 +611,6 @@ const AddEditProduct = () => {
     });
   };
 
-  const addVariation = () => {
-    setVariations((prev) => [
-      ...prev,
-      {
-        color_id: variationMode === "color_size" ? "" : "",
-        attribute_id: variationMode === "custom" ? "" : "",
-        attribute_value: variationMode === "custom" ? "" : "",
-        media: [],
-        sizes: [
-          {
-            size_id: "",
-            stock: "",
-            original_price: "",
-            discounted_price: "",
-            sku: "",
-            barcode: "",
-          },
-        ],
-      },
-    ]);
-  };
-
-  const removeVariation = (idx) => {
-    setVariations((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const addSizeToVariation = (varIdx) => {
-    setVariations((prev) => {
-      const updated = [...prev];
-      updated[varIdx].sizes.push({
-        size_id: "",
-        stock: "",
-        original_price: "",
-        discounted_price: "",
-        sku: "",
-        barcode: "",
-      });
-      return updated;
-    });
-  };
-
-  const removeSizeFromVariation = (varIdx, sizeIdx) => {
-    setVariations((prev) => {
-      const updated = [...prev];
-      updated[varIdx].sizes = updated[varIdx].sizes.filter(
-        (_, i) => i !== sizeIdx,
-      );
-      return updated;
-    });
-  };
-
   const handleFileChange = async (e, variationIndex) => {
     const files = Array.from(e.target.files);
     const validFiles = [];
@@ -678,6 +674,7 @@ const AddEditProduct = () => {
   };
 
   const handleSpecificationChange = (index, field, value) => {
+    if (specifications.length >= 7 && field === "feature") return;
     const newSpecifications = [...specifications];
     newSpecifications[index][field] = value;
     setSpecifications(newSpecifications);
@@ -769,6 +766,15 @@ const AddEditProduct = () => {
         isOpen: true,
         type: "error",
         message: "HSN is required",
+      });
+      return;
+    }
+
+    if (!formData.length || !formData.width || !formData.height) {
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message: "Length, Width and Height are required",
       });
       return;
     }
@@ -973,40 +979,6 @@ const AddEditProduct = () => {
     );
   };
 
-  const renderMediaSection = (varIdx = null) => (
-    <div className="space-y-4">
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
-          <CiImageOn size={20} /> Add Images{" "}
-          <span className="text-red-500">*</span>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFileChange(e, varIdx)}
-          />
-        </label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
-          <CiVideoOn size={20} /> Add Videos
-          <input
-            type="file"
-            accept="video/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFileChange(e, varIdx)}
-          />
-        </label>
-      </div>
-      <div className="flex flex-wrap gap-4">
-        {(varIdx !== null
-          ? variations[varIdx].media
-          : formData.productFiles
-        ).map((f, i) => renderMediaPreview(f, i, varIdx))}
-      </div>
-    </div>
-  );
-
   const renderMediaUploadSection = (variationIndex = null) => (
     <div className="space-y-4">
       <div className="flex items-center gap-4">
@@ -1094,11 +1066,6 @@ const AddEditProduct = () => {
       />
     </>
   );
-
-  const create_add = [
-    { id: 1, title: "Create Add", subtitle: "Advertisement Banner of vendors" },
-    { id: 2, title: "Create Add", subtitle: "Advertisement Banner of vendors" },
-  ];
 
   return (
     <div className="flex gap-6 p-6 min-h-screen">
@@ -1289,19 +1256,69 @@ const AddEditProduct = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
-                General Info
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  General Info
+                </label>
+                <span
+                  className={`text-sm ${
+                    generalInfoCharCount > MAX_GENERAL_INFO_CHARS
+                      ? "text-red-600"
+                      : "text-gray-500"
+                  }`}
+                >
+                  {generalInfoCharCount} / {MAX_GENERAL_INFO_CHARS}
+                </span>
+              </div>
               <CKEditor
                 editor={ClassicEditor}
                 data={formData.general_info}
+                config={{
+                  toolbar: [
+                    "bold",
+                    "italic",
+                    "bulletedList",
+                    "numberedList",
+                    "|",
+                    "undo",
+                    "redo",
+                  ],
+                  placeholder: "Enter general information (max 150 characters)",
+                }}
                 onChange={(event, editor) => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    general_info: editor.getData(),
-                  }));
+                  const data = editor.getData();
+                  // Get plain text (strip HTML tags)
+                  const plainText = data.replace(/<[^>]+>/g, "").trim();
+                  const charCount = plainText.length;
+
+                  setGeneralInfoCharCount(charCount);
+
+                  // Only update formData if under limit
+                  if (charCount <= MAX_GENERAL_INFO_CHARS) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      general_info: data,
+                    }));
+                  } else {
+                    // Revert to previous valid content if exceeded
+                    editor.setData(formData.general_info);
+                  }
+                }}
+                onReady={(editor) => {
+                  // Optional: initial count on load
+                  const initialPlain = editor
+                    .getData()
+                    .replace(/<[^>]+>/g, "")
+                    .trim();
+                  setGeneralInfoCharCount(initialPlain.length);
                 }}
               />
+
+              {generalInfoCharCount > MAX_GENERAL_INFO_CHARS && (
+                <p className="mt-1 text-sm text-red-600">
+                  General Info cannot exceed {MAX_GENERAL_INFO_CHARS} characters
+                </p>
+              )}
             </div>
 
             <div>
@@ -1983,20 +2000,28 @@ const AddEditProduct = () => {
                   className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Shipping Charges (Default)
+                <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
+                  Shipping Charge
+                  <TooltipHint
+                    id="calc-shipping-tooltip"
+                    content="Based on the higher of Dead Weight or Volumetric Weight"
+                  />
                 </label>
-                <input
-                  type="number"
-                  name="shipping_charges"
-                  value={formData.shipping_charges}
-                  min={0}
-                  onChange={handleInputChange}
-                  disabled
-                  className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                />
+                <div className="mt-1 flex items-center gap-4">
+                  <div className="flex-1 bg-gray-50 border border-gray-300 rounded-2xl px-4 py-2 text-gray-800 font-medium">
+                    ₹{calculatedShipping}
+                  </div>
+
+                  {settingsShipping > 0 && (
+                    <div className="text-sm text-gray-600">
+                      + ₹{settingsShipping} (default)
+                    </div>
+                  )}
+                </div>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Dead Weight (g)
@@ -2020,7 +2045,7 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Length (cm)
+                  Length (cm) <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
@@ -2033,7 +2058,7 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Width (cm)
+                  Width (cm) <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
@@ -2046,7 +2071,7 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Height (cm)
+                  Height (cm) <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
@@ -2059,7 +2084,7 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Depth (cm)
+                  Depth (cm) <span className="text-red-600">*</span>
                 </label>
                 <input
                   type="number"
@@ -2260,7 +2285,11 @@ const AddEditProduct = () => {
                   Shipping Fee (Chargable from Customer)
                 </span>
                 <span className="font-medium">
-                  ₹{parseFloat(formData.shipping_charges || 0).toFixed(2)}
+                  ₹
+                  {(
+                    parseFloat(formData.shipping_charges || 0) +
+                    settingsShipping
+                  ).toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -2283,7 +2312,6 @@ const AddEditProduct = () => {
             </div>
           </div>
 
-          {/* New Variations Breakdown Section */}
           {formData.is_variation && (
             <div className="bg-white rounded-2xl shadow mt-8 border-t p-6">
               <h2 className="text-lg font-semibold mb-4">

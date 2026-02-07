@@ -149,7 +149,9 @@ const Product = () => {
   const editingCellRef = useRef(null);
   const editValueRef = useRef("");
   const errorRef = useRef(null);
+
   const forceRender = useCallback(() => setForceUpdate((prev) => prev + 1), []);
+
   const fetchProducts = async (params = {}) => {
     setIsLoading(true);
     try {
@@ -166,6 +168,7 @@ const Product = () => {
       setIsLoading(false);
     }
   };
+
   useEffect(() => {
     const params = {
       page: currentPage,
@@ -183,6 +186,7 @@ const Product = () => {
     }
     fetchProducts(params);
   }, [currentPage, visibilityFilter, searchQuery, sortConfig, user.id]);
+
   const getTotalStock = (product) => {
     return product.is_variation
       ? product.variations?.variation_combinations?.reduce(
@@ -191,17 +195,20 @@ const Product = () => {
         ) || 0
       : product.stock || 0;
   };
+
   const formatPrice = (price) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
     }).format(price);
   };
+
   const getMainImage = (media) => {
     return (
       media?.find((m) => m.type === "image")?.url || "/placeholder-image.jpg"
     );
   };
+
   const startEditing = useCallback(
     (rowId, column, initialValue) => {
       editingCellRef.current = { rowId, column };
@@ -211,12 +218,14 @@ const Product = () => {
     },
     [forceRender],
   );
+
   const cancelEditing = useCallback(() => {
     editingCellRef.current = null;
     editValueRef.current = "";
     errorRef.current = null;
     forceRender();
   }, [forceRender]);
+
   const validateEdit = (column, currentProduct) => {
     let value;
     if (column === "stock") {
@@ -257,11 +266,13 @@ const Product = () => {
     forceRender();
     return true;
   };
+
   const saveEdit = (productId, column, currentProduct) => {
     if (!validateEdit(column, currentProduct)) return;
     setPendingUpdate({ productId, field: column, value: editValueRef.current });
     setIsUpdateModalOpen(true);
   };
+
   const confirmUpdate = async () => {
     setIsUpdating(true);
     try {
@@ -284,12 +295,27 @@ const Product = () => {
       cancelEditing();
     }
   };
+
   // Focus the input when editing starts
   useEffect(() => {
     if (editingCellRef.current && editRef.current) {
       editRef.current.focus();
     }
   }, [forceUpdate]);
+
+  const handleKeyDown = useCallback(
+    (e, productId, column, currentProduct) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveEdit(productId, column, currentProduct);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancelEditing();
+      }
+    },
+    [saveEdit, cancelEditing],
+  );
+
   const columnVisibility = {
     index: "hidden sm:table-cell",
     name: "",
@@ -301,7 +327,9 @@ const Product = () => {
     bank_settlement_amount: "hidden lg:table-cell",
     actions: "",
   };
+
   const getColumnClass = (columnId) => columnVisibility[columnId] || "";
+
   const columns = useMemo(
     () => [
       // {
@@ -357,6 +385,9 @@ const Product = () => {
                     editValueRef.current = e.target.value;
                     forceRender();
                   }}
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, product.id, "original_price", product)
+                  }
                   className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
                 <button
@@ -429,6 +460,9 @@ const Product = () => {
                     editValueRef.current = e.target.value;
                     forceRender();
                   }}
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, product.id, "discounted_price", product)
+                  }
                   className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
                 <button
@@ -511,6 +545,9 @@ const Product = () => {
                     editValueRef.current = e.target.value;
                     forceRender();
                   }}
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, product.id, "stock", product)
+                  }
                   className="w-24 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
                 <button
@@ -574,6 +611,9 @@ const Product = () => {
                     editValueRef.current = e.target.value;
                     forceRender();
                   }}
+                  onKeyDown={(e) =>
+                    handleKeyDown(e, product.id, "visibility", product)
+                  }
                   className="px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="Hidden">Hidden</option>
@@ -677,6 +717,7 @@ const Product = () => {
     ],
     [currentPage, itemsPerPage], // Stable dependencies only
   );
+
   const table = useReactTable({
     data: products,
     columns,
