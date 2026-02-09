@@ -34,7 +34,9 @@ const SHIPPING_RATES = [
   { maxWeight: 1000, charge: 160 },
   { maxWeight: 1500, charge: 240 },
   { maxWeight: 2000, charge: 320 },
-  { maxWeight: Infinity, charge: 400 },
+  { maxWeight: 2500, charge: 400 },
+  { maxWeight: 3000, charge: 480 },
+  { maxWeight: Infinity, charge: 560 },
 ];
 
 const AddEditProduct = () => {
@@ -141,8 +143,8 @@ const AddEditProduct = () => {
   const [expandedVariations, setExpandedVariations] = useState([]);
   const [calculatedShipping, setCalculatedShipping] = useState(0);
   const [settingsShipping, setSettingsShipping] = useState(0);
-  const [generalInfoCharCount, setGeneralInfoCharCount] = useState(0);
-  const MAX_GENERAL_INFO_CHARS = 150;
+  const [productDetailsCharCount, setProductDetailsCharCount] = useState(0);
+  const MAX_PRODUCT_DETAILS_CHARS = 150;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -681,6 +683,7 @@ const AddEditProduct = () => {
   };
 
   const addSpecification = () => {
+    if (specifications.length >= 7) return;
     setSpecifications([...specifications, { feature: "", specification: "" }]);
     setFormData({
       ...formData,
@@ -770,7 +773,11 @@ const AddEditProduct = () => {
       return;
     }
 
-    if (!formData.length || !formData.width || !formData.height) {
+    if (
+      !formData.length.trim() ||
+      !formData.width.trim() ||
+      !formData.height.trim()
+    ) {
       setNotification({
         isOpen: true,
         type: "error",
@@ -1256,23 +1263,39 @@ const AddEditProduct = () => {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700">
+                General Info
+              </label>
+              <CKEditor
+                editor={ClassicEditor}
+                data={formData.general_info}
+                onChange={(event, editor) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    general_info: editor.getData(),
+                  }));
+                }}
+              />
+            </div>
+
+            <div>
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-sm font-medium text-gray-700">
-                  General Info
+                  Product Details
                 </label>
                 <span
                   className={`text-sm ${
-                    generalInfoCharCount > MAX_GENERAL_INFO_CHARS
+                    productDetailsCharCount > MAX_PRODUCT_DETAILS_CHARS
                       ? "text-red-600"
                       : "text-gray-500"
                   }`}
                 >
-                  {generalInfoCharCount} / {MAX_GENERAL_INFO_CHARS}
+                  {productDetailsCharCount} / {MAX_PRODUCT_DETAILS_CHARS}
                 </span>
               </div>
               <CKEditor
                 editor={ClassicEditor}
-                data={formData.general_info}
+                data={formData.product_details}
                 config={{
                   toolbar: [
                     "bold",
@@ -1283,7 +1306,7 @@ const AddEditProduct = () => {
                     "undo",
                     "redo",
                   ],
-                  placeholder: "Enter general information (max 150 characters)",
+                  placeholder: "Enter product details (max 150 characters)",
                 }}
                 onChange={(event, editor) => {
                   const data = editor.getData();
@@ -1291,17 +1314,17 @@ const AddEditProduct = () => {
                   const plainText = data.replace(/<[^>]+>/g, "").trim();
                   const charCount = plainText.length;
 
-                  setGeneralInfoCharCount(charCount);
+                  setProductDetailsCharCount(charCount);
 
                   // Only update formData if under limit
-                  if (charCount <= MAX_GENERAL_INFO_CHARS) {
+                  if (charCount <= MAX_PRODUCT_DETAILS_CHARS) {
                     setFormData((prev) => ({
                       ...prev,
-                      general_info: data,
+                      product_details: data,
                     }));
                   } else {
                     // Revert to previous valid content if exceeded
-                    editor.setData(formData.general_info);
+                    editor.setData(formData.product_details);
                   }
                 }}
                 onReady={(editor) => {
@@ -1310,31 +1333,16 @@ const AddEditProduct = () => {
                     .getData()
                     .replace(/<[^>]+>/g, "")
                     .trim();
-                  setGeneralInfoCharCount(initialPlain.length);
+                  setProductDetailsCharCount(initialPlain.length);
                 }}
               />
 
-              {generalInfoCharCount > MAX_GENERAL_INFO_CHARS && (
+              {productDetailsCharCount > MAX_PRODUCT_DETAILS_CHARS && (
                 <p className="mt-1 text-sm text-red-600">
-                  General Info cannot exceed {MAX_GENERAL_INFO_CHARS} characters
+                  Product Details cannot exceed {MAX_PRODUCT_DETAILS_CHARS}{" "}
+                  characters
                 </p>
               )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Product Details
-              </label>
-              <CKEditor
-                editor={ClassicEditor}
-                data={formData.product_details}
-                onChange={(event, editor) => {
-                  setFormData((prev) => ({
-                    ...prev,
-                    product_details: editor.getData(),
-                  }));
-                }}
-              />
             </div>
 
             <div>
@@ -1839,7 +1847,12 @@ const AddEditProduct = () => {
             ))}
             <button
               onClick={addSpecification}
-              className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+              className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 ${
+                specifications.length >= 7
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
+              }`}
+              disabled={specifications.length >= 7}
             >
               <Plus size={20} /> Add Specification
             </button>
@@ -2011,14 +2024,8 @@ const AddEditProduct = () => {
                 </label>
                 <div className="mt-1 flex items-center gap-4">
                   <div className="flex-1 bg-gray-50 border border-gray-300 rounded-2xl px-4 py-2 text-gray-800 font-medium">
-                    ₹{calculatedShipping}
+                    ₹{calculatedShipping + settingsShipping}
                   </div>
-
-                  {settingsShipping > 0 && (
-                    <div className="text-sm text-gray-600">
-                      + ₹{settingsShipping} (default)
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -2084,7 +2091,7 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Depth (cm) <span className="text-red-600">*</span>
+                  Depth (cm)
                 </label>
                 <input
                   type="number"

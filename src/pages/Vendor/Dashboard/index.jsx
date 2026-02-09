@@ -74,11 +74,7 @@ export default function ECommerce() {
           </button>
           <button
             className="flex items-center gap-2 bg-[#0164CE] text-white px-6 rounded py-2  border text-lg transition-colors"
-            onClick={() =>
-              navigate(
-                `${config.VITE_BASE_VENDOR_URL}/product/addProduct/${user.id}`
-              )
-            }
+            onClick={() => navigate(`${config.VITE_BASE_VENDOR_URL}/product`)}
           >
             <Plus /> Add Product
           </button>
