@@ -1,33 +1,32 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { CiImageOn, CiVideoOn } from "react-icons/ci";
-import { X, Plus, Eye } from "lucide-react";
-import { CKEditor } from "@ckeditor/ckeditor5-react";
 import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
-import {
-  addProduct,
-  updateProduct,
-  getProductById,
-} from "../../../services/api.product";
-import { getAllColors } from "../../../services/api.color";
-import { getAllSizes } from "../../../services/api.size";
-import {
-  getCategories,
-  getSubCategories,
-  getInnerSubCategories,
-} from "../../../services/api.category";
-import { getAllFabricsByStatus } from "../../../services/api.fabric";
-import { getAllAttributes } from "../../../services/api.attribute";
-import slugify from "slugify";
-import advertisement from "/assets/banners/advertisement_banner.png";
-import config from "../../../config/config";
-import ImageGuidelinesModal from "../../../components/Vendor/Models/ImageGuidelinesModal";
+import { CKEditor } from "@ckeditor/ckeditor5-react";
+import { Eye, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { BsQuestionCircle } from "react-icons/bs";
+import { CiImageOn, CiVideoOn } from "react-icons/ci";
+import { useNavigate, useParams } from "react-router-dom";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
-import { getSettings } from "../../../services/api.settings";
-import { notifyOnFail } from "../../../utils/notification/toast";
+import slugify from "slugify";
+import ImageGuidelinesModal from "../../../components/Vendor/Models/ImageGuidelinesModal";
+import config from "../../../config/config";
 import { useAppContext } from "../../../context/AppContext";
+import { getAllAttributes } from "../../../services/api.attribute";
+import {
+  getCategories,
+  getInnerSubCategories,
+  getSubCategories,
+} from "../../../services/api.category";
+import { getAllColors } from "../../../services/api.color";
+import { getAllFabricsByStatus } from "../../../services/api.fabric";
+import {
+  addProduct,
+  getProductById,
+  updateProduct,
+} from "../../../services/api.product";
+import { getSettings } from "../../../services/api.settings";
+import { getAllSizes } from "../../../services/api.size";
+import { notifyOnFail } from "../../../utils/notification/toast";
 
 const SHIPPING_RATES = [
   { maxWeight: 500, charge: 80 },
@@ -774,9 +773,9 @@ const AddEditProduct = () => {
     }
 
     if (
-      !formData.length.trim() ||
-      !formData.width.trim() ||
-      !formData.height.trim()
+      !formData.package_length?.trim() ||
+      !formData.package_weight?.trim() ||
+      !formData.package_height?.trim()
     ) {
       setNotification({
         isOpen: true,
