@@ -143,7 +143,7 @@ const AddEditProduct = () => {
   const [calculatedShipping, setCalculatedShipping] = useState(0);
   const [settingsShipping, setSettingsShipping] = useState(0);
   const [productDetailsCharCount, setProductDetailsCharCount] = useState(0);
-  const MAX_PRODUCT_DETAILS_CHARS = 150;
+  const MAX_PRODUCT_DETAILS_CHARS = 3000;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -675,7 +675,7 @@ const AddEditProduct = () => {
   };
 
   const handleSpecificationChange = (index, field, value) => {
-    if (specifications.length >= 7 && field === "feature") return;
+    if (specifications.length > 7 && field === "feature") return;
     const newSpecifications = [...specifications];
     newSpecifications[index][field] = value;
     setSpecifications(newSpecifications);
@@ -1305,7 +1305,7 @@ const AddEditProduct = () => {
                     "undo",
                     "redo",
                   ],
-                  placeholder: "Enter product details (max 150 characters)",
+                  placeholder: "Enter product details (max 3000 characters)",
                 }}
                 onChange={(event, editor) => {
                   const data = editor.getData();
