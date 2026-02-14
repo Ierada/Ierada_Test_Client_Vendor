@@ -35,7 +35,10 @@ const SHIPPING_RATES = [
   { maxWeight: 2000, charge: 320 },
   { maxWeight: 2500, charge: 400 },
   { maxWeight: 3000, charge: 480 },
-  { maxWeight: Infinity, charge: 560 },
+  { maxWeight: 3500, charge: 560 },
+  { maxWeight: 4000, charge: 640 },
+  { maxWeight: 4500, charge: 720 },
+  { maxWeight: Infinity, charge: 800 },
 ];
 
 const AddEditProduct = () => {
@@ -103,10 +106,14 @@ const AddEditProduct = () => {
     is_variation: false,
     is_featured: false,
     productFiles: [],
+    whats_in_the_box: [],
   });
 
   const [specifications, setSpecifications] = useState([
     { feature: "", specification: "" },
+  ]);
+  const [whatsInTheBox, setWhatsInTheBox] = useState([
+    { title: "", details: "" },
   ]);
 
   const [variations, setVariations] = useState([
@@ -370,12 +377,7 @@ const AddEditProduct = () => {
       ...prev,
       shipping_charges: dynamicCharge,
     }));
-  }, [
-    formData.package_weight,
-    formData.package_length,
-    formData.package_width,
-    formData.package_height,
-  ]);
+  }, [formData.package_weight, formData.volumetric_weight]);
 
   const fetchProductData = async () => {
     try {
@@ -397,10 +399,21 @@ const AddEditProduct = () => {
           : [{ feature: "", specification: "" }],
       );
 
+      const parsedWhatsInTheBox =
+        typeof p.whats_in_the_box === "string"
+          ? JSON.parse(p.whats_in_the_box)
+          : p.whats_in_the_box || [{ title: "", details: "" }];
+      setWhatsInTheBox(
+        parsedWhatsInTheBox.length > 0
+          ? parsedWhatsInTheBox
+          : [{ title: "", details: "" }],
+      );
+
       const updatedFormData = {
         ...p,
         tags: parsedTags,
         specifications: parsedSpecs,
+        whats_in_the_box: parsedWhatsInTheBox,
         category_id: p.category_id || "",
       };
 
@@ -698,6 +711,37 @@ const AddEditProduct = () => {
     });
   };
 
+  const handleWhatsInTheBoxChange = (index, field, value) => {
+    if (whatsInTheBox.length > 4 && field === "title") return; // Prevent adding more than 4
+    const newWhatsInTheBox = [...whatsInTheBox];
+    newWhatsInTheBox[index][field] = value;
+    setWhatsInTheBox(newWhatsInTheBox);
+    setFormData((prev) => ({
+      ...prev,
+      whats_in_the_box: newWhatsInTheBox,
+    }));
+  };
+
+  const addWhatsInTheBox = () => {
+    if (whatsInTheBox.length >= 4) return;
+    const newWhatsInTheBox = [...whatsInTheBox, { title: "", details: "" }];
+    setWhatsInTheBox(newWhatsInTheBox);
+    setFormData((prev) => ({
+      ...prev,
+      whats_in_the_box: newWhatsInTheBox,
+    }));
+  };
+
+  const removeWhatsInTheBox = (index) => {
+    if (whatsInTheBox.length <= 1) return; // Minimum 1 row
+    const newWhatsInTheBox = whatsInTheBox.filter((_, i) => i !== index);
+    setWhatsInTheBox(newWhatsInTheBox);
+    setFormData((prev) => ({
+      ...prev,
+      whats_in_the_box: newWhatsInTheBox,
+    }));
+  };
+
   const addColorVariation = () => {
     setVariations([
       ...variations,
@@ -773,14 +817,28 @@ const AddEditProduct = () => {
     }
 
     if (
-      !formData.package_length?.trim() ||
-      !formData.package_weight?.trim() ||
-      !formData.package_height?.trim()
+      !formData.package_length ||
+      !formData.package_weight ||
+      !formData.package_height
     ) {
       setNotification({
         isOpen: true,
         type: "error",
         message: "Length, Width and Height are required",
+      });
+      return;
+    }
+
+    // Validate What's in the Box
+    const hasEmptyWhatsInTheBox = whatsInTheBox.some(
+      (item) => !item.title.trim() && item.details.trim(),
+    );
+    if (hasEmptyWhatsInTheBox) {
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message:
+          "All 'What's in the Box' titles must be filled if details are provided.",
       });
       return;
     }
@@ -791,7 +849,14 @@ const AddEditProduct = () => {
 
     const formDataToSend = new FormData();
     Object.entries(formData).forEach(([key, val]) => {
-      if (["productFiles", "variations", "specifications"].includes(key))
+      if (
+        [
+          "productFiles",
+          "variations",
+          "specifications",
+          "whats_in_the_box",
+        ].includes(key)
+      )
         return;
       if (key === "fabric_id" && !val) return;
       if (key === "gst" && !val) {
@@ -806,6 +871,8 @@ const AddEditProduct = () => {
       );
     });
     formDataToSend.append("specifications", JSON.stringify(specifications));
+    formDataToSend.append("whats_in_the_box", JSON.stringify(whatsInTheBox));
+
     if (deletedMediaIds.length > 0) {
       formDataToSend.append("delete_media", JSON.stringify(deletedMediaIds));
     }
@@ -1359,6 +1426,70 @@ const AddEditProduct = () => {
                 }}
               />
             </div>
+          </div>
+        </div>
+
+        {/* What's in the Box */}
+        <div className="bg-white p-6 rounded-2xl shadow">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-1">
+            What's in the Box
+            <TooltipHint
+              id="whats-in-box-tooltip"
+              content="List items included in the product package (max 4 items)."
+            />
+          </h2>
+          <div className="space-y-4">
+            {whatsInTheBox?.map((item, index) => (
+              <div key={index} className="flex gap-4 items-start">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={item.title}
+                    onChange={(e) =>
+                      handleWhatsInTheBoxChange(index, "title", e.target.value)
+                    }
+                    placeholder="Item Title (e.g., Product Unit)"
+                    className="w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                    maxLength={50} // Optional: Limit title length
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={item.details}
+                    onChange={(e) =>
+                      handleWhatsInTheBoxChange(
+                        index,
+                        "details",
+                        e.target.value,
+                      )
+                    }
+                    placeholder="Details (e.g., 1 x Main Item, 1 x Cable)"
+                    className="w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
+                    maxLength={100} // Optional: Limit details length
+                  />
+                </div>
+                {whatsInTheBox.length > 1 && (
+                  <button
+                    onClick={() => removeWhatsInTheBox(index)}
+                    className="text-red-500 hover:text-red-700 mt-7"
+                  >
+                    <X size={20} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {whatsInTheBox.length < 4 && (
+              <button
+                onClick={addWhatsInTheBox}
+                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+              >
+                <Plus size={20} /> Add Item (Max 4)
+              </button>
+            )}
+            {whatsInTheBox.length >= 4 && (
+              <p className="text-sm text-gray-500">Maximum 4 items reached.</p>
+            )}
           </div>
         </div>
 
