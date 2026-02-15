@@ -980,7 +980,8 @@ const AddEditProduct = () => {
         setNotification({
           isOpen: true,
           type: "error",
-          message: "Failed to submit product. Please try again.",
+          message:
+            response.message || "Failed to submit product. Please try again.",
         });
       }
     } catch (error) {
