@@ -32,7 +32,7 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
   const { user } = useAppContext();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState(null);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const sidebarRef = useRef(null);
   const activeItemRef = useRef(null);

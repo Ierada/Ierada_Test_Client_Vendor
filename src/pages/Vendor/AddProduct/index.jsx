@@ -1,6 +1,6 @@
 import ClassicEditor from "@ckeditor/ckeditor5-build-classic";
 import { CKEditor } from "@ckeditor/ckeditor5-react";
-import { Eye, Plus, X } from "lucide-react";
+import { Eye, Plus, X, Copy, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { BsQuestionCircle } from "react-icons/bs";
 import { CiImageOn, CiVideoOn } from "react-icons/ci";
@@ -26,7 +26,20 @@ import {
 } from "../../../services/api.product";
 import { getSettings } from "../../../services/api.settings";
 import { getAllSizes } from "../../../services/api.size";
-import { notifyOnFail } from "../../../utils/notification/toast";
+import {
+  notifyOnFail,
+  notifyOnSuccess,
+} from "../../../utils/notification/toast";
+import {
+  generateAutoSKU,
+  validateSKUFormat,
+  checkDuplicateSKUInVariations,
+  validatePriceLogic,
+  validateMainProductFields,
+  validateVariationsData,
+  validateMediaRequirements,
+  getDiscountPercentage,
+} from "../../../utils/productValidation";
 
 const SHIPPING_RATES = [
   { maxWeight: 500, charge: 80 },
@@ -118,9 +131,8 @@ const AddEditProduct = () => {
 
   const [variations, setVariations] = useState([
     {
+      // For color-size mode
       color_id: "",
-      attribute_id: "",
-      attribute_value: "",
       media: [],
       sizes: [
         {
@@ -132,9 +144,21 @@ const AddEditProduct = () => {
           barcode: "",
         },
       ],
+      // For custom attribute mode
+      attribute_id: "",
+      media: [],
+      sizes: [
+        {
+          attribute_value: "",
+          stock: "",
+          original_price: "",
+          discounted_price: "",
+          sku: "",
+          barcode: "",
+        },
+      ],
     },
   ]);
-  const [priceErrors, setPriceErrors] = useState({ main: "", variations: [] });
   const [previewModal, setPreviewModal] = useState({
     isOpen: false,
     url: "",
@@ -150,6 +174,9 @@ const AddEditProduct = () => {
   const [calculatedShipping, setCalculatedShipping] = useState(0);
   const [settingsShipping, setSettingsShipping] = useState(0);
   const [productDetailsCharCount, setProductDetailsCharCount] = useState(0);
+  const [variationErrors, setVariationErrors] = useState({});
+  const [mainProductErrors, setMainProductErrors] = useState({});
+  const [priceErrors, setPriceErrors] = useState({ main: "", variations: [] });
   const MAX_PRODUCT_DETAILS_CHARS = 3000;
 
   useEffect(() => {
@@ -429,30 +456,54 @@ const AddEditProduct = () => {
 
           if (p.variationMode === "color_size") {
             formattedVariations = p.variations.map((group) => ({
-              color_id: group.color_id?.toString(),
+              color_id: group.color_id?.toString() || "",
               media: group.media || [],
               sizes: group.sizes.map((size) => ({
-                size_id: size.size_id?.toString(),
-                stock: size.stock?.toString() || "",
-                original_price: size.original_price?.toString() || "",
-                discounted_price: size.discounted_price?.toString() || "",
+                size_id: size.size_id?.toString() || "",
+                stock: size.stock != null ? String(size.stock) : "",
+                original_price:
+                  size.original_price != null
+                    ? String(size.original_price)
+                    : "",
+                discounted_price:
+                  size.discounted_price != null
+                    ? String(size.discounted_price)
+                    : "",
                 sku: size.sku || "",
                 barcode: size.barcode || "",
               })),
             }));
           } else if (p.variationMode === "custom") {
-            formattedVariations = p.variations.map((group) => ({
-              attribute_id: group.attribute_id?.toString() || "",
-              attribute_value: group.attribute_value || "",
-              media: group.media || [],
-              sizes: group.sizes.map((opt) => ({
-                stock: opt.stock?.toString() || "",
-                original_price: opt.original_price?.toString() || "",
-                discounted_price: opt.discounted_price?.toString() || "",
-                sku: opt.sku || "",
-                barcode: opt.barcode || "",
-              })),
-            }));
+            // Group variations by attribute_id
+            const groupedByAttribute = {};
+            p.variations.forEach((v) => {
+              const attrId = v.attribute_id?.toString();
+              if (!groupedByAttribute[attrId]) {
+                groupedByAttribute[attrId] = {
+                  attribute_id: attrId,
+                  media: [],
+                  sizes: [],
+                };
+              }
+              groupedByAttribute[attrId].sizes.push({
+                attribute_value: v.attribute_value || "",
+                stock: v.stock != null ? String(v.stock) : "",
+                original_price:
+                  v.original_price != null ? String(v.original_price) : "",
+                discounted_price:
+                  v.discounted_price != null ? String(v.discounted_price) : "",
+                sku: v.sku || "",
+                barcode: v.barcode || "",
+              });
+            });
+            // Get unique media per attribute group (from first variation of each group)
+            Object.keys(groupedByAttribute).forEach((attrId) => {
+              const firstVarInGroup = p.variations.find(
+                (v) => v.attribute_id?.toString() === attrId,
+              );
+              groupedByAttribute[attrId].media = firstVarInGroup?.media || [];
+            });
+            formattedVariations = Object.values(groupedByAttribute);
           }
 
           setVariations(formattedVariations);
@@ -484,6 +535,79 @@ const AddEditProduct = () => {
       }
     }
     return SHIPPING_RATES[SHIPPING_RATES.length - 1].charge;
+  };
+
+  // Generate SKU for main product
+  const handleGenerateMainSKU = () => {
+    const newSku = generateAutoSKU();
+    setFormData((prev) => ({
+      ...prev,
+      sku: newSku,
+    }));
+    setMainProductErrors((prev) => ({
+      ...prev,
+      main_sku: "",
+    }));
+  };
+
+  // Generate SKU for variation size
+  const handleGenerateVariationSKU = (varIdx, sizeIdx) => {
+    const newSku = generateAutoSKU();
+    setVariations((prev) => {
+      const updated = [...prev];
+      updated[varIdx].sizes[sizeIdx].sku = newSku;
+      return updated;
+    });
+    setVariationErrors((prev) => {
+      const updated = { ...prev };
+      if (updated[varIdx]?.sizes?.[sizeIdx]) {
+        updated[varIdx].sizes[sizeIdx].sku = "";
+      }
+      return updated;
+    });
+  };
+
+  // Validate all SKUs in variations
+  const validateAllVariationSKUs = () => {
+    const duplicates = checkDuplicateSKUInVariations(variations);
+    if (duplicates.hasDuplicate) {
+      const msg = `Duplicate SKUs found: ${duplicates.duplicates
+        .map((d) => d.sku)
+        .join(", ")}`;
+      setNotification({
+        isOpen: true,
+        type: "error",
+        message: msg,
+      });
+      return false;
+    }
+
+    // Validate SKU format for each variation
+    const newErrors = {};
+    variations.forEach((variation, varIdx) => {
+      const varErrors = {};
+      variation.sizes?.forEach((size, sizeIdx) => {
+        if (!size.sku?.trim()) {
+          if (!varErrors.sizes) varErrors.sizes = [];
+          varErrors.sizes[sizeIdx] = { sku: "SKU is required" };
+        } else {
+          const skuValidation = validateSKUFormat(size.sku);
+          if (!skuValidation.valid) {
+            if (!varErrors.sizes) varErrors.sizes = [];
+            varErrors.sizes[sizeIdx] = { sku: skuValidation.error };
+          }
+        }
+      });
+      if (Object.keys(varErrors).length > 0) {
+        newErrors[varIdx] = varErrors;
+      }
+    });
+
+    if (Object.keys(newErrors).length > 0) {
+      setVariationErrors(newErrors);
+      return false;
+    }
+    return true;
   };
 
   // ====== HELPER FUNCTIONS ======
@@ -621,11 +745,28 @@ const AddEditProduct = () => {
           return { ...prev, variations: newErrs };
         });
       }
+
+      // Clear SKU error when user types
+      if (field === "sku") {
+        setVariationErrors((prev) => {
+          const updated = { ...prev };
+          if (updated[varIdx]?.sizes?.[sizeIdx]) {
+            delete updated[varIdx].sizes[sizeIdx].sku;
+            if (Object.keys(updated[varIdx].sizes[sizeIdx]).length === 0) {
+              delete updated[varIdx].sizes[sizeIdx];
+            }
+            if (Object.keys(updated[varIdx]).length === 0) {
+              delete updated[varIdx];
+            }
+          }
+          return updated;
+        });
+      }
       return updated;
     });
   };
 
-  const handleFileChange = async (e, variationIndex) => {
+  const handleFileChange = async (e, variationIndexOrId) => {
     const files = Array.from(e.target.files);
     const validFiles = [];
     for (const file of files) {
@@ -644,7 +785,9 @@ const AddEditProduct = () => {
     }
     if (validFiles.length === 0) return;
 
-    if (formData.is_variation && variationIndex !== null) {
+    if (formData.is_variation && variationIndexOrId !== null) {
+      // All variations (color-size and custom attributes) have media at variation level
+      const variationIndex = variationIndexOrId;
       setVariations((prev) => {
         const updated = [...prev];
         const existingNames = new Set(
@@ -664,8 +807,10 @@ const AddEditProduct = () => {
     }
   };
 
-  const handleRemoveFile = (index, variationIndex = null) => {
-    if (formData.is_variation && variationIndex !== null) {
+  const handleRemoveFile = (index, variationIndexOrId = null) => {
+    if (formData.is_variation && variationIndexOrId !== null) {
+      // All variations have media at the variation level
+      const variationIndex = variationIndexOrId;
       setVariations((prev) => {
         const updated = [...prev];
         const mediaItem = updated[variationIndex].media[index];
@@ -679,10 +824,8 @@ const AddEditProduct = () => {
         const item = prev.productFiles[index];
         if (item.id) setDeletedMediaIds((d) => [...d, item.id]);
         if (item.preview) URL.revokeObjectURL(item.preview);
-        return {
-          ...prev,
-          productFiles: prev.productFiles.filter((_, i) => i !== index),
-        };
+        const updatedFiles = prev.productFiles.filter((_, i) => i !== index);
+        return { ...prev, productFiles: updatedFiles };
       });
     }
   };
@@ -788,59 +931,113 @@ const AddEditProduct = () => {
   };
 
   const handleSubmit = async () => {
-    if (
-      priceErrors.main ||
-      priceErrors.variations?.some((v) => v?.sizes?.some((s) => s))
-    ) {
+    // Validate main product fields
+    const mainValidation = validateMainProductFields(formData);
+    if (!mainValidation.valid) {
+      setMainProductErrors(mainValidation.errors);
+      const firstError = Object.values(mainValidation.errors)[0];
       setNotification({
         isOpen: true,
         type: "error",
-        message: "Fix price errors first",
-      });
-      return;
-    }
-    if (!formData.is_variation && !formData.sku.trim()) {
-      setNotification({
-        isOpen: true,
-        type: "error",
-        message: "SKU is required",
-      });
-      return;
-    }
-    if (!formData.hsn_code.trim()) {
-      setNotification({
-        isOpen: true,
-        type: "error",
-        message: "HSN is required",
+        message: firstError || "Please fix validation errors",
       });
       return;
     }
 
-    if (
-      !formData.package_length ||
-      !formData.package_weight ||
-      !formData.package_height
-    ) {
-      setNotification({
-        isOpen: true,
-        type: "error",
-        message: "Length, Width and Height are required",
-      });
-      return;
+    // Validate variations if enabled
+    if (formData.is_variation) {
+      const variationValidation = validateVariationsData(
+        variations,
+        variationMode,
+      );
+      console.log("Variation validation result:", variationValidation);
+      if (!variationValidation.valid) {
+        setVariationErrors(variationValidation.errors);
+        // Format validation errors for notification
+        const errorMessages = [];
+        Object.entries(variationValidation.errors).forEach(
+          ([varIdx, errors]) => {
+            if (typeof errors === "object" && errors !== null) {
+              Object.entries(errors).forEach(([field, error]) => {
+                if (field === "sizes" && Array.isArray(error)) {
+                  error.forEach((sizeErr, sIdx) => {
+                    if (sizeErr && typeof sizeErr === "object") {
+                      Object.entries(sizeErr).forEach(([sField, sError]) => {
+                        errorMessages.push(
+                          `Variation ${parseInt(varIdx) + 1}, Size/Option ${
+                            sIdx + 1
+                          }: ${sError}`,
+                        );
+                      });
+                    }
+                  });
+                } else if (field === "sizes" && typeof error === "string") {
+                  errorMessages.push(
+                    `Variation ${parseInt(varIdx) + 1}: ${error}`,
+                  );
+                } else if (typeof error === "string") {
+                  errorMessages.push(
+                    `Variation ${parseInt(varIdx) + 1}, ${field}: ${error}`,
+                  );
+                }
+              });
+            } else if (typeof errors === "string") {
+              errorMessages.push(
+                `Variation ${parseInt(varIdx) + 1}: ${errors}`,
+              );
+            }
+          },
+        );
+        const errorMessage =
+          errorMessages.length > 0
+            ? errorMessages.slice(0, 3).join(" | ")
+            : "Please fix variation errors before submitting";
+        setNotification({
+          isOpen: true,
+          type: "error",
+          message: errorMessage,
+        });
+        return;
+      }
+
+      // Validate all SKUs
+      if (!validateAllVariationSKUs()) {
+        return;
+      }
     }
 
-    // Validate What's in the Box
-    const hasEmptyWhatsInTheBox = whatsInTheBox.some(
-      (item) => !item.title.trim() && item.details.trim(),
-    );
-    if (hasEmptyWhatsInTheBox) {
-      setNotification({
-        isOpen: true,
-        type: "error",
-        message:
-          "All 'What's in the Box' titles must be filled if details are provided.",
-      });
-      return;
+    // Validate media
+    if (formData.is_variation) {
+      let hasMediaError = false;
+      for (let varIdx = 0; varIdx < variations.length; varIdx++) {
+        const mediaValidation = validateMediaRequirements(
+          variations[varIdx].media,
+          true,
+        );
+        if (!mediaValidation.valid) {
+          setNotification({
+            isOpen: true,
+            type: "error",
+            message: `Variation ${varIdx + 1}: ${mediaValidation.error}`,
+          });
+          hasMediaError = true;
+          break;
+        }
+      }
+      if (hasMediaError) return;
+    } else {
+      const mediaValidation = validateMediaRequirements(
+        formData.productFiles,
+        false,
+      );
+      if (!mediaValidation.valid) {
+        setNotification({
+          isOpen: true,
+          type: "error",
+          message: mediaValidation.error,
+        });
+        return;
+      }
     }
 
     const sellingPrice = parseFloat(formData.discounted_price) || 0;
@@ -898,12 +1095,9 @@ const AddEditProduct = () => {
           groupingKey = parseInt(variation.color_id);
           if (!groupingKey) return;
         } else {
-          // Custom mode: group by attribute_id + attribute_value
-          if (!variation.attribute_id || !variation.attribute_value?.trim())
-            return;
-          groupingKey = `${
-            variation.attribute_id
-          }__${variation.attribute_value.trim()}`;
+          // Custom mode: group by attribute_id only
+          if (!variation.attribute_id) return;
+          groupingKey = parseInt(variation.attribute_id);
         }
 
         const { newFiles: variationNewFiles, indices } = generateMediaIndices(
@@ -931,7 +1125,7 @@ const AddEditProduct = () => {
             attribute_id: !isColorMode
               ? parseInt(variation.attribute_id)
               : null,
-            attribute_value: !isColorMode ? variation.attribute_value : null,
+            attribute_value: !isColorMode ? size.attribute_value : null,
             stock: size.stock,
             original_price: size.original_price,
             discounted_price: size.discounted_price,
@@ -1053,44 +1247,51 @@ const AddEditProduct = () => {
     );
   };
 
-  const renderMediaUploadSection = (variationIndex = null) => (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4">
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
-          <CiImageOn size={20} />
-          <span>Add Images</span> <span className=" text-red-500">*</span>
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFileChange(e, variationIndex)}
-          />
-        </label>
-        <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
-          <CiVideoOn size={20} />
-          <span>Add Videos</span>
-          <input
-            type="file"
-            accept="video/*"
-            name="video"
-            multiple
-            className="hidden"
-            onChange={(e) => handleFileChange(e, variationIndex)}
-          />
-        </label>
+  const renderMediaUploadSection = (variationIndexOrId = null) => {
+    let mediaArray = [];
+
+    if (variationIndexOrId !== null) {
+      // All variations have media at the variation level
+      mediaArray = variations[variationIndexOrId]?.media || [];
+    } else {
+      mediaArray = formData.productFiles;
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
+            <CiImageOn size={20} />
+            <span>Add Images</span> <span className="text-red-500">*</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => handleFileChange(e, variationIndexOrId)}
+            />
+          </label>
+          <label className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl cursor-pointer hover:bg-gray-200">
+            <CiVideoOn size={20} />
+            <span>Add Videos</span>
+            <input
+              type="file"
+              accept="video/*"
+              name="video"
+              multiple
+              className="hidden"
+              onChange={(e) => handleFileChange(e, variationIndexOrId)}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          {mediaArray.map((file, index) =>
+            renderMediaPreview(file, index, variationIndexOrId),
+          )}
+        </div>
       </div>
-      <div className="flex flex-wrap gap-4">
-        {variationIndex !== null
-          ? variations[variationIndex]?.media?.map((file, index) =>
-              renderMediaPreview(file, index, variationIndex),
-            )
-          : formData.productFiles.map((file, index) =>
-              renderMediaPreview(file, index),
-            )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderPreviewModal = () =>
     previewModal.isOpen && (
@@ -1589,152 +1790,194 @@ const AddEditProduct = () => {
                     {variation.sizes.map((size, sizeIndex) => (
                       <div
                         key={sizeIndex}
-                        className="grid grid-cols-6 gap-2 items-end"
+                        className="border rounded-lg p-4 bg-white"
                       >
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Size
-                          </label>
-                          <select
-                            value={size.size_id}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "size_id",
-                                e.target.value,
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          >
-                            <option value="">Select Size</option>
-                            {sizes.map((size) => (
-                              <option key={size.id} value={size.id}>
-                                {size.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Stock
-                          </label>
-                          <input
-                            type="number"
-                            value={size.stock}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "stock",
-                                e.target.value,
-                              )
-                            }
-                            min={0}
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Original Price
-                          </label>
-                          <input
-                            type="number"
-                            value={size.original_price}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "original_price",
-                                e.target.value,
-                              )
-                            }
-                            min={0}
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Selling Price
-                          </label>
-                          <input
-                            type="number"
-                            value={size.discounted_price}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "discounted_price",
-                                e.target.value,
-                              )
-                            }
-                            min={0}
-                            className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
-                              priceErrors.variations[colorIndex]?.sizes[
-                                sizeIndex
-                              ]
-                                ? "border-red-500"
-                                : ""
-                            }`}
-                          />
-                          {priceErrors.variations[colorIndex]?.sizes[
-                            sizeIndex
-                          ] && (
-                            <p className="mt-1 text-sm text-red-600">
-                              {
-                                priceErrors.variations[colorIndex].sizes[
-                                  sizeIndex
-                                ]
-                              }
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">
-                            Barcode
-                          </label>
-                          <input
-                            type="text"
-                            value={size.barcode}
-                            onChange={(e) =>
-                              handleSizeChange(
-                                colorIndex,
-                                sizeIndex,
-                                "barcode",
-                                e.target.value,
-                              )
-                            }
-                            className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                          />
-                        </div>
-                        <div className="flex gap-2">
-                          <div className="flex-1">
-                            <label className="block text-sm font-medium text-gray-700">
-                              SKU <span className="text-red-500">*</span>
+                        {/* First Row: Size, Stock, Original Price */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Size <span className="text-red-500">*</span>
                             </label>
-                            <input
-                              type="text"
-                              value={size.sku}
+                            <select
+                              value={size.size_id}
                               onChange={(e) =>
                                 handleSizeChange(
                                   colorIndex,
                                   sizeIndex,
-                                  "sku",
+                                  "size_id",
                                   e.target.value,
                                 )
                               }
-                              className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                              required
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                            >
+                              <option value="">Select Size</option>
+                              {sizes.map((size) => (
+                                <option key={size.id} value={size.id}>
+                                  {size.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Stock <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={size.stock}
+                              onChange={(e) =>
+                                handleSizeChange(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "stock",
+                                  e.target.value,
+                                )
+                              }
+                              min={0}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
                             />
                           </div>
-                          <button
-                            onClick={() =>
-                              removeSizeFromColor(colorIndex, sizeIndex)
-                            }
-                            className="text-red-500 hover:text-red-700 self-end"
-                          >
-                            <X size={20} />
-                          </button>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Original Price{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={size.original_price}
+                              onChange={(e) =>
+                                handleSizeChange(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "original_price",
+                                  e.target.value,
+                                )
+                              }
+                              min={0}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Second Row: Selling Price, Barcode, SKU + Actions */}
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                          <div className="sm:col-span-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Selling Price{" "}
+                              <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                              type="number"
+                              value={size.discounted_price}
+                              onChange={(e) =>
+                                handleSizeChange(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "discounted_price",
+                                  e.target.value,
+                                )
+                              }
+                              min={0}
+                              className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
+                                priceErrors.variations[colorIndex]?.sizes[
+                                  sizeIndex
+                                ]
+                                  ? "border-red-500"
+                                  : "border-gray-300"
+                              }`}
+                            />
+                            {priceErrors.variations[colorIndex]?.sizes[
+                              sizeIndex
+                            ] && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {
+                                  priceErrors.variations[colorIndex].sizes[
+                                    sizeIndex
+                                  ]
+                                }
+                              </p>
+                            )}
+                          </div>
+                          <div className="sm:col-span-3">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              Barcode
+                            </label>
+                            <input
+                              type="text"
+                              value={size.barcode}
+                              onChange={(e) =>
+                                handleSizeChange(
+                                  colorIndex,
+                                  sizeIndex,
+                                  "barcode",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                            />
+                          </div>
+                          <div className="sm:col-span-4">
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                              SKU <span className="text-red-500">*</span>
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={size.sku}
+                                onChange={(e) =>
+                                  handleSizeChange(
+                                    colorIndex,
+                                    sizeIndex,
+                                    "sku",
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder="e.g., PROD-001"
+                                className={`flex-1 rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
+                                  variationErrors[colorIndex]?.sizes?.[
+                                    sizeIndex
+                                  ]?.sku
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleGenerateVariationSKU(
+                                    colorIndex,
+                                    sizeIndex,
+                                  )
+                                }
+                                title="Auto-generate SKU"
+                                className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
+                              >
+                                <RefreshCw size={16} />
+                              </button>
+                            </div>
+                            {variationErrors[colorIndex]?.sizes?.[sizeIndex]
+                              ?.sku && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {
+                                  variationErrors[colorIndex].sizes[sizeIndex]
+                                    .sku
+                                }
+                              </p>
+                            )}
+                          </div>
+                          <div className="sm:col-span-2 flex justify-end">
+                            {variation.sizes.length > 1 && (
+                              <button
+                                onClick={() =>
+                                  removeSizeFromColor(colorIndex, sizeIndex)
+                                }
+                                title="Remove this size"
+                                className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg text-sm font-medium"
+                              >
+                                <X size={18} />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1760,167 +2003,404 @@ const AddEditProduct = () => {
             <div className="space-y-6">
               {variations.map((variation, index) => (
                 <div key={index} className="border rounded-2xl p-6 bg-gray-50">
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Attribute <span className="text-red-600">*</span>
-                      </label>
-                      <select
-                        value={variation.attribute_id || ""}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            index,
-                            "attribute_id",
-                            e.target.value,
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300"
-                      >
-                        <option value="">Select Attribute</option>
-                        {attributes.map((attr) => (
-                          <option key={attr.id} value={attr.id}>
-                            {attr.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">
-                        Attribute Value <span className="text-red-600">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Pure Leather, Matte Finish"
-                        value={variation.attribute_value || ""}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            index,
-                            "attribute_value",
-                            e.target.value,
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Media Upload for this variation group */}
+                  {/* Attribute Selection */}
                   <div className="mb-6">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">
-                      Media for: {variation.attribute_value || "this variation"}
-                    </h4>
-                    {renderMediaUploadSection(index)}
+                    <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
+                      Attribute <span className="text-red-600">*</span>
+                      <TooltipHint
+                        id={`attr-tooltip-${index}`}
+                        content="Select the attribute type (e.g., Material, Finish, Style)"
+                      />
+                    </label>
+                    <select
+                      value={variation.attribute_id || ""}
+                      onChange={(e) =>
+                        handleVariationChange(
+                          index,
+                          "attribute_id",
+                          e.target.value,
+                        )
+                      }
+                      className={`mt-1 block w-full rounded-2xl border-gray-300 ${
+                        variationErrors[index]?.attribute_id
+                          ? "border-red-500"
+                          : ""
+                      }`}
+                    >
+                      <option value="">Select Attribute</option>
+                      {attributes.map((attr) => (
+                        <option key={attr.id} value={attr.id}>
+                          {attr.name}
+                        </option>
+                      ))}
+                    </select>
+                    {variationErrors[index]?.attribute_id && (
+                      <p className="mt-1 text-sm text-red-600">
+                        {variationErrors[index].attribute_id}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Options (Sizes) Table */}
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Options</h4>
-                    {variation.sizes.map((size, sIdx) => (
-                      <div
-                        key={sIdx}
-                        className="grid grid-cols-5 gap-3 items-end bg-white p-3 rounded border"
-                      >
-                        <input
-                          placeholder="Stock *"
-                          type="number"
-                          value={size.stock}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "stock",
-                              e.target.value,
-                            )
-                          }
-                          min={0}
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Original Price *"
-                          type="number"
-                          value={size.original_price}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "original_price",
-                              e.target.value,
-                            )
-                          }
-                          min={0}
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Selling Price *"
-                          type="number"
-                          value={size.discounted_price}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "discounted_price",
-                              e.target.value,
-                            )
-                          }
-                          min={0}
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="SKU *"
-                          type="text"
-                          value={size.sku}
-                          onChange={(e) =>
-                            handleSizeChange(index, sIdx, "sku", e.target.value)
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        <input
-                          placeholder="Barcode"
-                          type="text"
-                          value={size.barcode}
-                          onChange={(e) =>
-                            handleSizeChange(
-                              index,
-                              sIdx,
-                              "barcode",
-                              e.target.value,
-                            )
-                          }
-                          className="rounded-2xl border-gray-300"
-                        />
-                        {/* <button
-                                    onClick={() => removeSizeFromColor(index, sIdx)}
-                                    className="text-red-600 hover:text-red-700"
-                                  >
-                                    <X size={20} />
-                                  </button> */}
-                      </div>
-                    ))}
-                    {/* <button
-                                onClick={() => addSizeToColor(index)}
-                                className="text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                + Add Option
-                              </button> */}
-                  </div>
+                  {/* Attribute Options with Values */}
+                  {variation.sizes && variation.sizes.length > 0 && (
+                    <div className="space-y-4 mb-6">
+                      <h4 className="text-sm font-semibold text-gray-700">
+                        Options/Variants
+                      </h4>
+                      {variation.sizes.map((size, sIdx) => (
+                        <div
+                          key={sIdx}
+                          className={`border rounded-lg p-4 bg-white border-2 transition ${
+                            variationErrors[index]?.sizes?.[sIdx]
+                              ? "border-red-300 bg-red-50"
+                              : "border-gray-200"
+                          }`}
+                        >
+                          {/* First Row: Attribute Value, Stock, Original Price */}
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                {attributes.find(
+                                  (a) =>
+                                    a.id === parseInt(variation.attribute_id),
+                                )?.name || "Attribute Value"}{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g., Pure Leather, Matte Finish"
+                                value={size.attribute_value || ""}
+                                onChange={(e) => {
+                                  const newVariations = [...variations];
+                                  newVariations[index].sizes[
+                                    sIdx
+                                  ].attribute_value = e.target.value;
+                                  setVariations(newVariations);
+                                  setVariationErrors((prev) => {
+                                    const updated = { ...prev };
+                                    if (
+                                      updated[index]?.sizes?.[sIdx]
+                                        ?.attribute_value
+                                    ) {
+                                      delete updated[index].sizes[sIdx]
+                                        .attribute_value;
+                                    }
+                                    return updated;
+                                  });
+                                }}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                  variationErrors[index]?.sizes?.[sIdx]
+                                    ?.attribute_value
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }`}
+                              />
+                              {variationErrors[index]?.sizes?.[sIdx]
+                                ?.attribute_value && (
+                                <p className="mt-1 text-xs text-red-600">
+                                  {
+                                    variationErrors[index].sizes[sIdx]
+                                      .attribute_value
+                                  }
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Stock <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                value={size.stock}
+                                onChange={(e) => {
+                                  const newVariations = [...variations];
+                                  newVariations[index].sizes[sIdx].stock =
+                                    e.target.value;
+                                  setVariations(newVariations);
+                                  setVariationErrors((prev) => {
+                                    const updated = { ...prev };
+                                    if (updated[index]?.sizes?.[sIdx]) {
+                                      updated[index].sizes[sIdx].stock = "";
+                                    }
+                                    return updated;
+                                  });
+                                }}
+                                min={0}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                  variationErrors[index]?.sizes?.[sIdx]?.stock
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }`}
+                              />
+                              {variationErrors[index]?.sizes?.[sIdx]?.stock && (
+                                <p className="mt-1 text-xs text-red-600">
+                                  {variationErrors[index].sizes[sIdx].stock}
+                                </p>
+                              )}
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Original Price{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                value={size.original_price}
+                                onChange={(e) => {
+                                  const newVariations = [...variations];
+                                  newVariations[index].sizes[
+                                    sIdx
+                                  ].original_price = e.target.value;
+                                  setVariations(newVariations);
+                                  setVariationErrors((prev) => {
+                                    const updated = { ...prev };
+                                    if (updated[index]?.sizes?.[sIdx]) {
+                                      updated[index].sizes[
+                                        sIdx
+                                      ].original_price = "";
+                                    }
+                                    return updated;
+                                  });
+                                }}
+                                min={0}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                  variationErrors[index]?.sizes?.[sIdx]
+                                    ?.original_price
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }`}
+                              />
+                              {variationErrors[index]?.sizes?.[sIdx]
+                                ?.original_price && (
+                                <p className="mt-1 text-xs text-red-600">
+                                  {
+                                    variationErrors[index].sizes[sIdx]
+                                      .original_price
+                                  }
+                                </p>
+                              )}
+                            </div>
+                          </div>
 
+                          {/* Second Row: Selling Price, Barcode, SKU, Media, Actions */}
+                          <div className="grid grid-cols-1 sm:grid-cols-9 gap-3 items-start">
+                            <div className="sm:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Selling Price{" "}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <input
+                                type="number"
+                                value={size.discounted_price}
+                                onChange={(e) => {
+                                  const newVariations = [...variations];
+                                  newVariations[index].sizes[
+                                    sIdx
+                                  ].discounted_price = e.target.value;
+                                  setVariations(newVariations);
+                                }}
+                                min={0}
+                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                  variationErrors[index]?.sizes?.[sIdx]
+                                    ?.discounted_price ||
+                                  variationErrors[index]?.sizes?.[sIdx]?.price
+                                    ? "border-red-500"
+                                    : "border-gray-300"
+                                }`}
+                              />
+                              {(variationErrors[index]?.sizes?.[sIdx]
+                                ?.discounted_price ||
+                                variationErrors[index]?.sizes?.[sIdx]
+                                  ?.price) && (
+                                <p className="mt-1 text-xs text-red-600">
+                                  {variationErrors[index].sizes[sIdx]
+                                    .discounted_price ||
+                                    variationErrors[index].sizes[sIdx].price}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Barcode
+                              </label>
+                              <input
+                                type="text"
+                                value={size.barcode}
+                                onChange={(e) => {
+                                  const newVariations = [...variations];
+                                  newVariations[index].sizes[sIdx].barcode =
+                                    e.target.value;
+                                  setVariations(newVariations);
+                                }}
+                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-4">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                SKU <span className="text-red-500">*</span>
+                              </label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={size.sku}
+                                  onChange={(e) => {
+                                    const newVariations = [...variations];
+                                    newVariations[index].sizes[sIdx].sku =
+                                      e.target.value;
+                                    setVariations(newVariations);
+                                    setVariationErrors((prev) => {
+                                      const updated = { ...prev };
+                                      if (updated[index]?.sizes?.[sIdx]) {
+                                        updated[index].sizes[sIdx].sku = "";
+                                      }
+                                      return updated;
+                                    });
+                                  }}
+                                  placeholder="e.g., PROD-001"
+                                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
+                                    variationErrors[index]?.sizes?.[sIdx]?.sku
+                                      ? "border-red-500"
+                                      : "border-gray-300"
+                                  }`}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newVariations = [...variations];
+                                    newVariations[index].sizes[sIdx].sku =
+                                      generateAutoSKU();
+                                    setVariations(newVariations);
+                                    setVariationErrors((prev) => {
+                                      const updated = { ...prev };
+                                      if (updated[index]?.sizes?.[sIdx]) {
+                                        updated[index].sizes[sIdx].sku = "";
+                                      }
+                                      return updated;
+                                    });
+                                  }}
+                                  title="Auto-generate SKU"
+                                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
+                                >
+                                  <RefreshCw size={16} />
+                                </button>
+                              </div>
+                              {variationErrors[index]?.sizes?.[sIdx]?.sku && (
+                                <p className="mt-1 text-xs text-red-600">
+                                  {variationErrors[index].sizes[sIdx].sku}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="sm:col-span-1 flex justify-end">
+                              {variation.sizes.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newVariations = [...variations];
+                                    newVariations[index].sizes = newVariations[
+                                      index
+                                    ].sizes.filter((_, i) => i !== sIdx);
+                                    setVariations(newVariations);
+                                  }}
+                                  title="Remove this option"
+                                  className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium"
+                                >
+                                  <X size={18} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {variation.attribute_id && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newVariations = [...variations];
+                        newVariations[index].sizes.push({
+                          stock: "",
+                          original_price: "",
+                          discounted_price: "",
+                          sku: "",
+                          barcode: "",
+                        });
+                        setVariations(newVariations);
+                      }}
+                      className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium mt-4"
+                    >
+                      <Plus size={18} /> Add Option
+                    </button>
+                  )}
+
+                  {/* Media for this Attribute */}
+                  {variation.attribute_id && (
+                    <div className="mt-6 pt-6 border-t">
+                      <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                        Media for this Attribute
+                        <TooltipHint
+                          id={`attr-media-tooltip-${index}`}
+                          content="Upload images/videos for all options of this attribute"
+                        />
+                      </h4>
+                      {renderMediaUploadSection(index)}
+                    </div>
+                  )}
+
+                  {/* Remove Attribute Group */}
                   {variations.length > 1 && (
                     <button
-                      onClick={() => removeColorVariation(index)}
-                      className="text-sm text-red-600 mt-4"
+                      type="button"
+                      onClick={() => {
+                        const newVariations = variations.filter(
+                          (_, i) => i !== index,
+                        );
+                        setVariations(newVariations);
+                        setVariationErrors((prev) => {
+                          const updated = { ...prev };
+                          delete updated[index];
+                          return updated;
+                        });
+                      }}
+                      className="text-sm text-red-600 hover:text-red-700 mt-6 font-medium"
                     >
-                      Remove This Variation Group
+                      Remove Attribute Group
                     </button>
                   )}
                 </div>
               ))}
 
+              {/* Add New Attribute */}
               <button
-                onClick={addColorVariation}
-                className="flex items-center gap-2 text-blue-600 font-medium"
+                type="button"
+                onClick={() => {
+                  if (variations.length >= 4) return;
+                  const newVariation = {
+                    attribute_id: "",
+                    attribute_value: "",
+                    media: [],
+                    sizes: [
+                      {
+                        stock: "",
+                        original_price: "",
+                        discounted_price: "",
+                        sku: "",
+                        barcode: "",
+                      },
+                    ],
+                  };
+                  setVariations([...variations, newVariation]);
+                }}
+                className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 mt-4 ${
+                  variations.length >= 4 ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                disabled={variations.length >= 4}
               >
-                <Plus size={20} /> Add New Variation (e.g. Material, Finish,
-                etc.)
+                <Plus size={20} /> Add New Attribute
               </button>
             </div>
           )}
@@ -2098,17 +2578,39 @@ const AddEditProduct = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
                 SKU <span className="text-red-500">*</span>
+                <TooltipHint
+                  id="sku-tooltip"
+                  content="Unique Stock Keeping Unit identifier. Click 'Auto' to generate automatically."
+                />
               </label>
-              <input
-                type="text"
-                name="sku"
-                value={formData.sku}
-                onChange={handleInputChange}
-                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                required
-              />
+              <div className="mt-1 flex gap-2 items-center">
+                <input
+                  type="text"
+                  name="sku"
+                  value={formData.sku}
+                  onChange={handleInputChange}
+                  placeholder="e.g., PROD-001"
+                  className={`flex-1 rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black ${
+                    mainProductErrors.main_sku ? "border-red-500" : ""
+                  }`}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateMainSKU}
+                  title="Auto-generate SKU"
+                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-2xl hover:bg-blue-200 flex items-center gap-1 whitespace-nowrap"
+                >
+                  <RefreshCw size={16} /> Auto
+                </button>
+              </div>
+              {mainProductErrors.main_sku && (
+                <p className="mt-1 text-sm text-red-600">
+                  {mainProductErrors.main_sku}
+                </p>
+              )}
             </div>
 
             <div>
@@ -2466,9 +2968,7 @@ const AddEditProduct = () => {
                       : attributes.find(
                           (a) =>
                             parseInt(a.id) === parseInt(variation.attribute_id),
-                        )?.name +
-                          ": " +
-                          variation.attribute_value || `Variation ${index + 1}`;
+                        )?.name || `Variation ${index + 1}`;
                   const isExpanded = expandedVariations[index] || false;
 
                   return (
@@ -2480,7 +2980,9 @@ const AddEditProduct = () => {
                         onClick={() => toggleVariation(index)}
                         className="w-full px-4 py-3 flex justify-between items-center text-left bg-gray-50 hover:bg-gray-100 transition-colors"
                       >
-                        <span className="font-medium">{variationName}</span>
+                        <span className="font-medium">
+                          {variationName || "Unnamed Variation"}
+                        </span>
                         <svg
                           className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${
                             isExpanded ? "rotate-180" : "rotate-0"
