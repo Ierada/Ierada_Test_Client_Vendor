@@ -54,6 +54,8 @@ const SHIPPING_RATES = [
   { maxWeight: Infinity, charge: 800 },
 ];
 
+const GST_SLABS = [0, 5, 12, 18, 28];
+
 const AddEditProduct = () => {
   const { id } = useParams();
   const { user } = useAppContext();
@@ -61,7 +63,6 @@ const AddEditProduct = () => {
   const navigate = useNavigate();
   const isEditMode = !!id;
 
-  const [variationMode, setVariationMode] = useState("color_size");
   const [categories, setCategories] = useState([]);
   const [fabrics, setFabrics] = useState([]);
   const [attributes, setAttributes] = useState([]);
@@ -121,34 +122,24 @@ const AddEditProduct = () => {
     productFiles: [],
     whats_in_the_box: [],
   });
-
   const [specifications, setSpecifications] = useState([
     { feature: "", specification: "" },
   ]);
   const [whatsInTheBox, setWhatsInTheBox] = useState([
     { title: "", details: "" },
   ]);
-
   const [variations, setVariations] = useState([
     {
-      // For color-size mode
+      mode: "color_size", // "color_size" | "custom"
+      // color_size fields
       color_id: "",
+      // custom fields
+      attribute_id: "",
+      // shared
       media: [],
       sizes: [
         {
           size_id: "",
-          stock: "",
-          original_price: "",
-          discounted_price: "",
-          sku: "",
-          barcode: "",
-        },
-      ],
-      // For custom attribute mode
-      attribute_id: "",
-      media: [],
-      sizes: [
-        {
           attribute_value: "",
           stock: "",
           original_price: "",
@@ -177,6 +168,7 @@ const AddEditProduct = () => {
   const [variationErrors, setVariationErrors] = useState({});
   const [mainProductErrors, setMainProductErrors] = useState({});
   const [priceErrors, setPriceErrors] = useState({ main: "", variations: [] });
+
   const MAX_PRODUCT_DETAILS_CHARS = 3000;
 
   useEffect(() => {
@@ -406,6 +398,35 @@ const AddEditProduct = () => {
     }));
   }, [formData.package_weight, formData.volumetric_weight]);
 
+  // Prefill Pricing & Inventory from first variation (add mode only)
+  useEffect(() => {
+    if (isEditMode) return; // Skip for edit mode
+    if (!formData.is_variation || !variations.length) return;
+
+    const firstVariation = variations[0];
+    const firstSize = firstVariation?.sizes?.[0];
+    if (!firstSize) return;
+
+    setFormData((prev) => ({
+      ...prev,
+      original_price: firstSize.original_price || prev.original_price,
+      discounted_price: firstSize.discounted_price || prev.discounted_price,
+      stock: firstSize.stock || prev.stock,
+      sku: firstSize.sku || prev.sku,
+      barcode: firstSize.barcode || prev.barcode,
+    }));
+  }, [variations, formData.is_variation, isEditMode]);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.target.type === "number" && ["e", "E", "+", "-"].includes(e.key)) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const fetchProductData = async () => {
     try {
       const res = await getProductById(id);
@@ -446,67 +467,106 @@ const AddEditProduct = () => {
 
       setTimeout(() => {
         setFormData(updatedFormData);
-        if (p.variationMode) {
-          setVariationMode(p.variationMode);
-        }
 
         // transform variations
         if (p.variations && p.variations.length > 0) {
-          let formattedVariations = [];
+          const colorGroups = {};
+          const attrGroups = {};
 
-          if (p.variationMode === "color_size") {
-            formattedVariations = p.variations.map((group) => ({
-              color_id: group.color_id?.toString() || "",
-              media: group.media || [],
-              sizes: group.sizes.map((size) => ({
-                size_id: size.size_id?.toString() || "",
-                stock: size.stock != null ? String(size.stock) : "",
-                original_price:
-                  size.original_price != null
-                    ? String(size.original_price)
-                    : "",
-                discounted_price:
-                  size.discounted_price != null
-                    ? String(size.discounted_price)
-                    : "",
-                sku: size.sku || "",
-                barcode: size.barcode || "",
-              })),
-            }));
-          } else if (p.variationMode === "custom") {
-            // Group variations by attribute_id
-            const groupedByAttribute = {};
-            p.variations.forEach((v) => {
-              const attrId = v.attribute_id?.toString();
-              if (!groupedByAttribute[attrId]) {
-                groupedByAttribute[attrId] = {
-                  attribute_id: attrId,
-                  media: [],
+          p.variations.forEach((group) => {
+            if (group.color_id !== null && group.color_id !== undefined) {
+              const key = group.color_id;
+              if (!colorGroups[key]) {
+                colorGroups[key] = {
+                  mode: "color_size",
+                  color_id: group.color_id?.toString() || "",
+                  attribute_id: "",
+                  media: group.media || [],
                   sizes: [],
                 };
               }
-              groupedByAttribute[attrId].sizes.push({
-                attribute_value: v.attribute_value || "",
-                stock: v.stock != null ? String(v.stock) : "",
-                original_price:
-                  v.original_price != null ? String(v.original_price) : "",
-                discounted_price:
-                  v.discounted_price != null ? String(v.discounted_price) : "",
-                sku: v.sku || "",
-                barcode: v.barcode || "",
+              group.sizes?.forEach((size) => {
+                colorGroups[key].sizes.push({
+                  size_id: size.size_id?.toString() || "",
+                  attribute_value: "",
+                  stock: size.stock != null ? String(size.stock) : "",
+                  original_price:
+                    size.original_price != null
+                      ? String(size.original_price)
+                      : "",
+                  discounted_price:
+                    size.discounted_price != null
+                      ? String(size.discounted_price)
+                      : "",
+                  sku: size.sku || "",
+                  barcode: size.barcode || "",
+                });
               });
-            });
-            // Get unique media per attribute group (from first variation of each group)
-            Object.keys(groupedByAttribute).forEach((attrId) => {
-              const firstVarInGroup = p.variations.find(
-                (v) => v.attribute_id?.toString() === attrId,
-              );
-              groupedByAttribute[attrId].media = firstVarInGroup?.media || [];
-            });
-            formattedVariations = Object.values(groupedByAttribute);
-          }
+            } else if (
+              group.attribute_id !== null &&
+              group.attribute_id !== undefined
+            ) {
+              // getProductById returns custom variations grouped by attribute_id,
+              // with a `sizes` array containing { attribute_value, stock, original_price, ... }
+              const key = group.attribute_id?.toString();
+              if (!attrGroups[key]) {
+                attrGroups[key] = {
+                  mode: "custom",
+                  color_id: "",
+                  attribute_id: key,
+                  media: group.media || [],
+                  sizes: [],
+                };
+              }
+              // Each group already has sizes array with attribute_value per size
+              group.sizes?.forEach((size) => {
+                attrGroups[key].sizes.push({
+                  size_id: "",
+                  attribute_value: size.attribute_value || "",
+                  stock: size.stock != null ? String(size.stock) : "",
+                  original_price:
+                    size.original_price != null
+                      ? String(size.original_price)
+                      : "",
+                  discounted_price:
+                    size.discounted_price != null
+                      ? String(size.discounted_price)
+                      : "",
+                  sku: size.sku || "",
+                  barcode: size.barcode || "",
+                });
+              });
+            }
+          });
 
-          setVariations(formattedVariations);
+          const formattedVariations = [
+            ...Object.values(colorGroups),
+            ...Object.values(attrGroups),
+          ];
+
+          setVariations(
+            formattedVariations.length > 0
+              ? formattedVariations
+              : [
+                  {
+                    mode: "color_size",
+                    color_id: "",
+                    attribute_id: "",
+                    media: [],
+                    sizes: [
+                      {
+                        size_id: "",
+                        attribute_value: "",
+                        stock: "",
+                        original_price: "",
+                        discounted_price: "",
+                        sku: "",
+                        barcode: "",
+                      },
+                    ],
+                  },
+                ],
+          );
         }
 
         setDeletedMediaIds([]); // Reset deletes for new session
@@ -885,15 +945,18 @@ const AddEditProduct = () => {
     }));
   };
 
-  const addColorVariation = () => {
+  const addVariationGroup = (mode = "color_size") => {
     setVariations([
       ...variations,
       {
+        mode,
         color_id: "",
+        attribute_id: "",
         media: [],
         sizes: [
           {
             size_id: "",
+            attribute_value: "",
             stock: "",
             original_price: "",
             discounted_price: "",
@@ -905,10 +968,11 @@ const AddEditProduct = () => {
     ]);
   };
 
-  const addSizeToColor = (colorIndex) => {
+  const addSizeToVariation = (varIndex) => {
     const newVariations = [...variations];
-    newVariations[colorIndex].sizes.push({
+    newVariations[varIndex].sizes.push({
       size_id: "",
+      attribute_value: "",
       stock: "",
       original_price: "",
       discounted_price: "",
@@ -930,6 +994,78 @@ const AddEditProduct = () => {
     setVariations(newVariations);
   };
 
+  const validateDuplicateSizes = () => {
+    let hasDuplicate = false;
+
+    variations.forEach((variation, varIdx) => {
+      if (variation.mode !== "color_size") return; // Only applies to color_size
+
+      const sizeIds = variation.sizes.map((s) => s.size_id).filter(Boolean);
+      const duplicateSizeIds = sizeIds.filter(
+        (id, idx) => sizeIds.indexOf(id) !== idx,
+      );
+
+      if (duplicateSizeIds.length > 0) {
+        const colorName =
+          colors.find((c) => parseInt(c.id) === parseInt(variation.color_id))
+            ?.name || `Variation ${varIdx + 1}`;
+
+        const duplicateSizeNames = duplicateSizeIds.map(
+          (id) => sizes.find((s) => s.id === id)?.name || id,
+        );
+
+        setNotification({
+          isOpen: true,
+          type: "error",
+          message: `Duplicate size(s) "${duplicateSizeNames.join(
+            ", ",
+          )}" found in color "${colorName}". Each size must be unique per color.`,
+        });
+
+        hasDuplicate = true;
+      }
+    });
+
+    return !hasDuplicate;
+  };
+
+  const validateDuplicateSKUsAcrossVariations = () => {
+    const allSkus = [];
+    let hasDuplicate = false;
+
+    variations.forEach((variation, varIdx) => {
+      variation.sizes.forEach((size, sizeIdx) => {
+        if (!size.sku?.trim()) return;
+
+        const existing = allSkus.find((s) => s.sku === size.sku.trim());
+        if (existing) {
+          // Build a readable name based on the variation mode
+          const groupName =
+            variation.mode === "color_size"
+              ? colors.find(
+                  (c) => parseInt(c.id) === parseInt(variation.color_id),
+                )?.name || `Variation ${varIdx + 1}`
+              : attributes.find(
+                  (a) => parseInt(a.id) === parseInt(variation.attribute_id),
+                )?.name || `Variation ${varIdx + 1}`;
+
+          setNotification({
+            isOpen: true,
+            type: "error",
+            message: `Duplicate SKU "${size.sku}" found in "${groupName}". SKUs must be unique across all variations.`,
+          });
+
+          hasDuplicate = true;
+          return;
+        }
+
+        allSkus.push({ sku: size.sku.trim(), varIdx, sizeIdx });
+      });
+    });
+
+    return !hasDuplicate;
+  };
+
   const handleSubmit = async () => {
     // Validate main product fields
     const mainValidation = validateMainProductFields(formData);
@@ -946,11 +1082,7 @@ const AddEditProduct = () => {
 
     // Validate variations if enabled
     if (formData.is_variation) {
-      const variationValidation = validateVariationsData(
-        variations,
-        variationMode,
-      );
-      console.log("Variation validation result:", variationValidation);
+      const variationValidation = validateVariationsData(variations, null); // no global mode
       if (!variationValidation.valid) {
         setVariationErrors(variationValidation.errors);
         // Format validation errors for notification
@@ -1000,10 +1132,14 @@ const AddEditProduct = () => {
         return;
       }
 
-      // Validate all SKUs
-      if (!validateAllVariationSKUs()) {
-        return;
-      }
+      // Validate duplicate sizes (color_size groups only)
+      if (!validateDuplicateSizes()) return;
+
+      // Validate duplicate SKUs across all variation groups
+      if (!validateDuplicateSKUsAcrossVariations()) return;
+
+      // Validate all SKU formats
+      if (!validateAllVariationSKUs()) return;
     }
 
     // Validate media
@@ -1087,15 +1223,15 @@ const AddEditProduct = () => {
 
     if (formData.is_variation) {
       const variationsForSubmit = [];
+
       variations.forEach((variation, variationIndex) => {
-        const isColorMode = variationMode === "color_size";
         let groupingKey;
 
-        if (isColorMode) {
+        if (variation.mode === "color_size") {
+          if (!variation.color_id) return;
           groupingKey = parseInt(variation.color_id);
-          if (!groupingKey) return;
         } else {
-          // Custom mode: group by attribute_id only
+          // custom
           if (!variation.attribute_id) return;
           groupingKey = parseInt(variation.attribute_id);
         }
@@ -1114,18 +1250,24 @@ const AddEditProduct = () => {
         if (globalIndices.length > 0) {
           variationMediaMapping.push({
             grouping_key: groupingKey,
+            variation_mode: variation.mode, // ✅ send per-group mode to backend
             file_indices: globalIndices,
           });
         }
 
         variation.sizes.forEach((size) => {
           variationsForSubmit.push({
-            color_id: isColorMode ? groupingKey : null,
-            size_id: isColorMode ? parseInt(size.size_id) || null : null,
-            attribute_id: !isColorMode
-              ? parseInt(variation.attribute_id)
-              : null,
-            attribute_value: !isColorMode ? size.attribute_value : null,
+            color_id: variation.mode === "color_size" ? groupingKey : null,
+            size_id:
+              variation.mode === "color_size"
+                ? parseInt(size.size_id) || null
+                : null,
+            attribute_id:
+              variation.mode === "custom"
+                ? parseInt(variation.attribute_id)
+                : null,
+            attribute_value:
+              variation.mode === "custom" ? size.attribute_value : null,
             stock: size.stock,
             original_price: size.original_price,
             discounted_price: size.discounted_price,
@@ -1166,7 +1308,6 @@ const AddEditProduct = () => {
             ? "Product updated successfully!"
             : "Product created successfully!",
         });
-        // Auto-navigate after 2 seconds
         setTimeout(() => {
           navigate(`${config.VITE_BASE_VENDOR_URL}/product`);
         }, 2000);
@@ -1517,15 +1658,21 @@ const AddEditProduct = () => {
                       content="GST percentage applied to this product."
                     />
                   </label>
-                  <input
-                    type="number"
+                  <select
                     name="gst"
-                    min={0}
                     value={formData.gst}
                     onChange={handleInputChange}
                     className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                    // readOnly
-                  />
+                  >
+                    <option value="" disabled>
+                      Select GST %
+                    </option>
+                    {GST_SLABS.map((slab) => (
+                      <option key={slab} value={slab}>
+                        {slab}%
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
@@ -1632,7 +1779,7 @@ const AddEditProduct = () => {
         </div>
 
         {/* What's in the Box */}
-        <div className="bg-white p-6 rounded-2xl shadow">
+        {/* <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-1">
             What's in the Box
             <TooltipHint
@@ -1693,721 +1840,716 @@ const AddEditProduct = () => {
               <p className="text-sm text-gray-500">Maximum 4 items reached.</p>
             )}
           </div>
-        </div>
+        </div> */}
 
         {/* Variations */}
         <div className="bg-white p-6 rounded-2xl shadow">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Variations</h2>
-            <div className="flex items-center gap-6">
-              {formData.is_variation && (
-                <div className="flex gap-4 items-center">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={variationMode === "color_size"}
-                      onChange={() => setVariationMode("color_size")}
-                    />
-                    <span>Color + Size</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="mode"
-                      checked={variationMode === "custom"}
-                      onChange={() => setVariationMode("custom")}
-                    />
-                    <span>Custom Attribute</span>
-                  </label>
-                </div>
-              )}
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="is_variation"
-                  checked={formData.is_variation}
-                  onChange={handleInputChange}
-                />
-                <span>Enable Variations</span>
-              </label>
-            </div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="is_variation"
+                checked={formData.is_variation}
+                onChange={handleInputChange}
+              />
+              <span>Enable Variations</span>
+            </label>
           </div>
 
-          {formData.is_variation && variationMode === "color_size" && (
+          {formData.is_variation && (
             <div className="space-y-6">
-              {variations?.map((variation, colorIndex) => (
-                <div key={colorIndex} className="border rounded-2xl p-4">
-                  <div className="flex gap-4 mb-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Color
+              {variations.map((variation, varIndex) => (
+                <div
+                  key={varIndex}
+                  className="border rounded-2xl p-4 bg-gray-50"
+                >
+                  {/* Per-variation mode selector */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex gap-4 items-center">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`mode-${varIndex}`}
+                          checked={variation.mode === "color_size"}
+                          onChange={() => {
+                            const updated = [...variations];
+                            updated[varIndex] = {
+                              ...updated[varIndex],
+                              mode: "color_size",
+                              attribute_id: "",
+                              color_id: updated[varIndex].color_id || "",
+                            };
+                            setVariations(updated);
+                          }}
+                        />
+                        <span className="text-sm font-medium">
+                          Color + Size
+                        </span>
                       </label>
-                      <select
-                        value={variation.color_id}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            colorIndex,
-                            "color_id",
-                            e.target.value,
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
-                      >
-                        <option value="">Select Color</option>
-                        {colors.map((color) => (
-                          <option key={color.id} value={color.id}>
-                            {color.name}
-                          </option>
-                        ))}
-                      </select>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`mode-${varIndex}`}
+                          checked={variation.mode === "custom"}
+                          onChange={() => {
+                            const updated = [...variations];
+                            updated[varIndex] = {
+                              ...updated[varIndex],
+                              mode: "custom",
+                              color_id: "",
+                              attribute_id:
+                                updated[varIndex].attribute_id || "",
+                            };
+                            setVariations(updated);
+                          }}
+                        />
+                        <span className="text-sm font-medium">
+                          Custom Attribute
+                        </span>
+                      </label>
                     </div>
-                    <button
-                      onClick={() => removeColorVariation(colorIndex)}
-                      className="text-red-500 hover:text-red-700 self-end"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-sm font-medium text-gray-700">
-                        Media Files for{" "}
-                        {colors.find((c) => c.id === variation.color_id)
-                          ?.name || `Variation ${colorIndex + 1}`}
-                      </h3>
+                    {variations.length > 1 && (
                       <button
-                        className="flex items-center gap-1 text-sm text-gray-600"
-                        onClick={() => setIsGuideModalOpen(true)}
+                        type="button"
+                        onClick={() => {
+                          const updated = variations.filter(
+                            (_, i) => i !== varIndex,
+                          );
+                          setVariations(updated);
+                          setVariationErrors((prev) => {
+                            const updated = { ...prev };
+                            delete updated[varIndex];
+                            return updated;
+                          });
+                        }}
+                        className="text-sm text-red-600 hover:text-red-700 font-medium flex items-center gap-1"
                       >
-                        <BsQuestionCircle />
+                        <X size={16} /> Remove Group
                       </button>
-                    </div>
-                    {renderMediaUploadSection(colorIndex)}
-                  </div>
-
-                  <div className="space-y-4">
-                    {variation.sizes.map((size, sizeIndex) => (
-                      <div
-                        key={sizeIndex}
-                        className="border rounded-lg p-4 bg-white"
-                      >
-                        {/* First Row: Size, Stock, Original Price */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Size <span className="text-red-500">*</span>
-                            </label>
-                            <select
-                              value={size.size_id}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "size_id",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
-                            >
-                              <option value="">Select Size</option>
-                              {sizes.map((size) => (
-                                <option key={size.id} value={size.id}>
-                                  {size.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Stock <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              value={size.stock}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "stock",
-                                  e.target.value,
-                                )
-                              }
-                              min={0}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Original Price{" "}
-                              <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              value={size.original_price}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "original_price",
-                                  e.target.value,
-                                )
-                              }
-                              min={0}
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Second Row: Selling Price, Barcode, SKU + Actions */}
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-                          <div className="sm:col-span-3">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Selling Price{" "}
-                              <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                              type="number"
-                              value={size.discounted_price}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "discounted_price",
-                                  e.target.value,
-                                )
-                              }
-                              min={0}
-                              className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
-                                priceErrors.variations[colorIndex]?.sizes[
-                                  sizeIndex
-                                ]
-                                  ? "border-red-500"
-                                  : "border-gray-300"
-                              }`}
-                            />
-                            {priceErrors.variations[colorIndex]?.sizes[
-                              sizeIndex
-                            ] && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {
-                                  priceErrors.variations[colorIndex].sizes[
-                                    sizeIndex
-                                  ]
-                                }
-                              </p>
-                            )}
-                          </div>
-                          <div className="sm:col-span-3">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              Barcode
-                            </label>
-                            <input
-                              type="text"
-                              value={size.barcode}
-                              onChange={(e) =>
-                                handleSizeChange(
-                                  colorIndex,
-                                  sizeIndex,
-                                  "barcode",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
-                            />
-                          </div>
-                          <div className="sm:col-span-4">
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                              SKU <span className="text-red-500">*</span>
-                            </label>
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                value={size.sku}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "sku",
-                                    e.target.value,
-                                  )
-                                }
-                                placeholder="e.g., PROD-001"
-                                className={`flex-1 rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
-                                  variationErrors[colorIndex]?.sizes?.[
-                                    sizeIndex
-                                  ]?.sku
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleGenerateVariationSKU(
-                                    colorIndex,
-                                    sizeIndex,
-                                  )
-                                }
-                                title="Auto-generate SKU"
-                                className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
-                              >
-                                <RefreshCw size={16} />
-                              </button>
-                            </div>
-                            {variationErrors[colorIndex]?.sizes?.[sizeIndex]
-                              ?.sku && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {
-                                  variationErrors[colorIndex].sizes[sizeIndex]
-                                    .sku
-                                }
-                              </p>
-                            )}
-                          </div>
-                          <div className="sm:col-span-2 flex justify-end">
-                            {variation.sizes.length > 1 && (
-                              <button
-                                onClick={() =>
-                                  removeSizeFromColor(colorIndex, sizeIndex)
-                                }
-                                title="Remove this size"
-                                className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg text-sm font-medium"
-                              >
-                                <X size={18} />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addSizeToColor(colorIndex)}
-                      className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
-                    >
-                      <Plus size={20} /> Add Size
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={addColorVariation}
-                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
-              >
-                <Plus size={20} /> Add Color Variation
-              </button>
-            </div>
-          )}
-
-          {formData.is_variation && variationMode === "custom" && (
-            <div className="space-y-6">
-              {variations.map((variation, index) => (
-                <div key={index} className="border rounded-2xl p-6 bg-gray-50">
-                  {/* Attribute Selection */}
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
-                      Attribute <span className="text-red-600">*</span>
-                      <TooltipHint
-                        id={`attr-tooltip-${index}`}
-                        content="Select the attribute type (e.g., Material, Finish, Style)"
-                      />
-                    </label>
-                    <select
-                      value={variation.attribute_id || ""}
-                      onChange={(e) =>
-                        handleVariationChange(
-                          index,
-                          "attribute_id",
-                          e.target.value,
-                        )
-                      }
-                      className={`mt-1 block w-full rounded-2xl border-gray-300 ${
-                        variationErrors[index]?.attribute_id
-                          ? "border-red-500"
-                          : ""
-                      }`}
-                    >
-                      <option value="">Select Attribute</option>
-                      {attributes.map((attr) => (
-                        <option key={attr.id} value={attr.id}>
-                          {attr.name}
-                        </option>
-                      ))}
-                    </select>
-                    {variationErrors[index]?.attribute_id && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {variationErrors[index].attribute_id}
-                      </p>
                     )}
                   </div>
 
-                  {/* Attribute Options with Values */}
-                  {variation.sizes && variation.sizes.length > 0 && (
-                    <div className="space-y-4 mb-6">
-                      <h4 className="text-sm font-semibold text-gray-700">
-                        Options/Variants
-                      </h4>
-                      {variation.sizes.map((size, sIdx) => (
-                        <div
-                          key={sIdx}
-                          className={`border rounded-lg p-4 bg-white border-2 transition ${
-                            variationErrors[index]?.sizes?.[sIdx]
-                              ? "border-red-300 bg-red-50"
-                              : "border-gray-200"
-                          }`}
+                  {/* Color+Size mode */}
+                  {variation.mode === "color_size" && (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Color
+                        </label>
+                        <select
+                          value={variation.color_id}
+                          onChange={(e) =>
+                            handleVariationChange(
+                              varIndex,
+                              "color_id",
+                              e.target.value,
+                            )
+                          }
+                          className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm focus:border-black focus:ring-black"
                         >
-                          {/* First Row: Attribute Value, Stock, Original Price */}
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                {attributes.find(
-                                  (a) =>
-                                    a.id === parseInt(variation.attribute_id),
-                                )?.name || "Attribute Value"}{" "}
-                                <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="e.g., Pure Leather, Matte Finish"
-                                value={size.attribute_value || ""}
-                                onChange={(e) => {
-                                  const newVariations = [...variations];
-                                  newVariations[index].sizes[
-                                    sIdx
-                                  ].attribute_value = e.target.value;
-                                  setVariations(newVariations);
-                                  setVariationErrors((prev) => {
-                                    const updated = { ...prev };
-                                    if (
-                                      updated[index]?.sizes?.[sIdx]
-                                        ?.attribute_value
-                                    ) {
-                                      delete updated[index].sizes[sIdx]
-                                        .attribute_value;
-                                    }
-                                    return updated;
-                                  });
-                                }}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                  variationErrors[index]?.sizes?.[sIdx]
-                                    ?.attribute_value
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              {variationErrors[index]?.sizes?.[sIdx]
-                                ?.attribute_value && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {
-                                    variationErrors[index].sizes[sIdx]
-                                      .attribute_value
+                          <option value="">Select Color</option>
+                          {colors.map((color) => (
+                            <option key={color.id} value={color.id}>
+                              {color.name}
+                            </option>
+                          ))}
+                        </select>
+                        {variationErrors[varIndex]?.color_id && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {variationErrors[varIndex].color_id}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Media for this color */}
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-sm font-medium text-gray-700">
+                            Media for{" "}
+                            {colors.find((c) => c.id == variation.color_id)
+                              ?.name || `Variation ${varIndex + 1}`}
+                          </h3>
+                          <button
+                            className="flex items-center gap-1 text-sm text-gray-600"
+                            onClick={() => setIsGuideModalOpen(true)}
+                          >
+                            <BsQuestionCircle />
+                          </button>
+                        </div>
+                        {renderMediaUploadSection(varIndex)}
+                      </div>
+
+                      {/* Sizes */}
+                      <div className="space-y-4">
+                        {variation.sizes.map((size, sizeIndex) => (
+                          <div
+                            key={sizeIndex}
+                            className="border rounded-lg p-4 bg-white"
+                          >
+                            <div className="relative grid grid-cols-1 sm:grid-cols-7 gap-3">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Size <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                  value={size.size_id}
+                                  onChange={(e) =>
+                                    handleSizeChange(
+                                      varIndex,
+                                      sizeIndex,
+                                      "size_id",
+                                      e.target.value,
+                                    )
                                   }
-                                </p>
-                              )}
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Stock <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                value={size.stock}
-                                onChange={(e) => {
-                                  const newVariations = [...variations];
-                                  newVariations[index].sizes[sIdx].stock =
-                                    e.target.value;
-                                  setVariations(newVariations);
-                                  setVariationErrors((prev) => {
-                                    const updated = { ...prev };
-                                    if (updated[index]?.sizes?.[sIdx]) {
-                                      updated[index].sizes[sIdx].stock = "";
-                                    }
-                                    return updated;
-                                  });
-                                }}
-                                min={0}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                  variationErrors[index]?.sizes?.[sIdx]?.stock
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              {variationErrors[index]?.sizes?.[sIdx]?.stock && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {variationErrors[index].sizes[sIdx].stock}
-                                </p>
-                              )}
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Original Price{" "}
-                                <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                value={size.original_price}
-                                onChange={(e) => {
-                                  const newVariations = [...variations];
-                                  newVariations[index].sizes[
-                                    sIdx
-                                  ].original_price = e.target.value;
-                                  setVariations(newVariations);
-                                  setVariationErrors((prev) => {
-                                    const updated = { ...prev };
-                                    if (updated[index]?.sizes?.[sIdx]) {
-                                      updated[index].sizes[
-                                        sIdx
-                                      ].original_price = "";
-                                    }
-                                    return updated;
-                                  });
-                                }}
-                                min={0}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                  variationErrors[index]?.sizes?.[sIdx]
-                                    ?.original_price
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              {variationErrors[index]?.sizes?.[sIdx]
-                                ?.original_price && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {
-                                    variationErrors[index].sizes[sIdx]
-                                      .original_price
-                                  }
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Second Row: Selling Price, Barcode, SKU, Media, Actions */}
-                          <div className="grid grid-cols-1 sm:grid-cols-9 gap-3 items-start">
-                            <div className="sm:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Selling Price{" "}
-                                <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                value={size.discounted_price}
-                                onChange={(e) => {
-                                  const newVariations = [...variations];
-                                  newVariations[index].sizes[
-                                    sIdx
-                                  ].discounted_price = e.target.value;
-                                  setVariations(newVariations);
-                                }}
-                                min={0}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                  variationErrors[index]?.sizes?.[sIdx]
-                                    ?.discounted_price ||
-                                  variationErrors[index]?.sizes?.[sIdx]?.price
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              {(variationErrors[index]?.sizes?.[sIdx]
-                                ?.discounted_price ||
-                                variationErrors[index]?.sizes?.[sIdx]
-                                  ?.price) && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {variationErrors[index].sizes[sIdx]
-                                    .discounted_price ||
-                                    variationErrors[index].sizes[sIdx].price}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="sm:col-span-2">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Barcode
-                              </label>
-                              <input
-                                type="text"
-                                value={size.barcode}
-                                onChange={(e) => {
-                                  const newVariations = [...variations];
-                                  newVariations[index].sizes[sIdx].barcode =
-                                    e.target.value;
-                                  setVariations(newVariations);
-                                }}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                              />
-                            </div>
-
-                            <div className="sm:col-span-4">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                SKU <span className="text-red-500">*</span>
-                              </label>
-                              <div className="flex gap-2">
+                                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
+                                    variation.sizes.filter(
+                                      (s) =>
+                                        s.size_id === size.size_id &&
+                                        s.size_id !== "",
+                                    ).length > 1
+                                      ? "border-red-500 bg-red-50"
+                                      : "border-gray-300"
+                                  }`}
+                                >
+                                  <option value="">Select Size</option>
+                                  {sizes.map((s) => (
+                                    <option key={s.id} value={s.id}>
+                                      {s.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {variation.sizes.filter(
+                                  (s) =>
+                                    s.size_id === size.size_id &&
+                                    s.size_id !== "",
+                                ).length > 1 && (
+                                  <p className="mt-1 text-xs text-red-600">
+                                    Duplicate size
+                                  </p>
+                                )}
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Stock <span className="text-red-500">*</span>
+                                </label>
                                 <input
-                                  type="text"
-                                  value={size.sku}
-                                  onChange={(e) => {
-                                    const newVariations = [...variations];
-                                    newVariations[index].sizes[sIdx].sku =
-                                      e.target.value;
-                                    setVariations(newVariations);
-                                    setVariationErrors((prev) => {
-                                      const updated = { ...prev };
-                                      if (updated[index]?.sizes?.[sIdx]) {
-                                        updated[index].sizes[sIdx].sku = "";
-                                      }
-                                      return updated;
-                                    });
-                                  }}
-                                  placeholder="e.g., PROD-001"
-                                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                                    variationErrors[index]?.sizes?.[sIdx]?.sku
+                                  type="number"
+                                  value={size.stock}
+                                  onChange={(e) =>
+                                    handleSizeChange(
+                                      varIndex,
+                                      sizeIndex,
+                                      "stock",
+                                      e.target.value,
+                                    )
+                                  }
+                                  min={0}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Original Price{" "}
+                                  <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  value={size.original_price}
+                                  onChange={(e) =>
+                                    handleSizeChange(
+                                      varIndex,
+                                      sizeIndex,
+                                      "original_price",
+                                      e.target.value,
+                                    )
+                                  }
+                                  min={0}
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Selling Price{" "}
+                                  <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  value={size.discounted_price}
+                                  onChange={(e) =>
+                                    handleSizeChange(
+                                      varIndex,
+                                      sizeIndex,
+                                      "discounted_price",
+                                      e.target.value,
+                                    )
+                                  }
+                                  min={0}
+                                  className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
+                                    priceErrors.variations[varIndex]?.sizes?.[
+                                      sizeIndex
+                                    ]
                                       ? "border-red-500"
                                       : "border-gray-300"
                                   }`}
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const newVariations = [...variations];
-                                    newVariations[index].sizes[sIdx].sku =
-                                      generateAutoSKU();
-                                    setVariations(newVariations);
-                                    setVariationErrors((prev) => {
-                                      const updated = { ...prev };
-                                      if (updated[index]?.sizes?.[sIdx]) {
-                                        updated[index].sizes[sIdx].sku = "";
-                                      }
-                                      return updated;
-                                    });
-                                  }}
-                                  title="Auto-generate SKU"
-                                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
-                                >
-                                  <RefreshCw size={16} />
-                                </button>
+                                {priceErrors.variations[varIndex]?.sizes?.[
+                                  sizeIndex
+                                ] && (
+                                  <p className="mt-1 text-xs text-red-600">
+                                    {
+                                      priceErrors.variations[varIndex].sizes[
+                                        sizeIndex
+                                      ]
+                                    }
+                                  </p>
+                                )}
                               </div>
-                              {variationErrors[index]?.sizes?.[sIdx]?.sku && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {variationErrors[index].sizes[sIdx].sku}
-                                </p>
-                              )}
-                            </div>
-
-                            <div className="sm:col-span-1 flex justify-end">
-                              {variation.sizes.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const newVariations = [...variations];
-                                    newVariations[index].sizes = newVariations[
-                                      index
-                                    ].sizes.filter((_, i) => i !== sIdx);
-                                    setVariations(newVariations);
-                                  }}
-                                  title="Remove this option"
-                                  className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg font-medium"
-                                >
-                                  <X size={18} />
-                                </button>
-                              )}
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  Barcode
+                                </label>
+                                <input
+                                  type="text"
+                                  value={size.barcode}
+                                  onChange={(e) =>
+                                    handleSizeChange(
+                                      varIndex,
+                                      sizeIndex,
+                                      "barcode",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-black focus:ring-black"
+                                />
+                              </div>
+                              <div className="sm:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                  SKU <span className="text-red-500">*</span>
+                                </label>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    value={size.sku}
+                                    onChange={(e) =>
+                                      handleSizeChange(
+                                        varIndex,
+                                        sizeIndex,
+                                        "sku",
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder="e.g., PROD-001"
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm focus:border-black focus:ring-black ${
+                                      variationErrors[varIndex]?.sizes?.[
+                                        sizeIndex
+                                      ]?.sku
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleGenerateVariationSKU(
+                                        varIndex,
+                                        sizeIndex,
+                                      )
+                                    }
+                                    title="Auto-generate SKU"
+                                    className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
+                                  >
+                                    <RefreshCw size={16} />
+                                  </button>
+                                </div>
+                                {variationErrors[varIndex]?.sizes?.[sizeIndex]
+                                  ?.sku && (
+                                  <p className="mt-1 text-xs text-red-600">
+                                    {
+                                      variationErrors[varIndex].sizes[sizeIndex]
+                                        .sku
+                                    }
+                                  </p>
+                                )}
+                              </div>
+                              <div className="absolute -top-2 -right-2">
+                                {variation.sizes.length > 1 && (
+                                  <button
+                                    onClick={() =>
+                                      removeSizeFromColor(varIndex, sizeIndex)
+                                    }
+                                    title="Remove this size"
+                                    className="text-red-600 hover:text-red-700 text-sm font-medium"
+                                  >
+                                    <X size={18} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
+                        ))}
+                        <button
+                          onClick={() => addSizeToVariation(varIndex)}
+                          className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+                        >
+                          <Plus size={20} /> Add Size
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Custom Attribute mode */}
+                  {variation.mode === "custom" && (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
+                          Attribute <span className="text-red-600">*</span>
+                          <TooltipHint
+                            id={`attr-tooltip-${varIndex}`}
+                            content="Select the attribute type (e.g., Material, Finish, Style)"
+                          />
+                        </label>
+                        <select
+                          value={variation.attribute_id || ""}
+                          onChange={(e) =>
+                            handleVariationChange(
+                              varIndex,
+                              "attribute_id",
+                              e.target.value,
+                            )
+                          }
+                          className={`mt-1 block w-full rounded-2xl border-gray-300 ${
+                            variationErrors[varIndex]?.attribute_id
+                              ? "border-red-500"
+                              : ""
+                          }`}
+                        >
+                          <option value="">Select Attribute</option>
+                          {attributes.map((attr) => (
+                            <option key={attr.id} value={attr.id}>
+                              {attr.name}
+                            </option>
+                          ))}
+                        </select>
+                        {variationErrors[varIndex]?.attribute_id && (
+                          <p className="mt-1 text-sm text-red-600">
+                            {variationErrors[varIndex].attribute_id}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Media for this attribute */}
+                      {variation.attribute_id && (
+                        <div className="mb-4 pt-2 border-t">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
+                            Media for this Attribute
+                            <TooltipHint
+                              id={`attr-media-tooltip-${varIndex}`}
+                              content="Upload images/videos for all options of this attribute"
+                            />
+                          </h4>
+                          {renderMediaUploadSection(varIndex)}
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      )}
 
-                  {variation.attribute_id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newVariations = [...variations];
-                        newVariations[index].sizes.push({
-                          stock: "",
-                          original_price: "",
-                          discounted_price: "",
-                          sku: "",
-                          barcode: "",
-                        });
-                        setVariations(newVariations);
-                      }}
-                      className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium mt-4"
-                    >
-                      <Plus size={18} /> Add Option
-                    </button>
-                  )}
+                      {/* Attribute options */}
+                      {variation.sizes && variation.sizes.length > 0 && (
+                        <div className="space-y-4 mb-4">
+                          <h4 className="text-sm font-semibold text-gray-700">
+                            Options/Variants
+                          </h4>
+                          {variation.sizes.map((size, sIdx) => (
+                            <div
+                              key={sIdx}
+                              className={`border rounded-lg p-4 bg-white border-2 transition ${
+                                variationErrors[varIndex]?.sizes?.[sIdx]
+                                  ? "border-red-300 bg-red-50"
+                                  : "border-gray-200"
+                              }`}
+                            >
+                              <div className="relative grid grid-cols-1 sm:grid-cols-7 gap-3">
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    {attributes.find(
+                                      (a) =>
+                                        a.id ===
+                                        parseInt(variation.attribute_id),
+                                    )?.name || "Value"}{" "}
+                                    <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g., Pure Leather"
+                                    value={size.attribute_value || ""}
+                                    onChange={(e) => {
+                                      const newVariations = [...variations];
+                                      newVariations[varIndex].sizes[
+                                        sIdx
+                                      ].attribute_value = e.target.value;
+                                      setVariations(newVariations);
+                                      setVariationErrors((prev) => {
+                                        const updated = { ...prev };
+                                        if (
+                                          updated[varIndex]?.sizes?.[sIdx]
+                                            ?.attribute_value
+                                        ) {
+                                          delete updated[varIndex].sizes[sIdx]
+                                            .attribute_value;
+                                        }
+                                        return updated;
+                                      });
+                                    }}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                      variationErrors[varIndex]?.sizes?.[sIdx]
+                                        ?.attribute_value
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  {variationErrors[varIndex]?.sizes?.[sIdx]
+                                    ?.attribute_value && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {
+                                        variationErrors[varIndex].sizes[sIdx]
+                                          .attribute_value
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Stock{" "}
+                                    <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={size.stock}
+                                    onChange={(e) =>
+                                      handleSizeChange(
+                                        varIndex,
+                                        sIdx,
+                                        "stock",
+                                        e.target.value,
+                                      )
+                                    }
+                                    min={0}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                      variationErrors[varIndex]?.sizes?.[sIdx]
+                                        ?.stock
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  {variationErrors[varIndex]?.sizes?.[sIdx]
+                                    ?.stock && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {
+                                        variationErrors[varIndex].sizes[sIdx]
+                                          .stock
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Original Price{" "}
+                                    <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={size.original_price}
+                                    onChange={(e) =>
+                                      handleSizeChange(
+                                        varIndex,
+                                        sIdx,
+                                        "original_price",
+                                        e.target.value,
+                                      )
+                                    }
+                                    min={0}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                      variationErrors[varIndex]?.sizes?.[sIdx]
+                                        ?.original_price
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  {variationErrors[varIndex]?.sizes?.[sIdx]
+                                    ?.original_price && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {
+                                        variationErrors[varIndex].sizes[sIdx]
+                                          .original_price
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Selling Price{" "}
+                                    <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    value={size.discounted_price}
+                                    onChange={(e) =>
+                                      handleSizeChange(
+                                        varIndex,
+                                        sIdx,
+                                        "discounted_price",
+                                        e.target.value,
+                                      )
+                                    }
+                                    min={0}
+                                    className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                      variationErrors[varIndex]?.sizes?.[sIdx]
+                                        ?.discounted_price ||
+                                      variationErrors[varIndex]?.sizes?.[sIdx]
+                                        ?.price
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  {(variationErrors[varIndex]?.sizes?.[sIdx]
+                                    ?.discounted_price ||
+                                    variationErrors[varIndex]?.sizes?.[sIdx]
+                                      ?.price) && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {variationErrors[varIndex].sizes[sIdx]
+                                        .discounted_price ||
+                                        variationErrors[varIndex].sizes[sIdx]
+                                          .price}
+                                    </p>
+                                  )}
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Barcode
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value={size.barcode}
+                                    onChange={(e) =>
+                                      handleSizeChange(
+                                        varIndex,
+                                        sIdx,
+                                        "barcode",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                  />
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    SKU <span className="text-red-500">*</span>
+                                  </label>
+                                  <div className="flex gap-1">
+                                    <input
+                                      type="text"
+                                      value={size.sku}
+                                      onChange={(e) =>
+                                        handleSizeChange(
+                                          varIndex,
+                                          sIdx,
+                                          "sku",
+                                          e.target.value,
+                                        )
+                                      }
+                                      placeholder="e.g., PROD-001"
+                                      className={`w-full flex-1 rounded-lg border px-3 py-2 text-sm ${
+                                        variationErrors[varIndex]?.sizes?.[sIdx]
+                                          ?.sku
+                                          ? "border-red-500"
+                                          : "border-gray-300"
+                                      }`}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleGenerateVariationSKU(
+                                          varIndex,
+                                          sIdx,
+                                        )
+                                      }
+                                      title="Auto-generate SKU"
+                                      className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium whitespace-nowrap"
+                                    >
+                                      <RefreshCw size={16} />
+                                    </button>
+                                  </div>
+                                  {variationErrors[varIndex]?.sizes?.[sIdx]
+                                    ?.sku && (
+                                    <p className="mt-1 text-xs text-red-600">
+                                      {
+                                        variationErrors[varIndex].sizes[sIdx]
+                                          .sku
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="absolute -top-2 -right-2">
+                                  {variation.sizes.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newVariations = [...variations];
+                                        newVariations[varIndex].sizes =
+                                          newVariations[varIndex].sizes.filter(
+                                            (_, i) => i !== sIdx,
+                                          );
+                                        setVariations(newVariations);
+                                      }}
+                                      title="Remove this option"
+                                      className="text-red-600 hover:text-red-700 font-medium"
+                                    >
+                                      <X size={18} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
-                  {/* Media for this Attribute */}
-                  {variation.attribute_id && (
-                    <div className="mt-6 pt-6 border-t">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1">
-                        Media for this Attribute
-                        <TooltipHint
-                          id={`attr-media-tooltip-${index}`}
-                          content="Upload images/videos for all options of this attribute"
-                        />
-                      </h4>
-                      {renderMediaUploadSection(index)}
-                    </div>
-                  )}
-
-                  {/* Remove Attribute Group */}
-                  {variations.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const newVariations = variations.filter(
-                          (_, i) => i !== index,
-                        );
-                        setVariations(newVariations);
-                        setVariationErrors((prev) => {
-                          const updated = { ...prev };
-                          delete updated[index];
-                          return updated;
-                        });
-                      }}
-                      className="text-sm text-red-600 hover:text-red-700 mt-6 font-medium"
-                    >
-                      Remove Attribute Group
-                    </button>
+                      {variation.attribute_id && (
+                        <button
+                          type="button"
+                          onClick={() => addSizeToVariation(varIndex)}
+                          className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium mt-2"
+                        >
+                          <Plus size={18} /> Add Option
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               ))}
 
-              {/* Add New Attribute */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (variations.length >= 4) return;
-                  const newVariation = {
-                    attribute_id: "",
-                    attribute_value: "",
-                    media: [],
-                    sizes: [
-                      {
-                        stock: "",
-                        original_price: "",
-                        discounted_price: "",
-                        sku: "",
-                        barcode: "",
-                      },
-                    ],
-                  };
-                  setVariations([...variations, newVariation]);
-                }}
-                className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 mt-4 ${
-                  variations.length >= 4 ? "opacity-50 cursor-not-allowed" : ""
-                }`}
-                disabled={variations.length >= 4}
-              >
-                <Plus size={20} /> Add New Attribute
-              </button>
+              {/* Add new variation group buttons */}
+              <div className="flex gap-3 mt-2">
+                <button
+                  type="button"
+                  onClick={() => addVariationGroup("color_size")}
+                  className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+                >
+                  <Plus size={20} /> Add Color+Size Variation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addVariationGroup("custom")}
+                  className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+                >
+                  <Plus size={20} /> Add Custom Attribute Variation
+                </button>
+              </div>
             </div>
           )}
         </div>
 
         {/* Specifications */}
-        <div className="bg-white p-6 rounded-2xl shadow">
+        {/* <div className="bg-white p-6 rounded-2xl shadow">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-1">
             Product Specifications
             <TooltipHint
@@ -2468,7 +2610,7 @@ const AddEditProduct = () => {
               <Plus size={20} /> Add Specification
             </button>
           </div>
-        </div>
+        </div> */}
 
         {/* Pricing and Inventory */}
         <div className="bg-white p-6 rounded-2xl shadow">
@@ -2677,10 +2819,10 @@ const AddEditProduct = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Volumetric Weight (g)
+                  Volumetric Weight (kg)
                 </label>
                 <div className="mt-1 block w-full rounded-2xl border border-gray-300 bg-gray-50 px-3 py-2 text-gray-700 shadow-sm">
-                  {formData.volumetric_weight || 0} g
+                  {formData.volumetric_weight || 0} kg
                 </div>
               </div>
               <div>
@@ -2960,7 +3102,7 @@ const AddEditProduct = () => {
               <div className="space-y-4">
                 {variations.map((variation, index) => {
                   const variationName =
-                    variationMode === "color_size"
+                    variation.mode === "color_size"
                       ? colors.find(
                           (c) =>
                             parseInt(c.id) === parseInt(variation.color_id),
@@ -3003,11 +3145,13 @@ const AddEditProduct = () => {
                         <div className="p-4 bg-white space-y-6">
                           {variation.sizes.map((size, sIdx) => {
                             const sizeName =
-                              variationMode === "color_size"
+                              variation.mode === "color_size"
                                 ? sizes.find(
                                     (s) =>
                                       parseInt(s.id) === parseInt(size.size_id),
                                   )?.name || `Size ${sIdx + 1}`
+                                : size.attribute_value
+                                ? `${size.attribute_value}`
                                 : `Option ${sIdx + 1}`;
 
                             const original = parseFloat(

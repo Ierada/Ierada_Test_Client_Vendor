@@ -180,7 +180,7 @@ export const validateMainProductFields = (formData) => {
 /**
  * Validate variations with all their nested data
  */
-export const validateVariationsData = (variations, variationMode) => {
+export const validateVariationsData = (variations) => {
   const errors = {};
 
   if (!Array.isArray(variations) || variations.length === 0) {
@@ -194,11 +194,11 @@ export const validateVariationsData = (variations, variationMode) => {
     const varErrors = {};
 
     // Validate attribute selection
-    if (variationMode === "color_size") {
+    if (variation.mode === "color_size") {
       if (!variation.color_id || variation.color_id === "") {
         varErrors.color_id = "Color is required";
       }
-    } else if (variationMode === "custom") {
+    } else if (variation.mode === "custom") {
       if (!variation.attribute_id || variation.attribute_id === "") {
         varErrors.attribute_id = "Attribute is required";
       }
@@ -215,7 +215,7 @@ export const validateVariationsData = (variations, variationMode) => {
         const sizeErr = {};
 
         // Attribute value for custom mode - each option must have a value
-        if (variationMode === "custom") {
+        if (variation.mode === "custom") {
           if (!size.attribute_value || !size.attribute_value.trim()) {
             sizeErr.attribute_value =
               "Attribute value is required for each option";
@@ -223,7 +223,7 @@ export const validateVariationsData = (variations, variationMode) => {
         }
 
         // Size selection for color_size mode
-        if (variationMode === "color_size" && !size.size_id) {
+        if (variation.mode === "color_size" && !size.size_id) {
           sizeErr.size_id = "Size is required";
         }
 
