@@ -1343,17 +1343,6 @@ const AddEditProduct = () => {
     </>
   );
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  Custom variation UI – matching the image layout
-  //
-  //  Each variation row:
-  //  ┌────────────────────────────────────────────────────────────────┐
-  //  │ Variation N  [Attribute1]  [Attribute2]  [Attribute3]  [Attr4]│
-  //  │              [attr_type▼]  [attr_type▼]  [attr_type▼] ...     │
-  //  │ row: [value1] [value2]  [value3]  [value4] [Stock] [MRP] [SP] [Barcode] [SKU] [×]
-  //  │ [Add Image] [Add Video]   ...previews...                      │
-  //  └────────────────────────────────────────────────────────────────┘
-  // ────────────────────────────────────────────────────────────────────────────
   const renderCustomVariations = () => {
     return (
       <div className="space-y-6">
@@ -1720,9 +1709,6 @@ const AddEditProduct = () => {
     );
   };
 
-  // ────────────────────────────────────────────────────────────────────────────
-  //  Main render
-  // ────────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex gap-6 p-6 min-h-screen">
       <div className="flex-1 space-y-6 overflow-y-auto scrollbar-hide">
