@@ -40,6 +40,8 @@ import {
   validateMediaRequirements,
   getDiscountPercentage,
 } from "../../../utils/productValidation";
+import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
+import { GripVertical } from "lucide-react";
 
 const SHIPPING_RATES = [
   { maxWeight: 500, charge: 80 },
@@ -774,6 +776,46 @@ const AddEditProduct = () => {
     });
   };
 
+  const onDragEnd = (result) => {
+    const { source, destination, type } = result;
+    if (!destination) return;
+    if (
+      source.index === destination.index &&
+      source.droppableId === destination.droppableId
+    )
+      return;
+
+    if (type === "VARIATION") {
+      // Reorder top-level variations (both modes)
+      setVariations((prev) => {
+        const updated = [...prev];
+        const [moved] = updated.splice(source.index, 1);
+        updated.splice(destination.index, 0, moved);
+        return updated;
+      });
+      // Also reorder expandedVariations state to keep UI in sync
+      setExpandedVariations((prev) => {
+        const updated = [...prev];
+        const [moved] = updated.splice(source.index, 1);
+        updated.splice(destination.index, 0, moved);
+        return updated;
+      });
+    }
+
+    if (type === "COLOR_SIZE") {
+      // Reorder sizes within a color — droppableId = "sizes-{colorIndex}"
+      const colorIndex = parseInt(source.droppableId.replace("sizes-", ""));
+      setVariations((prev) => {
+        const updated = [...prev];
+        const sizes = [...updated[colorIndex].sizes];
+        const [moved] = sizes.splice(source.index, 1);
+        sizes.splice(destination.index, 0, moved);
+        updated[colorIndex] = { ...updated[colorIndex], sizes };
+        return updated;
+      });
+    }
+  };
+
   // ── File handling ─────────────────────────────────────────────────────────
   const handleFileChange = async (e, variationIndex) => {
     const files = Array.from(e.target.files);
@@ -1096,6 +1138,7 @@ const AddEditProduct = () => {
               attribute_value: null,
               attributes: null,
               grouping_key: String(groupingKey),
+              sequence: variationIndex,
               stock: size.stock,
               original_price: size.original_price,
               discounted_price: size.discounted_price,
@@ -1131,17 +1174,16 @@ const AddEditProduct = () => {
           variationsForSubmit.push({
             color_id: null,
             size_id: null,
-            // Set legacy fields from first attribute for backward compat
             attribute_id: variation.attributes[0]?.attribute_id
               ? parseInt(variation.attributes[0].attribute_id)
               : null,
             attribute_value: variation.attributes[0]?.attribute_value || null,
-            // NEW: full attributes array
             attributes: variation.attributes.map((a) => ({
               attribute_id: parseInt(a.attribute_id),
               attribute_value: a.attribute_value,
             })),
             grouping_key: groupingKey,
+            sequence: variationIndex,
             stock: variation.stock,
             original_price: variation.original_price,
             discounted_price: variation.discounted_price,
@@ -1345,367 +1387,424 @@ const AddEditProduct = () => {
 
   const renderCustomVariations = () => {
     return (
-      <div className="space-y-6">
-        {variations.map((variation, varIdx) => {
-          const attrs = variation.attributes || [
-            { attribute_id: "", attribute_value: "" },
-          ];
-          const usedAttrIds = new Set(
-            attrs.map((a) => String(a.attribute_id)).filter(Boolean),
-          );
-
-          return (
+      <DragDropContext onDragEnd={onDragEnd}>
+        <Droppable droppableId="custom-variations" type="VARIATION">
+          {(provided) => (
             <div
-              key={varIdx}
-              className="border-2 border-gray-200 rounded-2xl overflow-hidden"
+              className="space-y-6"
+              ref={provided.innerRef}
+              {...provided.droppableProps}
             >
-              {/* ── Header row ── */}
-              <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
-                <span className="font-semibold text-sm text-gray-700">
-                  Variation {varIdx + 1}
-                </span>
-                {variations.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeCustomVariation(varIdx)}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X size={18} />
-                  </button>
-                )}
-              </div>
+              {variations.map((variation, varIdx) => {
+                const attrs = variation.attributes || [
+                  { attribute_id: "", attribute_value: "" },
+                ];
+                const usedAttrIds = new Set(
+                  attrs.map((a) => String(a.attribute_id)).filter(Boolean),
+                );
 
-              <div className="p-4 space-y-4">
-                {/* ── Attribute type headers + value inputs ── */}
-                <div>
-                  {/* Attribute type dropdowns row */}
-                  <div className="flex items-end gap-2 flex-wrap mb-1">
-                    {attrs.map((attr, attrIdx) => {
-                      // Filter out already-selected attribute_ids in other columns
-                      const otherUsedIds = new Set(
-                        attrs
-                          .filter((_, i) => i !== attrIdx)
-                          .map((a) => String(a.attribute_id))
-                          .filter(Boolean),
-                      );
-                      return (
-                        <div
-                          key={attrIdx}
-                          className="flex flex-col"
-                          style={{ minWidth: 130 }}
-                        >
-                          <div className="flex items-center gap-1 mb-0.5">
-                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                              Attribute {attrIdx + 1}
-                            </label>
-                            {attrIdx > 0 && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeAttributeFromVariation(varIdx, attrIdx)
-                                }
-                                className="text-red-400 hover:text-red-600 ml-1"
-                                title="Remove attribute"
-                              >
-                                <X size={12} />
-                              </button>
-                            )}
+                return (
+                  <Draggable
+                    key={`custom-var-${varIdx}`}
+                    draggableId={`custom-var-${varIdx}`}
+                    index={varIdx}
+                  >
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        className={`border-2 border-gray-200 rounded-2xl overflow-hidden bg-white ${
+                          snapshot.isDragging
+                            ? "shadow-xl ring-2 ring-blue-300"
+                            : ""
+                        }`}
+                      >
+                        {/* ── Header row ── */}
+                        <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
+                          <div className="flex items-center gap-2">
+                            {/* Drag handle */}
+                            <div
+                              {...provided.dragHandleProps}
+                              className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing"
+                              title="Drag to reorder"
+                            >
+                              <GripVertical size={18} />
+                            </div>
+                            <span className="font-semibold text-sm text-gray-700">
+                              Variation {varIdx + 1}
+                            </span>
                           </div>
-                          <select
-                            value={attr.attribute_id || ""}
-                            onChange={(e) =>
-                              handleCustomAttributeChange(
-                                varIdx,
-                                attrIdx,
-                                "attribute_id",
-                                e.target.value,
-                              )
-                            }
-                            className={`rounded-lg border px-2 py-1.5 text-sm focus:border-black focus:ring-black ${
-                              variationErrors[varIdx]?.attrErrors?.[attrIdx]
-                                ?.attribute_id
-                                ? "border-red-500"
-                                : "border-gray-300"
-                            }`}
-                          >
-                            <option value="">Select Type</option>
-                            {attributes.map((a) => (
-                              <option
-                                key={a.id}
-                                value={a.id}
-                                disabled={otherUsedIds.has(String(a.id))}
-                              >
-                                {a.name}
-                              </option>
-                            ))}
-                          </select>
-                          {variationErrors[varIdx]?.attrErrors?.[attrIdx]
-                            ?.attribute_id && (
-                            <p className="text-xs text-red-600 mt-0.5">
-                              {
-                                variationErrors[varIdx].attrErrors[attrIdx]
-                                  .attribute_id
-                              }
-                            </p>
+                          {variations.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeCustomVariation(varIdx)}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <X size={18} />
+                            </button>
                           )}
                         </div>
-                      );
-                    })}
 
-                    {/* Add Attribute button */}
-                    {attrs.length < 4 && (
-                      <button
-                        type="button"
-                        onClick={() => addAttributeToVariation(varIdx)}
-                        className="flex items-center gap-1 px-2 py-1.5 text-xs text-blue-600 hover:text-blue-800 border border-dashed border-blue-400 rounded-lg self-end mb-0"
-                        title="Add attribute column"
-                      >
-                        <Plus size={14} /> Add Attr
-                      </button>
+                        <div className="p-4 space-y-4">
+                          {/* ── Attribute type headers + value inputs ── */}
+                          <div>
+                            {/* Attribute type dropdowns row */}
+                            <div className="flex items-end gap-2 flex-wrap mb-1">
+                              {attrs.map((attr, attrIdx) => {
+                                // Filter out already-selected attribute_ids in other columns
+                                const otherUsedIds = new Set(
+                                  attrs
+                                    .filter((_, i) => i !== attrIdx)
+                                    .map((a) => String(a.attribute_id))
+                                    .filter(Boolean),
+                                );
+                                return (
+                                  <div
+                                    key={attrIdx}
+                                    className="flex flex-col"
+                                    style={{ minWidth: 130 }}
+                                  >
+                                    <div className="flex items-center gap-1 mb-0.5">
+                                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                        Attribute {attrIdx + 1}
+                                      </label>
+                                      {attrIdx > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeAttributeFromVariation(
+                                              varIdx,
+                                              attrIdx,
+                                            )
+                                          }
+                                          className="text-red-400 hover:text-red-600 ml-1"
+                                          title="Remove attribute"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      )}
+                                    </div>
+                                    <select
+                                      value={attr.attribute_id || ""}
+                                      onChange={(e) =>
+                                        handleCustomAttributeChange(
+                                          varIdx,
+                                          attrIdx,
+                                          "attribute_id",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className={`rounded-lg border px-2 py-1.5 text-sm focus:border-black focus:ring-black ${
+                                        variationErrors[varIdx]?.attrErrors?.[
+                                          attrIdx
+                                        ]?.attribute_id
+                                          ? "border-red-500"
+                                          : "border-gray-300"
+                                      }`}
+                                    >
+                                      <option value="">Select Type</option>
+                                      {attributes.map((a) => (
+                                        <option
+                                          key={a.id}
+                                          value={a.id}
+                                          disabled={otherUsedIds.has(
+                                            String(a.id),
+                                          )}
+                                        >
+                                          {a.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {variationErrors[varIdx]?.attrErrors?.[
+                                      attrIdx
+                                    ]?.attribute_id && (
+                                      <p className="text-xs text-red-600 mt-0.5">
+                                        {
+                                          variationErrors[varIdx].attrErrors[
+                                            attrIdx
+                                          ].attribute_id
+                                        }
+                                      </p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+
+                              {/* Add Attribute button */}
+                              {attrs.length < 4 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addAttributeToVariation(varIdx)
+                                  }
+                                  className="flex items-center gap-1 px-2 py-1.5 text-xs text-blue-600 hover:text-blue-800 border border-dashed border-blue-400 rounded-lg self-end mb-0"
+                                  title="Add attribute column"
+                                >
+                                  <Plus size={14} /> Add Attr
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Attribute value inputs + pricing row */}
+                            <div
+                              className="grid gap-2 items-start mt-2"
+                              style={{
+                                gridTemplateColumns: `repeat(${attrs.length}, minmax(120px,1fr)) minmax(70px,90px) minmax(90px,120px) minmax(90px,120px) minmax(90px,120px) minmax(130px,160px) 36px`,
+                              }}
+                            >
+                              {/* Attribute value inputs */}
+                              {attrs.map((attr, attrIdx) => (
+                                <div key={attrIdx} className="flex flex-col">
+                                  <label className="text-xs font-medium text-gray-600 mb-1">
+                                    {attributes.find(
+                                      (a) =>
+                                        String(a.id) ===
+                                        String(attr.attribute_id),
+                                    )?.name || `Value ${attrIdx + 1}`}
+                                    <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder={`e.g., ${
+                                      attrIdx === 0
+                                        ? "Model A"
+                                        : attrIdx === 1
+                                        ? "Red"
+                                        : attrIdx === 2
+                                        ? "Large"
+                                        : "Other"
+                                    }`}
+                                    value={attr.attribute_value || ""}
+                                    onChange={(e) =>
+                                      handleCustomAttributeChange(
+                                        varIdx,
+                                        attrIdx,
+                                        "attribute_value",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className={`rounded-lg border px-2 py-1.5 text-sm ${
+                                      variationErrors[varIdx]?.attrErrors?.[
+                                        attrIdx
+                                      ]?.attribute_value
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  {variationErrors[varIdx]?.attrErrors?.[
+                                    attrIdx
+                                  ]?.attribute_value && (
+                                    <p className="text-xs text-red-600 mt-0.5">
+                                      {
+                                        variationErrors[varIdx].attrErrors[
+                                          attrIdx
+                                        ].attribute_value
+                                      }
+                                    </p>
+                                  )}
+                                </div>
+                              ))}
+
+                              {/* Stock */}
+                              <div className="flex flex-col">
+                                <label className="text-xs font-medium text-gray-600 mb-1">
+                                  Stock <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  onKeyDown={(e) =>
+                                    e.key === "e" && e.preventDefault()
+                                  }
+                                  min={0}
+                                  value={variation.stock}
+                                  onChange={(e) =>
+                                    handleCustomVariationChange(
+                                      varIdx,
+                                      "stock",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
+                                    variationErrors[varIdx]?.stock
+                                      ? "border-red-500"
+                                      : "border-gray-300"
+                                  }`}
+                                />
+                                {variationErrors[varIdx]?.stock && (
+                                  <p className="text-xs text-red-600 mt-0.5">
+                                    {variationErrors[varIdx].stock}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Original Price */}
+                              <div className="flex flex-col">
+                                <label className="text-xs font-medium text-gray-600 mb-1">
+                                  Original Pr.{" "}
+                                  <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  onKeyDown={(e) =>
+                                    e.key === "e" && e.preventDefault()
+                                  }
+                                  min={0}
+                                  value={variation.original_price}
+                                  onChange={(e) =>
+                                    handleCustomVariationChange(
+                                      varIdx,
+                                      "original_price",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
+                                    variationErrors[varIdx]?.original_price
+                                      ? "border-red-500"
+                                      : "border-gray-300"
+                                  }`}
+                                />
+                                {variationErrors[varIdx]?.original_price && (
+                                  <p className="text-xs text-red-600 mt-0.5">
+                                    {variationErrors[varIdx].original_price}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Selling Price */}
+                              <div className="flex flex-col">
+                                <label className="text-xs font-medium text-gray-600 mb-1">
+                                  Selling Pr.{" "}
+                                  <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  onKeyDown={(e) =>
+                                    e.key === "e" && e.preventDefault()
+                                  }
+                                  min={0}
+                                  value={variation.discounted_price}
+                                  onChange={(e) =>
+                                    handleCustomVariationChange(
+                                      varIdx,
+                                      "discounted_price",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
+                                    variationErrors[varIdx]?.discounted_price ||
+                                    variationErrors[varIdx]?.price
+                                      ? "border-red-500"
+                                      : "border-gray-300"
+                                  }`}
+                                />
+                                {(variationErrors[varIdx]?.discounted_price ||
+                                  variationErrors[varIdx]?.price) && (
+                                  <p className="text-xs text-red-600 mt-0.5">
+                                    {variationErrors[varIdx].discounted_price ||
+                                      variationErrors[varIdx].price}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Barcode */}
+                              <div className="flex flex-col">
+                                <label className="text-xs font-medium text-gray-600 mb-1">
+                                  Barcode
+                                </label>
+                                <input
+                                  type="text"
+                                  value={variation.barcode}
+                                  onChange={(e) =>
+                                    handleCustomVariationChange(
+                                      varIdx,
+                                      "barcode",
+                                      e.target.value,
+                                    )
+                                  }
+                                  className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                                />
+                              </div>
+
+                              {/* SKU */}
+                              <div className="flex flex-col">
+                                <label className="text-xs font-medium text-gray-600 mb-1">
+                                  SKU <span className="text-red-500">*</span>
+                                </label>
+                                <div className="flex gap-1">
+                                  <input
+                                    type="text"
+                                    value={variation.sku}
+                                    onChange={(e) =>
+                                      handleCustomVariationChange(
+                                        varIdx,
+                                        "sku",
+                                        e.target.value,
+                                      )
+                                    }
+                                    placeholder="e.g., PROD-001"
+                                    className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${
+                                      variationErrors[varIdx]?.sku
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                    }`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleGenerateVariationSKU(varIdx)
+                                    }
+                                    title="Auto-generate SKU"
+                                    className="px-2 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                                  >
+                                    <RefreshCw size={14} />
+                                  </button>
+                                </div>
+                                {variationErrors[varIdx]?.sku && (
+                                  <p className="text-xs text-red-600 mt-0.5">
+                                    {variationErrors[varIdx].sku}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Spacer for remove button column – nothing here */}
+                              <div />
+                            </div>
+                          </div>
+
+                          {/* ── Media section ── */}
+                          <div className="pt-3 border-t border-gray-100">
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-medium text-gray-600">
+                                Media
+                              </span>
+                              <button
+                                className="flex items-center gap-1 text-sm text-gray-500"
+                                onClick={() => setIsGuideModalOpen(true)}
+                                type="button"
+                              >
+                                <BsQuestionCircle size={13} />
+                              </button>
+                            </div>
+                            {renderMediaUploadSection(varIdx)}
+                          </div>
+                        </div>
+                      </div>
                     )}
-                  </div>
-
-                  {/* Attribute value inputs + pricing row */}
-                  <div
-                    className="grid gap-2 items-start mt-2"
-                    style={{
-                      gridTemplateColumns: `repeat(${attrs.length}, minmax(120px,1fr)) minmax(70px,90px) minmax(90px,120px) minmax(90px,120px) minmax(90px,120px) minmax(130px,160px) 36px`,
-                    }}
-                  >
-                    {/* Attribute value inputs */}
-                    {attrs.map((attr, attrIdx) => (
-                      <div key={attrIdx} className="flex flex-col">
-                        <label className="text-xs font-medium text-gray-600 mb-1">
-                          {attributes.find(
-                            (a) => String(a.id) === String(attr.attribute_id),
-                          )?.name || `Value ${attrIdx + 1}`}
-                          <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder={`e.g., ${
-                            attrIdx === 0
-                              ? "Model A"
-                              : attrIdx === 1
-                              ? "Red"
-                              : attrIdx === 2
-                              ? "Large"
-                              : "Other"
-                          }`}
-                          value={attr.attribute_value || ""}
-                          onChange={(e) =>
-                            handleCustomAttributeChange(
-                              varIdx,
-                              attrIdx,
-                              "attribute_value",
-                              e.target.value,
-                            )
-                          }
-                          className={`rounded-lg border px-2 py-1.5 text-sm ${
-                            variationErrors[varIdx]?.attrErrors?.[attrIdx]
-                              ?.attribute_value
-                              ? "border-red-500"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        {variationErrors[varIdx]?.attrErrors?.[attrIdx]
-                          ?.attribute_value && (
-                          <p className="text-xs text-red-600 mt-0.5">
-                            {
-                              variationErrors[varIdx].attrErrors[attrIdx]
-                                .attribute_value
-                            }
-                          </p>
-                        )}
-                      </div>
-                    ))}
-
-                    {/* Stock */}
-                    <div className="flex flex-col">
-                      <label className="text-xs font-medium text-gray-600 mb-1">
-                        Stock <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        onKeyDown={(e) => e.key === "e" && e.preventDefault()}
-                        min={0}
-                        value={variation.stock}
-                        onChange={(e) =>
-                          handleCustomVariationChange(
-                            varIdx,
-                            "stock",
-                            e.target.value,
-                          )
-                        }
-                        className={`rounded-lg border px-2 py-1.5 text-sm ${
-                          variationErrors[varIdx]?.stock
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        }`}
-                      />
-                      {variationErrors[varIdx]?.stock && (
-                        <p className="text-xs text-red-600 mt-0.5">
-                          {variationErrors[varIdx].stock}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Original Price */}
-                    <div className="flex flex-col">
-                      <label className="text-xs font-medium text-gray-600 mb-1">
-                        Original Pr. <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        onKeyDown={(e) => e.key === "e" && e.preventDefault()}
-                        min={0}
-                        value={variation.original_price}
-                        onChange={(e) =>
-                          handleCustomVariationChange(
-                            varIdx,
-                            "original_price",
-                            e.target.value,
-                          )
-                        }
-                        className={`rounded-lg border px-2 py-1.5 text-sm ${
-                          variationErrors[varIdx]?.original_price
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        }`}
-                      />
-                      {variationErrors[varIdx]?.original_price && (
-                        <p className="text-xs text-red-600 mt-0.5">
-                          {variationErrors[varIdx].original_price}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Selling Price */}
-                    <div className="flex flex-col">
-                      <label className="text-xs font-medium text-gray-600 mb-1">
-                        Selling Pr. <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="number"
-                        onKeyDown={(e) => e.key === "e" && e.preventDefault()}
-                        min={0}
-                        value={variation.discounted_price}
-                        onChange={(e) =>
-                          handleCustomVariationChange(
-                            varIdx,
-                            "discounted_price",
-                            e.target.value,
-                          )
-                        }
-                        className={`rounded-lg border px-2 py-1.5 text-sm ${
-                          variationErrors[varIdx]?.discounted_price ||
-                          variationErrors[varIdx]?.price
-                            ? "border-red-500"
-                            : "border-gray-300"
-                        }`}
-                      />
-                      {(variationErrors[varIdx]?.discounted_price ||
-                        variationErrors[varIdx]?.price) && (
-                        <p className="text-xs text-red-600 mt-0.5">
-                          {variationErrors[varIdx].discounted_price ||
-                            variationErrors[varIdx].price}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Barcode */}
-                    <div className="flex flex-col">
-                      <label className="text-xs font-medium text-gray-600 mb-1">
-                        Barcode
-                      </label>
-                      <input
-                        type="text"
-                        value={variation.barcode}
-                        onChange={(e) =>
-                          handleCustomVariationChange(
-                            varIdx,
-                            "barcode",
-                            e.target.value,
-                          )
-                        }
-                        className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
-                      />
-                    </div>
-
-                    {/* SKU */}
-                    <div className="flex flex-col">
-                      <label className="text-xs font-medium text-gray-600 mb-1">
-                        SKU <span className="text-red-500">*</span>
-                      </label>
-                      <div className="flex gap-1">
-                        <input
-                          type="text"
-                          value={variation.sku}
-                          onChange={(e) =>
-                            handleCustomVariationChange(
-                              varIdx,
-                              "sku",
-                              e.target.value,
-                            )
-                          }
-                          placeholder="e.g., PROD-001"
-                          className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${
-                            variationErrors[varIdx]?.sku
-                              ? "border-red-500"
-                              : "border-gray-300"
-                          }`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleGenerateVariationSKU(varIdx)}
-                          title="Auto-generate SKU"
-                          className="px-2 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
-                        >
-                          <RefreshCw size={14} />
-                        </button>
-                      </div>
-                      {variationErrors[varIdx]?.sku && (
-                        <p className="text-xs text-red-600 mt-0.5">
-                          {variationErrors[varIdx].sku}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Spacer for remove button column – nothing here */}
-                    <div />
-                  </div>
-                </div>
-
-                {/* ── Media section ── */}
-                <div className="pt-3 border-t border-gray-100">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-medium text-gray-600">
-                      Media
-                    </span>
-                    <button
-                      className="flex items-center gap-1 text-sm text-gray-500"
-                      onClick={() => setIsGuideModalOpen(true)}
-                      type="button"
-                    >
-                      <BsQuestionCircle size={13} />
-                    </button>
-                  </div>
-                  {renderMediaUploadSection(varIdx)}
-                </div>
-              </div>
+                  </Draggable>
+                );
+              })}
+              {provided.placeholder}
+              <button
+                type="button"
+                onClick={addCustomVariation}
+                className="flex items-center gap-2 text-primary-100 hover:text-blue-700 font-medium"
+              >
+                <Plus size={20} /> Add Variation
+              </button>
             </div>
-          );
-        })}
-
-        {/* Add Variation Row */}
-        <button
-          type="button"
-          onClick={addCustomVariation}
-          className="flex items-center gap-2 text-primary-100 hover:text-blue-700 font-medium"
-        >
-          <Plus size={20} /> Add Variation
-        </button>
-      </div>
+          )}
+        </Droppable>
+      </DragDropContext>
     );
   };
 
@@ -2053,275 +2152,381 @@ const AddEditProduct = () => {
 
           {/* Color-size mode */}
           {formData.is_variation && variationMode === "color_size" && (
-            <div className="space-y-6">
-              {variations?.map((variation, colorIndex) => (
-                <div key={colorIndex} className="border rounded-2xl p-4">
-                  <div className="flex gap-4 mb-4">
-                    <div className="flex-1">
-                      <label className="block text-sm font-medium text-gray-700">
-                        Color
-                      </label>
-                      <select
-                        value={variation.color_id}
-                        onChange={(e) =>
-                          handleVariationChange(
-                            colorIndex,
-                            "color_id",
-                            e.target.value,
-                          )
-                        }
-                        className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm"
+            <DragDropContext onDragEnd={onDragEnd}>
+              <Droppable droppableId="color-variations" type="VARIATION">
+                {(provided) => (
+                  <div
+                    className="space-y-6"
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                  >
+                    {variations.map((variation, colorIndex) => (
+                      <Draggable
+                        key={`color-${colorIndex}`}
+                        draggableId={`color-${colorIndex}`}
+                        index={colorIndex}
                       >
-                        <option value="">Select Color</option>
-                        {colors.map((color) => (
-                          <option key={color.id} value={color.id}>
-                            {color.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <button
-                      onClick={() => removeColorVariation(colorIndex)}
-                      className="text-red-500 hover:text-red-700 self-end"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="mt-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-sm font-medium text-gray-700">
-                        Media for{" "}
-                        {colors.find((c) => c.id === variation.color_id)
-                          ?.name || `Variation ${colorIndex + 1}`}
-                      </h3>
-                      <button
-                        className="flex items-center gap-1 text-sm text-gray-600"
-                        onClick={() => setIsGuideModalOpen(true)}
-                        type="button"
-                      >
-                        <BsQuestionCircle />
-                      </button>
-                    </div>
-                    {renderMediaUploadSection(colorIndex)}
-                  </div>
-                  <div className="space-y-4 mt-4">
-                    {variation.sizes.map((size, sizeIndex) => {
-                      const usedSizeIds = variation.sizes
-                        .filter((_, i) => i !== sizeIndex)
-                        .map((s) => s.size_id)
-                        .filter(Boolean);
-                      return (
-                        <div
-                          key={sizeIndex}
-                          className="border rounded-lg p-4 bg-white"
-                        >
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Size <span className="text-red-500">*</span>
-                              </label>
-                              <select
-                                value={size.size_id}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "size_id",
-                                    e.target.value,
-                                  )
-                                }
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        {(provided, snapshot) => (
+                          <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            className={`border rounded-2xl p-4 bg-white ${
+                              snapshot.isDragging
+                                ? "shadow-lg ring-2 ring-blue-300"
+                                : ""
+                            }`}
+                          >
+                            <div className="flex gap-4 mb-4">
+                              {/* Drag handle */}
+                              <div
+                                {...provided.dragHandleProps}
+                                className="flex items-center text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing mt-6"
+                                title="Drag to reorder"
                               >
-                                <option value="">Select Size</option>
-                                {sizes.map((s) => (
-                                  <option
-                                    key={s.id}
-                                    value={s.id}
-                                    disabled={usedSizeIds.includes(s.id)}
-                                  >
-                                    {s.name}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Stock <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                onKeyDown={(e) =>
-                                  e.key === "e" && e.preventDefault()
-                                }
-                                value={size.stock}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "stock",
-                                    e.target.value,
-                                  )
-                                }
-                                min={0}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Original Price{" "}
-                                <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                onKeyDown={(e) =>
-                                  e.key === "e" && e.preventDefault()
-                                }
-                                value={size.original_price}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "original_price",
-                                    e.target.value,
-                                  )
-                                }
-                                min={0}
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                              />
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
-                            <div className="sm:col-span-3">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Selling Price{" "}
-                                <span className="text-red-500">*</span>
-                              </label>
-                              <input
-                                type="number"
-                                onKeyDown={(e) =>
-                                  e.key === "e" && e.preventDefault()
-                                }
-                                value={size.discounted_price}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "discounted_price",
-                                    e.target.value,
-                                  )
-                                }
-                                min={0}
-                                className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                  priceErrors.variations[colorIndex]?.sizes?.[
-                                    sizeIndex
-                                  ]
-                                    ? "border-red-500"
-                                    : "border-gray-300"
-                                }`}
-                              />
-                              {priceErrors.variations[colorIndex]?.sizes?.[
-                                sizeIndex
-                              ] && (
-                                <p className="mt-1 text-xs text-red-600">
-                                  {
-                                    priceErrors.variations[colorIndex].sizes[
-                                      sizeIndex
-                                    ]
-                                  }
-                                </p>
-                              )}
-                            </div>
-                            <div className="sm:col-span-3">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Barcode
-                              </label>
-                              <input
-                                type="text"
-                                value={size.barcode}
-                                onChange={(e) =>
-                                  handleSizeChange(
-                                    colorIndex,
-                                    sizeIndex,
-                                    "barcode",
-                                    e.target.value,
-                                  )
-                                }
-                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                              />
-                            </div>
-                            <div className="sm:col-span-4">
-                              <label className="block text-sm font-medium text-gray-700 mb-1">
-                                SKU <span className="text-red-500">*</span>
-                              </label>
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={size.sku}
+                                <GripVertical size={20} />
+                              </div>
+                              <div className="flex-1">
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Color
+                                </label>
+                                <select
+                                  value={variation.color_id}
                                   onChange={(e) =>
-                                    handleSizeChange(
+                                    handleVariationChange(
                                       colorIndex,
-                                      sizeIndex,
-                                      "sku",
+                                      "color_id",
                                       e.target.value,
                                     )
                                   }
-                                  placeholder="e.g., PROD-001"
-                                  className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                                    variationErrors[colorIndex]?.sizes?.[
-                                      sizeIndex
-                                    ]?.sku
-                                      ? "border-red-500"
-                                      : "border-gray-300"
-                                  }`}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleGenerateVariationSKU(
-                                      colorIndex,
-                                      sizeIndex,
-                                    )
-                                  }
-                                  title="Auto-generate SKU"
-                                  className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm"
                                 >
-                                  <RefreshCw size={16} />
+                                  <option value="">Select Color</option>
+                                  {colors.map((color) => (
+                                    <option key={color.id} value={color.id}>
+                                      {color.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              <button
+                                onClick={() => removeColorVariation(colorIndex)}
+                                className="text-red-500 hover:text-red-700 self-end"
+                              >
+                                <X size={20} />
+                              </button>
+                            </div>
+
+                            <div className="mt-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="text-sm font-medium text-gray-700">
+                                  Media for{" "}
+                                  {colors.find(
+                                    (c) => c.id === variation.color_id,
+                                  )?.name || `Variation ${colorIndex + 1}`}
+                                </h3>
+                                <button
+                                  className="flex items-center gap-1 text-sm text-gray-600"
+                                  onClick={() => setIsGuideModalOpen(true)}
+                                  type="button"
+                                >
+                                  <BsQuestionCircle />
                                 </button>
                               </div>
+                              {renderMediaUploadSection(colorIndex)}
                             </div>
-                            <div className="sm:col-span-2 flex justify-end">
-                              {variation.sizes.length > 1 && (
-                                <button
-                                  onClick={() =>
-                                    removeSizeFromColor(colorIndex, sizeIndex)
-                                  }
-                                  title="Remove size"
-                                  className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+
+                            {/* Sizes with drag-and-drop */}
+                            <Droppable
+                              droppableId={`sizes-${colorIndex}`}
+                              type="COLOR_SIZE"
+                            >
+                              {(sProvided) => (
+                                <div
+                                  className="space-y-4 mt-4"
+                                  ref={sProvided.innerRef}
+                                  {...sProvided.droppableProps}
                                 >
-                                  <X size={18} />
-                                </button>
+                                  {variation.sizes.map((size, sizeIndex) => {
+                                    const usedSizeIds = variation.sizes
+                                      .filter((_, i) => i !== sizeIndex)
+                                      .map((s) => s.size_id)
+                                      .filter(Boolean);
+                                    return (
+                                      <Draggable
+                                        key={`size-${colorIndex}-${sizeIndex}`}
+                                        draggableId={`size-${colorIndex}-${sizeIndex}`}
+                                        index={sizeIndex}
+                                      >
+                                        {(sDraggable, sSnapshot) => (
+                                          <div
+                                            ref={sDraggable.innerRef}
+                                            {...sDraggable.draggableProps}
+                                            className={`border rounded-lg p-4 bg-white ${
+                                              sSnapshot.isDragging
+                                                ? "shadow-lg ring-2 ring-blue-200"
+                                                : ""
+                                            }`}
+                                          >
+                                            <div className="flex items-start gap-2">
+                                              {/* Size drag handle */}
+                                              <div
+                                                {...sDraggable.dragHandleProps}
+                                                className="text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing mt-7"
+                                                title="Drag to reorder size"
+                                              >
+                                                <GripVertical size={16} />
+                                              </div>
+                                              <div className="flex-1">
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                                                  <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      Size{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </label>
+                                                    <select
+                                                      value={size.size_id}
+                                                      onChange={(e) =>
+                                                        handleSizeChange(
+                                                          colorIndex,
+                                                          sizeIndex,
+                                                          "size_id",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                    >
+                                                      <option value="">
+                                                        Select Size
+                                                      </option>
+                                                      {sizes.map((s) => (
+                                                        <option
+                                                          key={s.id}
+                                                          value={s.id}
+                                                          disabled={usedSizeIds.includes(
+                                                            s.id,
+                                                          )}
+                                                        >
+                                                          {s.name}
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                  </div>
+                                                  <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      Stock{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </label>
+                                                    <input
+                                                      type="number"
+                                                      onKeyDown={(e) =>
+                                                        e.key === "e" &&
+                                                        e.preventDefault()
+                                                      }
+                                                      value={size.stock}
+                                                      onChange={(e) =>
+                                                        handleSizeChange(
+                                                          colorIndex,
+                                                          sizeIndex,
+                                                          "stock",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      min={0}
+                                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                    />
+                                                  </div>
+                                                  <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      Original Price{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </label>
+                                                    <input
+                                                      type="number"
+                                                      onKeyDown={(e) =>
+                                                        e.key === "e" &&
+                                                        e.preventDefault()
+                                                      }
+                                                      value={
+                                                        size.original_price
+                                                      }
+                                                      onChange={(e) =>
+                                                        handleSizeChange(
+                                                          colorIndex,
+                                                          sizeIndex,
+                                                          "original_price",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      min={0}
+                                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                    />
+                                                  </div>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
+                                                  <div className="sm:col-span-3">
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      Selling Price{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </label>
+                                                    <input
+                                                      type="number"
+                                                      onKeyDown={(e) =>
+                                                        e.key === "e" &&
+                                                        e.preventDefault()
+                                                      }
+                                                      value={
+                                                        size.discounted_price
+                                                      }
+                                                      onChange={(e) =>
+                                                        handleSizeChange(
+                                                          colorIndex,
+                                                          sizeIndex,
+                                                          "discounted_price",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      min={0}
+                                                      className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                                                        priceErrors.variations[
+                                                          colorIndex
+                                                        ]?.sizes?.[sizeIndex]
+                                                          ? "border-red-500"
+                                                          : "border-gray-300"
+                                                      }`}
+                                                    />
+                                                    {priceErrors.variations[
+                                                      colorIndex
+                                                    ]?.sizes?.[sizeIndex] && (
+                                                      <p className="mt-1 text-xs text-red-600">
+                                                        {
+                                                          priceErrors
+                                                            .variations[
+                                                            colorIndex
+                                                          ].sizes[sizeIndex]
+                                                        }
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                  <div className="sm:col-span-3">
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      Barcode
+                                                    </label>
+                                                    <input
+                                                      type="text"
+                                                      value={size.barcode}
+                                                      onChange={(e) =>
+                                                        handleSizeChange(
+                                                          colorIndex,
+                                                          sizeIndex,
+                                                          "barcode",
+                                                          e.target.value,
+                                                        )
+                                                      }
+                                                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                                                    />
+                                                  </div>
+                                                  <div className="sm:col-span-4">
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                      SKU{" "}
+                                                      <span className="text-red-500">
+                                                        *
+                                                      </span>
+                                                    </label>
+                                                    <div className="flex gap-2">
+                                                      <input
+                                                        type="text"
+                                                        value={size.sku}
+                                                        onChange={(e) =>
+                                                          handleSizeChange(
+                                                            colorIndex,
+                                                            sizeIndex,
+                                                            "sku",
+                                                            e.target.value,
+                                                          )
+                                                        }
+                                                        placeholder="e.g., PROD-001"
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
+                                                          variationErrors[
+                                                            colorIndex
+                                                          ]?.sizes?.[sizeIndex]
+                                                            ?.sku
+                                                            ? "border-red-500"
+                                                            : "border-gray-300"
+                                                        }`}
+                                                      />
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleGenerateVariationSKU(
+                                                            colorIndex,
+                                                            sizeIndex,
+                                                          )
+                                                        }
+                                                        title="Auto-generate SKU"
+                                                        className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                                                      >
+                                                        <RefreshCw size={16} />
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                  <div className="sm:col-span-2 flex justify-end">
+                                                    {variation.sizes.length >
+                                                      1 && (
+                                                      <button
+                                                        onClick={() =>
+                                                          removeSizeFromColor(
+                                                            colorIndex,
+                                                            sizeIndex,
+                                                          )
+                                                        }
+                                                        title="Remove size"
+                                                        className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                                                      >
+                                                        <X size={18} />
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </Draggable>
+                                    );
+                                  })}
+                                  {sProvided.placeholder}
+                                  <button
+                                    onClick={() => addSizeToColor(colorIndex)}
+                                    className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
+                                  >
+                                    <Plus size={20} /> Add Size
+                                  </button>
+                                </div>
                               )}
-                            </div>
+                            </Droppable>
                           </div>
-                        </div>
-                      );
-                    })}
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
                     <button
-                      onClick={() => addSizeToColor(colorIndex)}
+                      onClick={addColorVariation}
                       className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
                     >
-                      <Plus size={20} /> Add Size
+                      <Plus size={20} /> Add Color Variation
                     </button>
                   </div>
-                </div>
-              ))}
-              <button
-                onClick={addColorVariation}
-                className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
-              >
-                <Plus size={20} /> Add Color Variation
-              </button>
-            </div>
+                )}
+              </Droppable>
+            </DragDropContext>
           )}
 
           {/* Custom attribute mode */}
