@@ -20,6 +20,7 @@
     "@ckeditor/ckeditor5-react": "^9.4.0",
     "@greatsumini/react-facebook-login": "^3.4.0",
     "@headlessui/react": "^2.2.0",
+    "@hello-pangea/dnd": "^18.0.1",
     "@hookform/resolvers": "^5.2.2",
     "@pqina/pintura": "^8.89.6",
     "@pqina/react-pintura": "^9.0.3",
