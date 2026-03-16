@@ -405,7 +405,7 @@ const AddEditProduct = () => {
             formattedVariations = p.variations.map((group) => ({
               color_id: group.color_id?.toString() || "",
               media: group.media || [],
-              sizes: group.sizes.map((size) => ({
+              sizes: (group.sizes || []).map((size) => ({
                 size_id: size.size_id?.toString() || "",
                 stock: size.stock != null ? String(size.stock) : "",
                 original_price:
@@ -1110,11 +1110,13 @@ const AddEditProduct = () => {
       const variationsForSubmit = [];
 
       if (variationMode === "color_size") {
-        // ── color_size submit logic (unchanged) ────────────────────────────
+        // variationIndex = color group order  →  sequence
+        // sizeIndex      = size order within color  →  size_sequence
         variations.forEach((variation, variationIndex) => {
           const groupingKey = parseInt(variation.color_id);
           if (!groupingKey) return;
 
+          // ── Media indices for this color group ──────────────────────────────
           const { newFiles: variationNewFiles, indices } = generateMediaIndices(
             variation.media || [],
           );
@@ -1130,7 +1132,8 @@ const AddEditProduct = () => {
             });
           }
 
-          variation.sizes.forEach((size) => {
+          // ── One DB row per size ─────────────────────────────────────────────
+          variation.sizes.forEach((size, sizeIndex) => {
             variationsForSubmit.push({
               color_id: groupingKey,
               size_id: parseInt(size.size_id) || null,
@@ -1138,7 +1141,8 @@ const AddEditProduct = () => {
               attribute_value: null,
               attributes: null,
               grouping_key: String(groupingKey),
-              sequence: variationIndex,
+              sequence: variationIndex, // color group order
+              size_sequence: sizeIndex, // size order within this color
               stock: size.stock,
               original_price: size.original_price,
               discounted_price: size.discounted_price,
@@ -1148,14 +1152,14 @@ const AddEditProduct = () => {
           });
         });
       } else {
-        // ── custom mode submit ─────────────────────────────────────────────
-        // Each variation row = one variation record; grouping_key = row index
+        // custom mode — each variation row is independent; no size_sequence needed
         variations.forEach((variation, variationIndex) => {
           if (!variation.attributes || variation.attributes.length === 0)
             return;
 
           const groupingKey = String(variationIndex);
 
+          // ── Media indices ───────────────────────────────────────────────────
           const { newFiles: variationNewFiles, indices } = generateMediaIndices(
             variation.media || [],
           );
@@ -1183,7 +1187,8 @@ const AddEditProduct = () => {
               attribute_value: a.attribute_value,
             })),
             grouping_key: groupingKey,
-            sequence: variationIndex,
+            sequence: variationIndex, // variation row order
+            size_sequence: 0, // unused in custom mode
             stock: variation.stock,
             original_price: variation.original_price,
             discounted_price: variation.discounted_price,
