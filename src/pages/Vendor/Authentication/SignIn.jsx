@@ -34,7 +34,7 @@ const OtpInput = React.memo(
         ))}
       </div>
     );
-  }
+  },
 );
 
 const OtpTimer = React.memo(
@@ -53,14 +53,14 @@ const OtpTimer = React.memo(
         </button>
       </div>
     );
-  }
+  },
 );
 
 const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
   const [otp, setOtp] = useState(
     twoFactorType === "otp" || twoFactorType === ""
       ? ["", "", "", ""]
-      : ["", "", "", "", "", ""]
+      : ["", "", "", "", "", ""],
   );
   const [timerState, setTimerState] = useState({
     countdown: 60,
@@ -140,7 +140,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
         setIsLoading(false);
       }
     },
-    [formData, setUser, navigate]
+    [formData, setUser, navigate],
   );
 
   const handleOtpChange = useCallback(
@@ -157,7 +157,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
             }
             const nextIndex = Math.min(
               index + digits.length,
-              newOtp.length - 1
+              newOtp.length - 1,
             );
             setTimeout(() => {
               otpRefs.current[nextIndex]?.focus();
@@ -188,7 +188,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
         });
       }
     },
-    [handleVerify2FA]
+    [handleVerify2FA],
   );
 
   const handleOtpKeyDown = useCallback(
@@ -204,7 +204,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
         }, 0);
       }
     },
-    [otp]
+    [otp],
   );
 
   const handleResendOtp = useCallback(async () => {
@@ -217,7 +217,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
     setIsLoading(true);
     setErrors({});
     setOtp(
-      twoFactorType === "otp" ? ["", "", "", ""] : ["", "", "", "", "", ""]
+      twoFactorType === "otp" ? ["", "", "", ""] : ["", "", "", "", "", ""],
     );
 
     try {
@@ -296,7 +296,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
                 setOtp(
                   twoFactorType === "otp"
                     ? ["", "", "", ""]
-                    : ["", "", "", "", "", ""]
+                    : ["", "", "", "", "", ""],
                 );
                 setErrors({});
                 onClose();
@@ -394,7 +394,7 @@ const VendorSignIn = () => {
         setLoading(false);
       }
     },
-    [formData, setUser, navigate]
+    [formData, setUser, navigate],
   );
 
   return (
@@ -537,8 +537,8 @@ const VendorSignIn = () => {
                     <button
                       onClick={() =>
                         window.open(
-                          `${config.VITE_BASE_WEBSITE_URL}/become-seller`,
-                          "_blank"
+                          `${config.VITE_BASE_WEBSITE_URL}/become-a-seller`,
+                          "_blank",
                         )
                       }
                       className="text-sm font-medium text-[black] hover:text-[#6B705C]"
