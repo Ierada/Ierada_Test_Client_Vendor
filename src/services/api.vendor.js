@@ -43,11 +43,6 @@ export const vendorLogin = async (userData) => {
 export const requestDeactivation = async (id) => {
   try {
     const res = await apiClient.put(`/vendor/deactivate/${id}`);
-    if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-    } else {
-      // notifyOnFail(res.data.message);
-    }
     return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
@@ -58,11 +53,6 @@ export const requestDeactivation = async (id) => {
 export const getAllvendors = async () => {
   try {
     const res = await apiClient.get("/vendor/getAll");
-    if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
     return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
@@ -73,12 +63,7 @@ export const getAllvendors = async () => {
 export const getVendorDetails = async (userId) => {
   try {
     const res = await apiClient.get(`/vendor/getById/${userId}`);
-    if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-      return res.data;
-    } else {
-      notifyOnFail(res.data.message);
-    }
+    return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
     console.log(error);
@@ -88,11 +73,6 @@ export const getVendorDetails = async (userId) => {
 export const getVendorById = async (userId) => {
   try {
     const res = await apiClient.get(`/vendor/get/${userId}`);
-    if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
     return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
@@ -103,11 +83,6 @@ export const getVendorById = async (userId) => {
 export const updateVendor = async (id, userData) => {
   try {
     const res = await apiClient.put(`/vendor/edit/${id}`, userData);
-    if (res.data.status === 1) {
-      notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
-    }
     return res.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");

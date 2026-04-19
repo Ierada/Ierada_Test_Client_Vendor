@@ -73,7 +73,7 @@ const calculateProfileCompletion = (userData) => {
     "bank_name",
   ];
   const filledFields = requiredFields.filter((field) =>
-    userData[field]?.trim()
+    userData[field]?.trim(),
   );
   return Math.round((filledFields.length / requiredFields.length) * 100);
 };
@@ -340,13 +340,13 @@ const Profile = () => {
       const response = await requestDeactivation(user.id);
       if (response?.status === 1) {
         notifyOnSuccess(
-          response.message || "Deactivation request submitted successfully"
+          response.message || "Deactivation request submitted successfully",
         );
         setShowDeactivationModal(false);
         await fetchUserDetails(user.id);
       } else {
         notifyOnFail(
-          response?.message || "Failed to submit deactivation request"
+          response?.message || "Failed to submit deactivation request",
         );
       }
     } catch (error) {
@@ -361,7 +361,7 @@ const Profile = () => {
     if (userData.is_2fa_enabled) {
       setShow2FAModal(true);
       notifyOnWarning(
-        "Disabling Two-Factor Authentication will reduce the security of your account. You will no longer receive OTP verification for sensitive actions. Are you sure you want to proceed?"
+        "Disabling Two-Factor Authentication will reduce the security of your account. You will no longer receive OTP verification for sensitive actions. Are you sure you want to proceed?",
       );
       return;
     }
