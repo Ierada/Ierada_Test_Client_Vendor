@@ -24,13 +24,13 @@ const VendorLayout = () => {
   useEffect(() => {
     if (window.innerWidth < 1024) setSidebarOpen(false);
   }, [location.pathname]);
-
+  
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-30 w-auto transform bg-white dark:bg-gray-800 transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        className={`fixed inset-y-0 left-0 z-30 w-64 transform bg-white dark:bg-gray-800 transition-transform duration-300 ease-in-out ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <VendorSidebar
@@ -40,19 +40,10 @@ const VendorLayout = () => {
       </div>
 
       {/* Main content */}
-      <div className="relative flex flex-1 flex-col lg:ml-20 bg-[#FFF3EF]">
-        <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen}>
-          <button
-            onClick={toggleSidebar}
-            className="p-2 rounded-md lg:hidden hover:bg-gray-100 text-white"
-          >
-            {sidebarOpen ? (
-              <X className="w-6 h-6" color="white" />
-            ) : (
-              <Menu className="w-6 h-6" color="white" />
-            )}
-          </button>
-        </VendorHeader>
+      <div className={`relative flex flex-1 flex-col bg-[#FFF3EF] transition-all duration-300 min-w-0 ${
+        sidebarOpen ? "lg:ml-64" : "lg:ml-0"
+      }`}>
+        <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
         <main className="flex-grow p-4 mt-20">
           <div className="mx-auto max-w-screen-2xl">

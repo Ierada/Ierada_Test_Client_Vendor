@@ -18,6 +18,10 @@ import Product from "../pages/Vendor/Product";
 import AddEditProduct from "../pages/Vendor/AddProduct";
 import Setting from "../pages/Vendor/Setting";
 import Order from "../pages/Vendor/Order";
+import OrderPipeline from "../pages/Vendor/Order/OrderPipeline.jsx";
+import SelfShip from "../pages/Vendor/Order/SelfShip.jsx";
+import Returns from "../pages/Vendor/Order/Returns.jsx";
+import OrderDetail from "../pages/Vendor/Order/OrderDetail/index.jsx";
 import Invoice from "../pages/Vendor/Invoice";
 import Coupons from "../pages/Vendor/Coupons";
 import Report from "../pages/Vendor/Report";
@@ -93,6 +97,11 @@ const VendorRoutes = () => {
         { path: "/bulk-upload", element: <ProductFilesManager /> },
         { path: "/settings", element: <Setting /> },
         { path: "/orders", element: <Order /> },
+        { path: "/orders/pipeline", element: <OrderPipeline /> },
+        { path: "/orders/self-ship", element: <SelfShip /> },
+        { path: "/orders/returns", element: <Returns /> },
+        { path: "/orders/logistics", element: <Order /> },
+        { path: "/orders/:id", element: <OrderDetail /> },
         { path: "/invoice", element: <Invoice /> },
         // { path: "/invoice/create", element: <CreateInvoice /> },
         { path: "/coupons", element: <Coupons /> },

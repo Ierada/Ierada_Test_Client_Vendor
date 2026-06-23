@@ -74,3 +74,13 @@ export const getDeliveryEstimation = async (user_id, pin_code) => {
     console.log(error);
   }
 };
+
+export const trackOrderById = async (order_id) => {
+  try {
+    const res = await apiClient.get(`/shipping/track/${order_id}`);
+    return res.data;
+  } catch (error) {
+    console.error("Error reaching the server for tracking:", error);
+    return null;
+  }
+};

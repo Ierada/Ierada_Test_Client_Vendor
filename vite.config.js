@@ -12,8 +12,18 @@ export default defineConfig({
       include: [/node_modules/], // Ensure all CommonJS modules in node_modules are included
     },
   },
-  // server: {
-  //   port: 5190,
-  // },
+  server: {
+    // port: 5190,
+    proxy: {
+      '/api/assets': {
+        target: 'https://vendor-internal-testing.ierada.com',
+        changeOrigin: true,
+        secure: false,
+        headers: {
+          Referer: 'https://vendor-internal-testing.ierada.com/'
+        }
+      }
+    }
+  },
   // base: '',
 });

@@ -244,7 +244,6 @@ const ProductFilesManager = () => {
     {
       columns,
       data: files,
-      initialState: { pageIndex: 0, pageSize: 50 },
       manualPagination: true,
       manualSortBy: true,
       autoResetPage: false,
@@ -252,6 +251,8 @@ const ProductFilesManager = () => {
       pageCount,
       disableSortRemove: true,
       initialState: {
+        pageIndex: 0,
+        pageSize: 50,
         sortBy: [
           {
             id: sortConfig.id,
