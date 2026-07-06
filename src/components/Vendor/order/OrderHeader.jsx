@@ -1,13 +1,19 @@
 import React from "react";
 import { CiImport } from "react-icons/ci";
 
-const OrderHeader = ({ onExport }) => {
+const OrderHeader = ({ onExport, totalOrders = 0, unshipped = 0 }) => {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
       <div>
-        <h1 className="text-3xl font-semibold text-gray-900 font-satoshi">Orders</h1>
+        <h1 className="text-3xl font-semibold text-gray-900 font-satoshi">
+          Orders
+        </h1>
         <p className="text-sm text-gray-500 mt-1">
-          Advanced order management with AI fraud detection & SLA monitoring
+          {totalOrders > 0
+            ? `${totalOrders} orders${
+                unshipped > 0 ? ` · ${unshipped} awaiting shipping` : ""
+              }`
+            : "Advanced order management with AI fraud detection & SLA monitoring"}
         </p>
       </div>
       <button

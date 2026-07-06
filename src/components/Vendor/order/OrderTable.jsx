@@ -2,13 +2,41 @@ import React from "react";
 import OrderTableRow from "./OrderTableRow";
 import EmptyOrders from "./EmptyOrders";
 
-const HEADERS = ["Order", "Product", "Customer", "Courier", "Payment", "Status", "SLA", "Risk", "Amount", "Actions"];
+const HEADERS = [
+  "Order",
+  "Product",
+  "Customer",
+  "Courier",
+  "Payment",
+  "Status",
+  "SLA",
+  "Risk",
+  "Amount",
+  "Actions",
+];
 
-const OrderTable = ({ orders, isLoading, selectedOrders, onSelectOrder, onSelectAll, onViewOrder, onOrderUpdate, onAcceptSuccess }) => {
-  if (isLoading) return <div className="p-12 text-center text-gray-500 font-semibold bg-white rounded-xl border border-gray-100">Loading orders...</div>;
+const OrderTable = ({
+  orders,
+  isLoading,
+  selectedOrders,
+  onSelectOrder,
+  onSelectAll,
+  onViewOrder,
+  onOrderUpdate,
+  onAcceptSuccess,
+}) => {
+  if (isLoading)
+    return (
+      <div className="p-12 text-center text-gray-500 font-semibold bg-white rounded-xl border border-gray-100">
+        Loading orders...
+      </div>
+    );
+
   if (!orders || orders.length === 0) return <EmptyOrders />;
 
-  const allSelected = orders.length > 0 && selectedOrders.length === orders.length;
+  const allSelected =
+    orders.length > 0 && selectedOrders.length === orders.length;
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       <div className="overflow-x-auto">
@@ -16,10 +44,17 @@ const OrderTable = ({ orders, isLoading, selectedOrders, onSelectOrder, onSelect
           <thead>
             <tr className="bg-gray-50/75 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               <th className="px-6 py-4 w-12">
-                <input type="checkbox" checked={allSelected} onChange={onSelectAll} className="rounded border-gray-300 text-[#FF6012] focus:ring-[#FF6012] w-4 h-4 cursor-pointer" />
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onSelectAll}
+                  className="rounded border-gray-300 text-[#FF6012] focus:ring-[#FF6012] w-4 h-4 cursor-pointer"
+                />
               </th>
               {HEADERS.map((h) => (
-                <th key={h} className="px-6 py-4 whitespace-nowrap">{h}</th>
+                <th key={h} className="px-6 py-4 whitespace-nowrap">
+                  {h}
+                </th>
               ))}
             </tr>
           </thead>

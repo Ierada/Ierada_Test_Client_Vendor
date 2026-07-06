@@ -395,7 +395,10 @@ const AddEditProduct = () => {
       };
 
       setTimeout(() => {
-        setFormData(updatedFormData);
+        setFormData((prev) => ({
+          ...updatedFormData,
+          platform_fee: prev.platform_fee,
+        }));
         if (p.variationMode) setVariationMode(p.variationMode);
 
         if (p.variations && p.variations.length > 0) {
@@ -469,6 +472,12 @@ const AddEditProduct = () => {
       if (weightInGrams <= rate.maxWeight) return rate.charge;
     }
     return SHIPPING_RATES[SHIPPING_RATES.length - 1].charge;
+  };
+
+  const calcPlatformFee = (discountedPrice, feePercent) => {
+    return (
+      (parseFloat(discountedPrice || 0) * parseFloat(feePercent || 0)) / 100
+    );
   };
 
   const handleGenerateMainSKU = () => {
@@ -2720,11 +2729,7 @@ const AddEditProduct = () => {
                 </label>
                 <input
                   type="number"
-                  onKeyDown={(e) => e.key === "e" && e.preventDefault()}
-                  name="platform_fee"
                   value={formData.platform_fee}
-                  min={0}
-                  onChange={handleInputChange}
                   disabled
                   className="mt-1 block w-full bg-gray-200 rounded-2xl border-gray-300 shadow-sm"
                 />
@@ -2735,7 +2740,7 @@ const AddEditProduct = () => {
                 </label>
                 <div className="mt-1 flex items-center gap-4">
                   <div className="flex-1 bg-gray-50 border border-gray-300 rounded-2xl px-4 py-2 text-gray-800 font-medium">
-                    ₹{calculatedShipping + settingsShipping}
+                    ₹{calculatedShipping}
                   </div>
                 </div>
               </div>
@@ -2971,17 +2976,20 @@ const AddEditProduct = () => {
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Shipping Fee</span>
                 <span className="font-medium">
-                  ₹
-                  {(
-                    parseFloat(formData.shipping_charges || 0) +
-                    settingsShipping
-                  ).toFixed(2)}
+                  ₹{parseFloat(formData.shipping_charges || 0).toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Other Charges (Rs.)</span>
+                <span className="text-gray-600">
+                  Other Charges ({formData.platform_fee}%)
+                </span>
                 <span className="font-medium">
-                  ₹{parseFloat(formData.platform_fee || 0).toFixed(2)}
+                  ₹
+                  {(
+                    (parseFloat(formData.discounted_price || 0) *
+                      parseFloat(formData.platform_fee || 0)) /
+                    100
+                  ).toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between text-sm font-bold border-t pt-2">
@@ -2991,7 +2999,9 @@ const AddEditProduct = () => {
                   {(
                     parseFloat(formData.discounted_price || 0) +
                     parseFloat(formData.shipping_charges || 0) +
-                    parseFloat(formData.platform_fee || 0)
+                    (parseFloat(formData.discounted_price || 0) *
+                      parseFloat(formData.platform_fee || 0)) /
+                      100
                   ).toFixed(2)}
                 </span>
               </div>
@@ -3021,7 +3031,10 @@ const AddEditProduct = () => {
                   const tds = discounted * 0.02;
                   const settlement = discounted - tds - gstAmount;
                   const shipping = parseFloat(formData.shipping_charges || 0);
-                  const platform = parseFloat(formData.platform_fee || 0);
+                  const platform = calcPlatformFee(
+                    size.discounted_price,
+                    formData.platform_fee,
+                  );
                   const listing = discounted + shipping + platform;
 
                   return (

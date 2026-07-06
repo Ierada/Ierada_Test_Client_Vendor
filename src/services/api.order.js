@@ -152,7 +152,7 @@ export const createReturnOrReplacement = async (
   order_id,
   role,
   returnDetails = null,
-  returnAction = null
+  returnAction = null,
 ) => {
   try {
     const requestBody = {};
@@ -173,7 +173,7 @@ export const createReturnOrReplacement = async (
 
     const res = await apiClient.post(
       `/shipping/returnOrReplace/${role}/${order_id}${queryString}`,
-      requestBody
+      requestBody,
     );
     if (res.data.status === 1) {
       notifyOnSuccess(res.data.message);
@@ -197,7 +197,7 @@ export const cancelOrder = async (order_id, role, returnDetails = null) => {
 
     const res = await apiClient.post(
       `/order/cancel/${order_id}/${role}`,
-      requestBody
+      requestBody,
     );
     if (res.data.status === 1) {
       notifyOnSuccess(res.data.message);
@@ -225,5 +225,79 @@ export const getAllShipments = async () => {
     notifyOnFail("Error reaching the Server");
     console.log(error);
     return null;
+  }
+};
+
+export const createSelfShip = async (orderId, payload) => {
+  try {
+    const res = await apiClient.post(`/order/self-ship/${orderId}`, payload);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to create self-ship";
+    console.error("api.order createSelfShip error:", error);
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const bulkSelfShip = async (file) => {
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await apiClient.post("/order/bulk-self-ship", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || error.message || "Bulk upload failed";
+    console.error("api.order bulkSelfShip error:", error);
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const downloadSelfShipTemplate = async () => {
+  try {
+    const res = await apiClient.get("/order/self-ship-template", {
+      responseType: "blob",
+    });
+
+    // Create a temporary anchor to trigger the download
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "self_ship_template.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to download template";
+    console.error("api.order downloadSelfShipTemplate error:", error);
+    notifyOnFail(message);
+    throw error;
+  }
+};
+
+export const getSelfShipOrders = async (vendorId) => {
+  try {
+    const res = await apiClient.get(`/order/self-ship-orders/${vendorId}`);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to fetch self-ship orders";
+    console.error("api.order getSelfShipOrders error:", error);
+    notifyOnFail(message);
+    return { status: 0, message, data: { orders: [] } };
   }
 };
