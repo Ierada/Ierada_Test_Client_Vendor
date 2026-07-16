@@ -1,38 +1,44 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 import OrderHeader from "../../../components/Vendor/order/OrderHeader";
-import OrderFilterTabs from "../../../components/Vendor/order/OrderFilterTabs";
+import OrderSummaryCards from "../../../components/Vendor/order/OrderSummaryCards";
+import OrderTableHeader from "../../../components/Vendor/order/OrderTableHeader";
 import OrderTable from "../../../components/Vendor/order/OrderTable";
 import OrderPagination from "../../../components/Vendor/order/OrderPagination";
 import OrderModal from "../../../components/Vendor/Models/OrderModal";
 import OrderDetailModal from "../../../components/Vendor/Models/OrderDetailModal";
 
 import { useAppContext } from "../../../context/AppContext";
-import { getOrdersByVendorId } from "../../../services/api.order";
+import {
+  getOrdersByVendorId,
+  updateOrderStatus,
+} from "../../../services/api.order";
 import { exportToPDF } from "./utils/pdfExport";
+import {
+  notifyOnFail,
+  notifyOnSuccess,
+} from "../../../utils/notification/toast";
 
-// ─── Main Component ────────────────────────────────────────────────────────────
 const Order = () => {
   const { user } = useAppContext();
+  const navigate = useNavigate();
 
-  // ── Data state ─────────────────────────────────────────────────────────────
+  // ── Data ───────────────────────────────────────────────────────────────────
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // ── Modal state ────────────────────────────────────────────────────────────
+  // ── Modals ─────────────────────────────────────────────────────────────────
   const [modalData, setModalData] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  // ── Multi-step accept flow ─────────────────────────────────────────────────
   const [activeFlowOrderId, setActiveFlowOrderId] = useState(null);
 
-  // ── Filter / search / pagination state ────────────────────────────────────
+  // ── Filters / search / pagination ──────────────────────────────────────────
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("");
-  const [selectedOrders, setSelectedOrders] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedOrders, setSelectedOrders] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState(10);
 
   const [filters, setFilters] = useState({
     orderStatus: "",
@@ -40,7 +46,7 @@ const Order = () => {
     endDate: "",
   });
 
-  // ── Fetch orders ───────────────────────────────────────────────────────────
+  // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
@@ -57,68 +63,45 @@ const Order = () => {
     fetchOrders();
   }, []);
 
-  // ── Client-side filtering (matches doc-8 logic exactly) ───────────────────
+  // ── Filtering ──────────────────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
-      // Search: order number, customer name, product name
       const matchesSearch =
         !search ||
         o.order_number?.toLowerCase().includes(search.toLowerCase()) ||
         `${o.Address?.first_name || ""} ${o.Address?.last_name || ""}`
           .toLowerCase()
           .includes(search.toLowerCase()) ||
-        o.product?.name?.toLowerCase().includes(search.toLowerCase());
+        o.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
+        (o.tracking_id || "").toLowerCase().includes(search.toLowerCase());
 
-      // Tab filter
-      let matchesTab = false;
-      const s = (o.order_status || "").toLowerCase();
-      if (activeTab === "") {
-        matchesTab = true;
-      } else if (activeTab === "placed") {
-        matchesTab = s === "placed" || s === "pending";
-      } else if (activeTab === "shipped") {
-        matchesTab = s === "shipped" || s === "packed";
-      } else if (activeTab === "in transit") {
-        matchesTab =
-          s === "intransit" || s === "in transit" || s === "out for delivery";
-      } else if (activeTab === "delivered") {
-        matchesTab = s === "delivered";
-      } else if (activeTab === "cancelled") {
-        matchesTab = s === "cancelled" || s === "rejected";
-      } else if (activeTab === "returned") {
-        matchesTab =
-          s === "returned" || s === "return" || s === "return pending";
-      } else {
-        matchesTab = s === activeTab;
-      }
-
-      // Advanced filter panel
       const matchesStatus =
         !filters.orderStatus || o.order_status === filters.orderStatus;
+
       const matchesDate =
         (!filters.startDate ||
           new Date(o.created_at) >= new Date(filters.startDate)) &&
         (!filters.endDate ||
           new Date(o.created_at) <= new Date(filters.endDate + "T23:59:59Z"));
 
-      return matchesSearch && matchesTab && matchesStatus && matchesDate;
+      return matchesSearch && matchesStatus && matchesDate;
     });
-  }, [orders, search, activeTab, filters]);
+  }, [orders, search, filters]);
 
   // ── Pagination ─────────────────────────────────────────────────────────────
   const paginatedOrders = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredOrders.slice(start, start + pageSize);
-  }, [filteredOrders, currentPage]);
+  }, [filteredOrders, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredOrders.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 on filter/search/pageSize change
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, activeTab, filters]);
+  }, [search, filters, pageSize]);
 
-  // ── Selection helpers ──────────────────────────────────────────────────────
+  // ── Selection ──────────────────────────────────────────────────────────────
   const handleSelectOrder = (id) =>
     setSelectedOrders((p) =>
       p.includes(id) ? p.filter((x) => x !== id) : [...p, id],
@@ -129,66 +112,94 @@ const Order = () => {
     setSelectedOrders((p) => (p.length === pageIds.length ? [] : pageIds));
   };
 
-  // ── Derived counts ─────────────────────────────────────────────────────────
-  const unshipped = filteredOrders.filter(
-    (o) =>
-      !o.shipping_provider && !o.courier_name && o.order_status === "placed",
-  ).length;
+  // ── Bulk action ────────────────────────────────────────────────────────────
+  const handleBulkAction = async (action) => {
+    if (action === "export") {
+      exportToPDF(
+        selectedOrders.length > 0
+          ? filteredOrders.filter((o) => selectedOrders.includes(o.id))
+          : filteredOrders,
+      );
+      return;
+    }
+    if (selectedOrders.length === 0) {
+      notifyOnFail("Select at least one order first");
+      return;
+    }
+    let successCount = 0;
+    await Promise.all(
+      selectedOrders.map(async (id) => {
+        try {
+          const res = await updateOrderStatus(id, { order_status: action });
+          if (res?.status === 1) successCount++;
+        } catch {
+          /* continue */
+        }
+      }),
+    );
+    if (successCount > 0) {
+      notifyOnSuccess(
+        `${successCount} order${successCount > 1 ? "s" : ""} updated`,
+      );
+      setSelectedOrders([]);
+      fetchOrders();
+    } else {
+      notifyOnFail("Bulk update failed");
+    }
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen p-4">
-      {/* Header */}
+    <div className="min-h-screen bg-[#FAFAFA] p-5">
+      {/* 1. Header */}
       <OrderHeader
+        onCreateOrder={() => navigate("/vendor/orders/create")}
         onExport={() => exportToPDF(filteredOrders)}
-        totalOrders={filteredOrders.length}
-        unshipped={unshipped}
       />
 
-      {/* Tabs + search + filter toggle */}
-      <OrderFilterTabs
-        activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-          setCurrentPage(1);
-        }}
+      {/* 2. Summary stat cards */}
+      <OrderSummaryCards orders={orders} />
+
+      {/* 3. Table controls */}
+      <OrderTableHeader
         search={search}
         setSearch={(s) => {
           setSearch(s);
           setCurrentPage(1);
         }}
         onToggleFilters={() => setShowFilters((p) => !p)}
-        orders={orders}
+        selectedOrders={selectedOrders}
+        onBulkAction={handleBulkAction}
+        onExport={() => exportToPDF(filteredOrders)}
       />
 
-      {/* Advanced filter panel */}
+      {/* 4. Advanced filter panel */}
       {showFilters && (
-        <div className="bg-white p-5 rounded-xl border border-gray-200 mb-6 grid grid-cols-1 md:grid-cols-3 gap-6 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-gray-200 mb-4 grid grid-cols-1 md:grid-cols-3 gap-5 shadow-sm">
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase">
-              Status
+            <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">
+              Order Status
             </label>
             <select
               value={filters.orderStatus}
               onChange={(e) =>
                 setFilters((p) => ({ ...p, orderStatus: e.target.value }))
               }
-              className="w-full mt-1.5 p-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-1 focus:ring-[#FF6012]"
             >
               <option value="">All Statuses</option>
-              <option value="placed">Placed</option>
+              <option value="placed">Placed / Pending</option>
               <option value="shipped">Shipped</option>
               <option value="intransit">In Transit</option>
               <option value="delivered">Delivered</option>
               <option value="cancelled">Cancelled</option>
               <option value="rejected">Rejected</option>
-              <option value="return pending">Return Pending</option>
-              <option value="return initiated">Return Initiated</option>
               <option value="returned">Returned</option>
+              <option value="return pending">Return Pending</option>
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase">
+            <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">
               Start Date
             </label>
             <input
@@ -197,11 +208,11 @@ const Order = () => {
               onChange={(e) =>
                 setFilters((p) => ({ ...p, startDate: e.target.value }))
               }
-              className="w-full mt-1.5 p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#FF6012]"
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-gray-500 uppercase">
+            <label className="text-xs font-bold text-gray-500 uppercase mb-1.5 block">
               End Date
             </label>
             <input
@@ -210,37 +221,52 @@ const Order = () => {
               onChange={(e) =>
                 setFilters((p) => ({ ...p, endDate: e.target.value }))
               }
-              className="w-full mt-1.5 p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#FF6012]"
             />
+          </div>
+          <div className="md:col-span-3 flex justify-end gap-2">
+            <button
+              onClick={() => {
+                setFilters({ orderStatus: "", startDate: "", endDate: "" });
+                setSearch("");
+              }}
+              className="px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              Clear Filters
+            </button>
+            <button
+              onClick={() => setShowFilters(false)}
+              className="px-4 py-2 text-sm font-semibold text-white bg-[#FF6012] rounded-xl hover:bg-[#e0500a] transition-colors"
+            >
+              Apply
+            </button>
           </div>
         </div>
       )}
 
-      {/* Table */}
+      {/* 5. Table */}
       <OrderTable
         orders={paginatedOrders}
         isLoading={isLoading}
         selectedOrders={selectedOrders}
         onSelectOrder={handleSelectOrder}
         onSelectAll={handleSelectAll}
-        onViewOrder={(o) => {
-          setModalData(o);
-          setIsModalOpen(true);
-        }}
+        onViewOrder={(o) => navigate(`/orders/${o.id}`)}
         onOrderUpdate={fetchOrders}
         onAcceptSuccess={(orderId) => setActiveFlowOrderId(orderId)}
       />
 
-      {/* Pagination */}
+      {/* 6. Pagination — rendered inside table's bottom border */}
       <OrderPagination
         currentPage={currentPage}
         totalPages={totalPages}
         onPageChange={setCurrentPage}
         totalOrders={filteredOrders.length}
         pageSize={pageSize}
+        onPageSizeChange={setPageSize}
       />
 
-      {/* Full detail + shipping modal */}
+      {/* 7. Full detail + shipping modal */}
       <OrderModal
         isOpen={isModalOpen}
         onClose={() => {
@@ -251,7 +277,7 @@ const Order = () => {
         onOrderUpdate={fetchOrders}
       />
 
-      {/* Multi-step accept flow modal */}
+      {/* 8. Multi-step accept flow modal */}
       <OrderDetailModal
         isOpen={!!activeFlowOrderId}
         onClose={() => {

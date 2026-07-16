@@ -1,27 +1,18 @@
 import React from "react";
-import { CiImport } from "react-icons/ci";
+import { Plus } from "lucide-react";
 
-const OrderHeader = ({ onExport, totalOrders = 0, unshipped = 0 }) => {
+const OrderHeader = ({ onCreateOrder, onExport }) => {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
-      <div>
-        <h1 className="text-3xl font-semibold text-gray-900 font-satoshi">
-          Orders
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {totalOrders > 0
-            ? `${totalOrders} orders${
-                unshipped > 0 ? ` · ${unshipped} awaiting shipping` : ""
-              }`
-            : "Advanced order management with AI fraud detection & SLA monitoring"}
-        </p>
-      </div>
+    <div className="flex items-center justify-between mb-6">
+      <h1 className="text-2xl font-bold text-gray-900 font-satoshi">
+        Orders Summary
+      </h1>
       <button
-        onClick={onExport}
-        className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50 text-sm font-semibold transition-colors shadow-sm"
+        onClick={onCreateOrder}
+        className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#FF6012] hover:bg-[#e0500a] text-white text-sm font-bold rounded-full transition-colors shadow-sm"
       >
-        <CiImport className="w-4 h-4 text-gray-500" />
-        Export
+        <Plus className="w-4 h-4" />
+        Create a New Order
       </button>
     </div>
   );

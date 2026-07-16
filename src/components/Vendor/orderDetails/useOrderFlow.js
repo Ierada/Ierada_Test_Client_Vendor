@@ -1,65 +1,203 @@
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { getOrderByOrderId, cancelOrder } from "../../../services/api.order";
-import { getProductById } from "../../../services/api.product";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  getOrderById,
+  updateOrderStatus,
+} from "../../../../services/api.order";
+import {
+  notifyOnFail,
+  notifyOnSuccess,
+} from "../../../../utils/notification/toast";
 
-export const useOrderFlow = (id) => {
-  const navigate = useNavigate();
+// ─── Status classification ─────────────────────────────────────────────────────
+const TERMINAL_STATUSES = new Set([
+  "delivered",
+  "cancelled",
+  "rejected",
+  "returned",
+  "replaced",
+  "return initiated",
+  "return pending",
+  "replacement initiated",
+  "replacement pending",
+]);
+
+const statusToInitialStep = (status) => {
+  const s = (status || "").toLowerCase().replace(/[\s_]+/g, "");
+  if (["placed", "pending"].includes(s)) return 1;
+  if (s === "accepted") return 2;
+  if (s === "packed") return 3;
+  if (["shipped", "intransit", "outfordelivery"].includes(s)) return 4;
+  // Terminal or unknown → step 1 read-only
+  return 1;
+};
+
+const isTerminalStatus = (status) =>
+  TERMINAL_STATUSES.has((status || "").toLowerCase());
+
+const isPlacedStatus = (status) =>
+  ["placed", "pending"].includes((status || "").toLowerCase());
+
+// ─── Next button label per step + status ──────────────────────────────────────
+const getNextLabel = (step, status) => {
+  if (step === 1) {
+    if (isPlacedStatus(status)) return "Accept Order";
+    if (isTerminalStatus(status)) return null; // no button
+    return "Next";
+  }
+  if (step === 2) return "Confirm Invoice";
+  if (step === 3) return "Generate Label";
+  if (step === 4) return "Mark as Shipped";
+  return "Next";
+};
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+export const useOrderFlow = (orderId) => {
   const [step, setStep] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actLoading, setActLoading] = useState(false);
 
-  useEffect(() => {
-    if (!id) return;
-    (async () => {
-      const res = await getOrderByOrderId(id).catch(() => null);
-      if (res?.data) {
-        const prodId = res.data.products?.[0]?.productId;
-        if (prodId) {
-          const p = await getProductById(prodId).catch(() => null);
-          if (p?.data) {
-            res.data.products[0].whats_in_the_box = p.data.whats_in_the_box;
-            res.data.products[0].specifications = p.data.specifications;
-            res.data.products[0].images = p.data.images || res.data.products[0].images;
-          }
-        }
+  // ── Fetch order ─────────────────────────────────────────────────────────────
+  const fetchOrder = useCallback(async () => {
+    if (!orderId) return;
+    setLoading(true);
+    try {
+      const res = await getOrderById(orderId);
+      if (res?.status === 1) {
         setData(res.data);
+        // Set the initial step from the live order status ONLY on first load
+        // (after that the user drives step navigation)
+        setStep((prev) => {
+          // If this is initial load (step still 1 and data was null), set from status
+          const derivedStep = statusToInitialStep(res.data?.orderStatus);
+          // Always jump to the correct step on fresh load
+          return derivedStep;
+        });
+      } else {
+        notifyOnFail("Failed to load order details");
       }
+    } catch (err) {
+      console.error("useOrderFlow fetchOrder error:", err);
+      notifyOnFail("Error loading order");
+    } finally {
       setLoading(false);
-    })();
-  }, [id]);
-
-  const handleNext = useCallback(async () => {
-    if (step === 1) setStep(2);
-    else if (step === 2) {
-      setActLoading(true);
-      setTimeout(() => {
-        setActLoading(false);
-        setStep(3);
-      }, 500);
-    } else if (step === 3) setStep(4);
-    else if (step === 4) {
-      setActLoading(true);
-      setTimeout(() => {
-        setActLoading(false);
-        navigate("/orders");
-      }, 500);
     }
-  }, [step, navigate]);
+  }, [orderId]);
 
+  useEffect(() => {
+    fetchOrder();
+  }, [fetchOrder]);
+
+  // ── Derived state ──────────────────────────────────────────────────────────
+  const currentStatus = data?.orderStatus || "";
+  const terminal = isTerminalStatus(currentStatus);
+  const canGoNext = !terminal;
+  const nextLabel = getNextLabel(step, currentStatus);
+
+  // ── handleNext ─────────────────────────────────────────────────────────────
+  const handleNext = useCallback(async () => {
+    if (!canGoNext) return;
+
+    // STEP 1 → 2
+    if (step === 1) {
+      if (isPlacedStatus(currentStatus)) {
+        // Must accept via API
+        setActLoading(true);
+        try {
+          const res = await updateOrderStatus(orderId, {
+            order_status: "accepted",
+          });
+          if (res?.status === 1) {
+            notifyOnSuccess("Order accepted!");
+            await fetchOrder(); // refreshes data + updates currentStatus
+            setStep(2);
+          } else {
+            notifyOnFail(res?.message || "Failed to accept order");
+          }
+        } catch (err) {
+          notifyOnFail(err?.response?.data?.message || "Error accepting order");
+        } finally {
+          setActLoading(false);
+        }
+      } else {
+        // Already accepted/packed/shipped — just navigate forward
+        setStep(2);
+      }
+      return;
+    }
+
+    // STEP 2 → 3: no API, just advance
+    if (step === 2) {
+      setStep(3);
+      return;
+    }
+
+    // STEP 3 → 4: no API, just advance
+    if (step === 3) {
+      setStep(4);
+      return;
+    }
+
+    // STEP 4: mark as shipped (if not already shipped/beyond)
+    if (step === 4) {
+      const alreadyShipped = [
+        "shipped",
+        "intransit",
+        "out_for_delivery",
+        "outfordelivery",
+        "delivered",
+      ].includes(currentStatus.toLowerCase().replace(/[\s_]+/g, ""));
+
+      if (alreadyShipped) {
+        // Nothing to do — just show success or close
+        notifyOnSuccess("Order is already shipped.");
+        return;
+      }
+
+      setActLoading(true);
+      try {
+        const res = await updateOrderStatus(orderId, {
+          order_status: "shipped",
+        });
+        if (res?.status === 1) {
+          notifyOnSuccess("Order marked as shipped!");
+          await fetchOrder();
+        } else {
+          notifyOnFail(res?.message || "Failed to mark as shipped");
+        }
+      } catch (err) {
+        notifyOnFail(err?.response?.data?.message || "Error updating order");
+      } finally {
+        setActLoading(false);
+      }
+    }
+  }, [step, currentStatus, canGoNext, orderId, fetchOrder]);
+
+  // ── handleBack ─────────────────────────────────────────────────────────────
   const handleBack = useCallback(() => {
-    step === 1 ? navigate("/orders") : setStep(prev => prev - 1);
-  }, [step, navigate]);
+    if (step > 1) setStep((s) => s - 1);
+    // step === 1 → parent handles (close modal / navigate back)
+  }, [step]);
 
+  // ── handleCancel ───────────────────────────────────────────────────────────
   const handleCancel = useCallback(async () => {
-    setActLoading(true);
-    setTimeout(() => {
-      setActLoading(false);
-      navigate("/orders");
-    }, 500);
-  }, [navigate]);
+    // No status mutation — parent handles navigation/close
+  }, []);
 
-  return { step, data, loading, actLoading, handleNext, handleBack, handleCancel };
+  return {
+    step,
+    setStep, // exposed so parent can jump to a specific step if needed
+    data,
+    loading,
+    actLoading,
+    handleNext,
+    handleBack,
+    handleCancel,
+    refetch: fetchOrder,
+    // Derived helpers consumed by FooterNav + OrderStepper
+    currentStatus,
+    isTerminal: terminal,
+    canGoNext,
+    nextLabel,
+  };
 };
-
