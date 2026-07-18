@@ -30,11 +30,35 @@ export function AppProvider({ children }) {
 
   const location = useLocation();
 
-  useEffect(() => {
+useEffect(() => {
+  try {
     const key = getUserStorageKey("vendor");
-    const storedUser = JSON.parse(localStorage.getItem(key));
-    setUser(storedUser || null);
-  }, [location.pathname]);
+
+    const primaryStoredUser = localStorage.getItem(key);
+    const redirectedStoredUser = localStorage.getItem("user");
+
+    if (redirectedStoredUser) {
+      const parsedUser = JSON.parse(redirectedStoredUser);
+      setUser(parsedUser);
+      return;
+    }
+
+    if (primaryStoredUser) {
+      const parsedUser = JSON.parse(primaryStoredUser);
+      setUser(parsedUser);
+      return;
+    }
+
+    setUser(null);
+  } catch (error) {
+    console.error("Invalid user data in localStorage:", error);
+
+    localStorage.removeItem("user");
+    localStorage.removeItem(getUserStorageKey("vendor"));
+
+    setUser(null);
+  }
+}, [location.pathname]);
 
   const handleProductUpdates = () => setProductsUpdated((prev) => !prev);
 

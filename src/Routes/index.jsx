@@ -39,6 +39,7 @@ import VendorLogoutPage from "../pages/Vendor/Logout/index.jsx";
 import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
+
 // import CreateInvoice from "../pages/Vendor/Invoice/Create.jsx";
 
 const VendorProtectedRoute = ({ children }) => {
@@ -46,25 +47,88 @@ const VendorProtectedRoute = ({ children }) => {
   const location = useLocation();
   const [isAuthorized, setIsAuthorized] = useState(false);
 
-  useEffect(() => {
-    const token = Cookies.get(`${config.BRAND_NAME}VendorToken`);
-    if (!token) {
-      navigate("/login", { replace: true });
-      return;
-    }
+ useEffect(() => {
+    const authorizeVendor = () => {
+      const searchParams = new URLSearchParams(location.search);
 
-    try {
-      const decoded = jwtDecode(token);
-      if (decoded.role !== "vendor") {
-        navigate("/login", { replace: true });
+      // Token received from another website
+      const queryToken = searchParams.get("token");
+
+      let token = Cookies.get(`${config.BRAND_NAME}VendorToken`);
+
+      // Save query token in cookie
+      if (queryToken) {
+        try {
+          const decoded = jwtDecode(queryToken);
+
+          if (decoded.role !== "vendor") {
+            throw new Error("Invalid vendor role");
+          }
+
+          Cookies.set(`${config.BRAND_NAME}VendorToken`, queryToken, {
+            expires: 7,
+            secure: window.location.protocol === "https:",
+            sameSite: "lax",
+          });
+
+          token = queryToken;
+
+          // Remove token from URL after saving
+          searchParams.delete("token");
+
+          const cleanSearch = searchParams.toString();
+
+          navigate(
+            {
+              pathname: location.pathname,
+              search: cleanSearch ? `?${cleanSearch}` : "",
+            },
+            { replace: true }
+          );
+        } catch (error) {
+          console.error("Invalid query token:", error);
+
+          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          navigate("/login", { replace: true });
+          return;
+        }
+      }
+
+      if (!token) {
+        navigate("/login", {
+          replace: true,
+          state: { from: location.pathname },
+        });
         return;
       }
-      setIsAuthorized(true);
-    } catch (error) {
-      console.error("Token decode error:", error);
-      navigate("/login", { replace: true });
-    }
-  }, [location.pathname, navigate]);
+
+      try {
+        const decoded = jwtDecode(token);
+         localStorage.setItem("user", JSON.stringify(decoded));
+        if (decoded.role !== "vendor") {
+          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        // Check token expiration
+        if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        setIsAuthorized(true);
+      } catch (error) {
+        console.error("Token decode error:", error);
+
+        Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+        navigate("/login", { replace: true });
+      }
+    };
+
+    authorizeVendor();
+  }, [location.pathname, location.search, navigate]);
 
   // Show loading until authorized
   if (!isAuthorized) {
