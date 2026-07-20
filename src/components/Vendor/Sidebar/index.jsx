@@ -46,7 +46,7 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
     });
     setSidebarOpen(false);
     setShowLogoutModal(false);
-    navigate("/login");
+    window.location.href = "https://www.ierada.com/become-a-seller";
   }, [navigate, setSidebarOpen]);
 
   const toggleSubMenu = useCallback((name) => {
