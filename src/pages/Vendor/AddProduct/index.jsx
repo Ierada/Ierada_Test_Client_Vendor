@@ -348,7 +348,7 @@ const AddEditProduct = () => {
 
   useEffect(() => {
     const deadWeight = Number(formData.package_weight) || 0;
-    const volWeight = Number(formData.volumetric_weight) || 0;
+    const volWeight = Number(formData.volumetric_weight) * 1000 || 0;
     const chargeableWeight = Math.max(deadWeight, volWeight);
     const dynamicCharge = getDynamicShippingCharge(chargeableWeight);
     setCalculatedShipping(dynamicCharge);
