@@ -42,19 +42,20 @@ import {
 } from "../../../utils/productValidation";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { GripVertical } from "lucide-react";
+import { getShippingRates } from "../../../services/api.shippingRate";
 
-const SHIPPING_RATES = [
-  { maxWeight: 500, charge: 80 },
-  { maxWeight: 1000, charge: 160 },
-  { maxWeight: 1500, charge: 240 },
-  { maxWeight: 2000, charge: 320 },
-  { maxWeight: 2500, charge: 400 },
-  { maxWeight: 3000, charge: 480 },
-  { maxWeight: 3500, charge: 560 },
-  { maxWeight: 4000, charge: 640 },
-  { maxWeight: 4500, charge: 720 },
-  { maxWeight: Infinity, charge: 800 },
-];
+// const SHIPPING_RATES = [
+//   { maxWeight: 500, charge: 80 },
+//   { maxWeight: 1000, charge: 160 },
+//   { maxWeight: 1500, charge: 240 },
+//   { maxWeight: 2000, charge: 320 },
+//   { maxWeight: 2500, charge: 400 },
+//   { maxWeight: 3000, charge: 480 },
+//   { maxWeight: 3500, charge: 560 },
+//   { maxWeight: 4000, charge: 640 },
+//   { maxWeight: 4500, charge: 720 },
+//   { maxWeight: Infinity, charge: 800 },
+// ];
 
 const GST_SLABS = [0, 5, 12, 18, 28];
 
@@ -104,6 +105,7 @@ const AddEditProduct = () => {
   const [filteredInnerSubCategories, setFilteredInnerSubCategories] = useState(
     [],
   );
+  const [SHIPPING_RATES, setShippingRates] = useState([]);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [selectedCategoryDetails, setSelectedCategoryDetails] = useState(null);
   const [selectedSubCategoryDetails, setSelectedSubCategoryDetails] =
@@ -232,6 +234,26 @@ const AddEditProduct = () => {
   }, []);
 
   useEffect(() => {
+    const fetchShippingRates = async () => {
+      try {
+        const res = await getShippingRates();
+        if (res.status === 1) {
+          const structured = res.data
+            .map((rate) => ({
+              maxWeight: rate.maxWeight,
+              charge: rate.charge,
+            }))
+            .sort((a, b) => a.maxWeight - b.maxWeight);
+          setShippingRates(structured);
+        }
+      } catch (error) {
+        notifyOnFail("Failed to load shipping rates");
+      }
+    };
+    fetchShippingRates();
+  }, []);
+
+  useEffect(() => {
     const fetchSizes = async () => {
       try {
         const query = {};
@@ -338,7 +360,7 @@ const AddEditProduct = () => {
     const l = parseFloat(formData.package_length) || 0;
     const w = parseFloat(formData.package_width) || 0;
     const h = parseFloat(formData.package_height) || 0;
-    const volWeight = Math.round((l * w * h) / 5000);
+    const volWeight = ((l * w * h) / 5000).toFixed(2);
     setFormData((prev) => ({ ...prev, volumetric_weight: volWeight }));
   }, [
     formData.package_length,
