@@ -113,6 +113,7 @@ const AddEditProduct = () => {
   const [selectedInnerSubCategoryDetails, setSelectedInnerSubCategoryDetails] =
     useState(null);
   const [deletedMediaIds, setDeletedMediaIds] = useState([]);
+  const [platformFeeMaxCharge, setPlatformFeeMaxCharge] = useState(0);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -224,6 +225,7 @@ const AddEditProduct = () => {
       setAttributes(attrRes.status === 1 ? attrRes.data : []);
       if (settingsRes.status === 1) {
         setSettingsShipping(settingsRes.data.shipping_charge || 0);
+        setPlatformFeeMaxCharge(settingsRes.data.platform_fee_max_charge || 0); // ADDED
         setFormData((prev) => ({
           ...prev,
           platform_fee: settingsRes.data.platform_fee,
@@ -451,9 +453,9 @@ const AddEditProduct = () => {
               attributes:
                 Array.isArray(v.attributes) && v.attributes.length > 0
                   ? v.attributes.map((a) => ({
-                      attribute_id: a.attribute_id?.toString() || "",
-                      attribute_value: a.attribute_value || "",
-                    }))
+                    attribute_id: a.attribute_id?.toString() || "",
+                    attribute_value: a.attribute_value || "",
+                  }))
                   : [{ attribute_id: "", attribute_value: "" }],
               stock: v.stock != null ? String(v.stock) : "",
               original_price:
@@ -491,15 +493,21 @@ const AddEditProduct = () => {
   const getDynamicShippingCharge = (weightInGrams) => {
     if (!weightInGrams || weightInGrams <= 0) return 0;
     for (const rate of SHIPPING_RATES) {
-      if (weightInGrams <= rate.maxWeight) return rate.charge;
+      if (weightInGrams <= rate?.maxWeight) return rate?.charge;
     }
-    return SHIPPING_RATES[SHIPPING_RATES.length - 1].charge;
+    return SHIPPING_RATES[SHIPPING_RATES.length - 1]?.charge;
   };
 
-  const calcPlatformFee = (discountedPrice, feePercent) => {
-    return (
-      (parseFloat(discountedPrice || 0) * parseFloat(feePercent || 0)) / 100
-    );
+  const calcPlatformFee = (discountedPrice, feePercent, maxCharge) => {
+    const calculatedFee = (parseFloat(discountedPrice || 0) * parseFloat(feePercent || 0)) / 100;
+
+    // Apply max charge cap if it exists (greater than 0)
+    if (parseFloat(maxCharge || 0) > 0) {
+      return Math.min(calculatedFee, parseFloat(maxCharge));
+    }
+
+    // No cap applied, return percentage-based fee
+    return calculatedFee;
   };
 
   const handleGenerateMainSKU = () => {
@@ -1006,8 +1014,7 @@ const AddEditProduct = () => {
                     if (sizeErr && typeof sizeErr === "object") {
                       Object.entries(sizeErr).forEach(([sField, sError]) => {
                         errorMessages.push(
-                          `Variation ${parseInt(varIdx) + 1}, Size ${
-                            sIdx + 1
+                          `Variation ${parseInt(varIdx) + 1}, Size ${sIdx + 1
                           }: ${sError}`,
                         );
                       });
@@ -1018,8 +1025,7 @@ const AddEditProduct = () => {
                     if (attrErr) {
                       Object.entries(attrErr).forEach(([aField, aError]) => {
                         errorMessages.push(
-                          `Variation ${parseInt(varIdx) + 1}, Attr ${
-                            aIdx + 1
+                          `Variation ${parseInt(varIdx) + 1}, Attr ${aIdx + 1
                           }: ${aError}`,
                         );
                       });
@@ -1449,11 +1455,10 @@ const AddEditProduct = () => {
                       <div
                         ref={provided.innerRef}
                         {...provided.draggableProps}
-                        className={`border-2 border-gray-200 rounded-2xl overflow-hidden bg-white ${
-                          snapshot.isDragging
+                        className={`border-2 border-gray-200 rounded-2xl overflow-hidden bg-white ${snapshot.isDragging
                             ? "shadow-xl ring-2 ring-blue-300"
                             : ""
-                        }`}
+                          }`}
                       >
                         {/* ── Header row ── */}
                         <div className="bg-gray-50 px-4 py-2 flex items-center justify-between border-b">
@@ -1530,13 +1535,12 @@ const AddEditProduct = () => {
                                           e.target.value,
                                         )
                                       }
-                                      className={`rounded-lg border px-2 py-1.5 text-sm focus:border-black focus:ring-black ${
-                                        variationErrors[varIdx]?.attrErrors?.[
+                                      className={`rounded-lg border px-2 py-1.5 text-sm focus:border-black focus:ring-black ${variationErrors[varIdx]?.attrErrors?.[
                                           attrIdx
                                         ]?.attribute_id
                                           ? "border-red-500"
                                           : "border-gray-300"
-                                      }`}
+                                        }`}
                                     >
                                       <option value="">Select Type</option>
                                       {attributes.map((a) => (
@@ -1554,14 +1558,14 @@ const AddEditProduct = () => {
                                     {variationErrors[varIdx]?.attrErrors?.[
                                       attrIdx
                                     ]?.attribute_id && (
-                                      <p className="text-xs text-red-600 mt-0.5">
-                                        {
-                                          variationErrors[varIdx].attrErrors[
-                                            attrIdx
-                                          ].attribute_id
-                                        }
-                                      </p>
-                                    )}
+                                        <p className="text-xs text-red-600 mt-0.5">
+                                          {
+                                            variationErrors[varIdx].attrErrors[
+                                              attrIdx
+                                            ].attribute_id
+                                          }
+                                        </p>
+                                      )}
                                   </div>
                                 );
                               })}
@@ -1601,15 +1605,14 @@ const AddEditProduct = () => {
                                   </label>
                                   <input
                                     type="text"
-                                    placeholder={`e.g., ${
-                                      attrIdx === 0
+                                    placeholder={`e.g., ${attrIdx === 0
                                         ? "Model A"
                                         : attrIdx === 1
-                                        ? "Red"
-                                        : attrIdx === 2
-                                        ? "Large"
-                                        : "Other"
-                                    }`}
+                                          ? "Red"
+                                          : attrIdx === 2
+                                            ? "Large"
+                                            : "Other"
+                                      }`}
                                     value={attr.attribute_value || ""}
                                     onChange={(e) =>
                                       handleCustomAttributeChange(
@@ -1619,25 +1622,24 @@ const AddEditProduct = () => {
                                         e.target.value,
                                       )
                                     }
-                                    className={`rounded-lg border px-2 py-1.5 text-sm ${
-                                      variationErrors[varIdx]?.attrErrors?.[
+                                    className={`rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.attrErrors?.[
                                         attrIdx
                                       ]?.attribute_value
                                         ? "border-red-500"
                                         : "border-gray-300"
-                                    }`}
+                                      }`}
                                   />
                                   {variationErrors[varIdx]?.attrErrors?.[
                                     attrIdx
                                   ]?.attribute_value && (
-                                    <p className="text-xs text-red-600 mt-0.5">
-                                      {
-                                        variationErrors[varIdx].attrErrors[
-                                          attrIdx
-                                        ].attribute_value
-                                      }
-                                    </p>
-                                  )}
+                                      <p className="text-xs text-red-600 mt-0.5">
+                                        {
+                                          variationErrors[varIdx].attrErrors[
+                                            attrIdx
+                                          ].attribute_value
+                                        }
+                                      </p>
+                                    )}
                                 </div>
                               ))}
 
@@ -1660,11 +1662,10 @@ const AddEditProduct = () => {
                                       e.target.value,
                                     )
                                   }
-                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
-                                    variationErrors[varIdx]?.stock
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.stock
                                       ? "border-red-500"
                                       : "border-gray-300"
-                                  }`}
+                                    }`}
                                 />
                                 {variationErrors[varIdx]?.stock && (
                                   <p className="text-xs text-red-600 mt-0.5">
@@ -1693,11 +1694,10 @@ const AddEditProduct = () => {
                                       e.target.value,
                                     )
                                   }
-                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
-                                    variationErrors[varIdx]?.original_price
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.original_price
                                       ? "border-red-500"
                                       : "border-gray-300"
-                                  }`}
+                                    }`}
                                 />
                                 {variationErrors[varIdx]?.original_price && (
                                   <p className="text-xs text-red-600 mt-0.5">
@@ -1726,20 +1726,19 @@ const AddEditProduct = () => {
                                       e.target.value,
                                     )
                                   }
-                                  className={`rounded-lg border px-2 py-1.5 text-sm ${
-                                    variationErrors[varIdx]?.discounted_price ||
-                                    variationErrors[varIdx]?.price
+                                  className={`rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.discounted_price ||
+                                      variationErrors[varIdx]?.price
                                       ? "border-red-500"
                                       : "border-gray-300"
-                                  }`}
+                                    }`}
                                 />
                                 {(variationErrors[varIdx]?.discounted_price ||
                                   variationErrors[varIdx]?.price) && (
-                                  <p className="text-xs text-red-600 mt-0.5">
-                                    {variationErrors[varIdx].discounted_price ||
-                                      variationErrors[varIdx].price}
-                                  </p>
-                                )}
+                                    <p className="text-xs text-red-600 mt-0.5">
+                                      {variationErrors[varIdx].discounted_price ||
+                                        variationErrors[varIdx].price}
+                                    </p>
+                                  )}
                               </div>
 
                               {/* Barcode */}
@@ -1778,11 +1777,10 @@ const AddEditProduct = () => {
                                       )
                                     }
                                     placeholder="e.g., PROD-001"
-                                    className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${
-                                      variationErrors[varIdx]?.sku
+                                    className={`flex-1 rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.sku
                                         ? "border-red-500"
                                         : "border-gray-300"
-                                    }`}
+                                      }`}
                                   />
                                   <button
                                     type="button"
@@ -2025,11 +2023,10 @@ const AddEditProduct = () => {
                   Product Details
                 </label>
                 <span
-                  className={`text-sm ${
-                    productDetailsCharCount > MAX_PRODUCT_DETAILS_CHARS
+                  className={`text-sm ${productDetailsCharCount > MAX_PRODUCT_DETAILS_CHARS
                       ? "text-red-600"
                       : "text-gray-500"
-                  }`}
+                    }`}
                 >
                   {productDetailsCharCount} / {MAX_PRODUCT_DETAILS_CHARS}
                 </span>
@@ -2206,11 +2203,10 @@ const AddEditProduct = () => {
                           <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
-                            className={`border rounded-2xl p-4 bg-white ${
-                              snapshot.isDragging
+                            className={`border rounded-2xl p-4 bg-white ${snapshot.isDragging
                                 ? "shadow-lg ring-2 ring-blue-300"
                                 : ""
-                            }`}
+                              }`}
                           >
                             <div className="flex gap-4 mb-4">
                               {/* Drag handle */}
@@ -2297,11 +2293,10 @@ const AddEditProduct = () => {
                                           <div
                                             ref={sDraggable.innerRef}
                                             {...sDraggable.draggableProps}
-                                            className={`border rounded-lg p-4 bg-white ${
-                                              sSnapshot.isDragging
+                                            className={`border rounded-lg p-4 bg-white ${sSnapshot.isDragging
                                                 ? "shadow-lg ring-2 ring-blue-200"
                                                 : ""
-                                            }`}
+                                              }`}
                                           >
                                             <div className="flex items-start gap-2">
                                               {/* Size drag handle */}
@@ -2430,26 +2425,25 @@ const AddEditProduct = () => {
                                                         )
                                                       }
                                                       min={0}
-                                                      className={`w-full rounded-lg border px-3 py-2 text-sm ${
-                                                        priceErrors.variations[
+                                                      className={`w-full rounded-lg border px-3 py-2 text-sm ${priceErrors.variations[
                                                           colorIndex
                                                         ]?.sizes?.[sizeIndex]
                                                           ? "border-red-500"
                                                           : "border-gray-300"
-                                                      }`}
+                                                        }`}
                                                     />
                                                     {priceErrors.variations[
                                                       colorIndex
                                                     ]?.sizes?.[sizeIndex] && (
-                                                      <p className="mt-1 text-xs text-red-600">
-                                                        {
-                                                          priceErrors
-                                                            .variations[
-                                                            colorIndex
-                                                          ].sizes[sizeIndex]
-                                                        }
-                                                      </p>
-                                                    )}
+                                                        <p className="mt-1 text-xs text-red-600">
+                                                          {
+                                                            priceErrors
+                                                              .variations[
+                                                              colorIndex
+                                                            ].sizes[sizeIndex]
+                                                          }
+                                                        </p>
+                                                      )}
                                                   </div>
                                                   <div className="sm:col-span-3">
                                                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -2489,14 +2483,13 @@ const AddEditProduct = () => {
                                                           )
                                                         }
                                                         placeholder="e.g., PROD-001"
-                                                        className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
-                                                          variationErrors[
+                                                        className={`flex-1 rounded-lg border px-3 py-2 text-sm ${variationErrors[
                                                             colorIndex
                                                           ]?.sizes?.[sizeIndex]
                                                             ?.sku
                                                             ? "border-red-500"
                                                             : "border-gray-300"
-                                                        }`}
+                                                          }`}
                                                       />
                                                       <button
                                                         type="button"
@@ -2516,19 +2509,19 @@ const AddEditProduct = () => {
                                                   <div className="sm:col-span-2 flex justify-end">
                                                     {variation.sizes.length >
                                                       1 && (
-                                                      <button
-                                                        onClick={() =>
-                                                          removeSizeFromColor(
-                                                            colorIndex,
-                                                            sizeIndex,
-                                                          )
-                                                        }
-                                                        title="Remove size"
-                                                        className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-                                                      >
-                                                        <X size={18} />
-                                                      </button>
-                                                    )}
+                                                        <button
+                                                          onClick={() =>
+                                                            removeSizeFromColor(
+                                                              colorIndex,
+                                                              sizeIndex,
+                                                            )
+                                                          }
+                                                          title="Remove size"
+                                                          className="px-3 py-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+                                                        >
+                                                          <X size={18} />
+                                                        </button>
+                                                      )}
                                                   </div>
                                                 </div>
                                               </div>
@@ -2617,11 +2610,10 @@ const AddEditProduct = () => {
             ))}
             <button
               onClick={addSpecification}
-              className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 ${
-                specifications.length >= 7
+              className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 ${specifications.length >= 7
                   ? "opacity-50 cursor-not-allowed"
                   : ""
-              }`}
+                }`}
               disabled={specifications.length >= 7}
             >
               <Plus size={20} /> Add Specification
@@ -2659,9 +2651,8 @@ const AddEditProduct = () => {
                 value={formData.discounted_price}
                 onChange={handleInputChange}
                 min={0}
-                className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm ${
-                  priceErrors.main ? "border-red-500" : ""
-                }`}
+                className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm ${priceErrors.main ? "border-red-500" : ""
+                  }`}
               />
               {priceErrors.main && (
                 <p className="mt-1 text-sm text-red-600">{priceErrors.main}</p>
@@ -2707,9 +2698,8 @@ const AddEditProduct = () => {
                   value={formData.sku}
                   onChange={handleInputChange}
                   placeholder="e.g., PROD-001"
-                  className={`flex-1 rounded-2xl border-gray-300 shadow-sm ${
-                    mainProductErrors.main_sku ? "border-red-500" : ""
-                  }`}
+                  className={`flex-1 rounded-2xl border-gray-300 shadow-sm ${mainProductErrors.main_sku ? "border-red-500" : ""
+                    }`}
                 />
                 <button
                   type="button"
@@ -2991,7 +2981,7 @@ const AddEditProduct = () => {
                     parseFloat(formData.discounted_price || 0) * 0.02 -
                     (parseFloat(formData.discounted_price || 0) *
                       parseFloat(formData.gst || 0)) /
-                      100
+                    100
                   ).toFixed(2)}
                 </span>
               </div>
@@ -3003,14 +2993,27 @@ const AddEditProduct = () => {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">
-                  Other Charges ({formData.platform_fee}%)
+                  Other Charges
+                  {(() => {
+                    const feePercent = parseFloat(formData.platform_fee || 0);
+                    const maxCharge = parseFloat(platformFeeMaxCharge || 0);
+                    const calculatedFee = (parseFloat(formData.discounted_price || 0) * feePercent) / 100;
+                    const actualFee = maxCharge > 0 ? Math.min(calculatedFee, maxCharge) : calculatedFee;
+                    const isCapped = maxCharge > 0 && calculatedFee > maxCharge;
+
+                    if (isCapped) {
+                      return ``;
+                    }
+                    return `(${feePercent}%)`;
+                  })()}
+
                 </span>
                 <span className="font-medium">
                   ₹
-                  {(
-                    (parseFloat(formData.discounted_price || 0) *
-                      parseFloat(formData.platform_fee || 0)) /
-                    100
+                  {calcPlatformFee(
+                    formData.discounted_price,
+                    formData.platform_fee,
+                    platformFeeMaxCharge
                   ).toFixed(2)}
                 </span>
               </div>
@@ -3021,9 +3024,11 @@ const AddEditProduct = () => {
                   {(
                     parseFloat(formData.discounted_price || 0) +
                     parseFloat(formData.shipping_charges || 0) +
-                    (parseFloat(formData.discounted_price || 0) *
-                      parseFloat(formData.platform_fee || 0)) /
-                      100
+                    calcPlatformFee(
+                      formData.discounted_price,
+                      formData.platform_fee,
+                      platformFeeMaxCharge
+                    )
                   ).toFixed(2)}
                 </span>
               </div>
@@ -3039,9 +3044,9 @@ const AddEditProduct = () => {
                 {variations.map((variation, index) => {
                   const attrLabel = variation.attributes?.[0]?.attribute_value
                     ? variation.attributes
-                        .map((a) => a.attribute_value)
-                        .filter(Boolean)
-                        .join(" / ")
+                      .map((a) => a.attribute_value)
+                      .filter(Boolean)
+                      .join(" / ")
                     : `Variation ${index + 1}`;
                   const isExpanded = expandedVariations[index] || false;
                   const original = parseFloat(variation.original_price || 0);
@@ -3054,11 +3059,11 @@ const AddEditProduct = () => {
                   const settlement = discounted - tds - gstAmount;
                   const shipping = parseFloat(formData.shipping_charges || 0);
                   const platform = calcPlatformFee(
-                    size.discounted_price,
+                    variation.discounted_price,
                     formData.platform_fee,
+                    platformFeeMaxCharge
                   );
                   const listing = discounted + shipping + platform;
-
                   return (
                     <div
                       key={index}
@@ -3070,9 +3075,8 @@ const AddEditProduct = () => {
                       >
                         <span className="font-medium text-sm">{attrLabel}</span>
                         <svg
-                          className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${
-                            isExpanded ? "rotate-180" : "rotate-0"
-                          }`}
+                          className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"
+                            }`}
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -3141,9 +3145,8 @@ const AddEditProduct = () => {
                       >
                         <span className="font-medium">{variationName}</span>
                         <svg
-                          className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${
-                            isExpanded ? "rotate-180" : "rotate-0"
-                          }`}
+                          className={`w-5 h-5 text-gray-600 transition-transform duration-200 ${isExpanded ? "rotate-180" : "rotate-0"
+                            }`}
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -3247,11 +3250,10 @@ const AddEditProduct = () => {
           <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-auto shadow-2xl">
             <div className="flex flex-col items-center gap-4">
               <div
-                className={`p-3 rounded-full ${
-                  notification.type === "success"
+                className={`p-3 rounded-full ${notification.type === "success"
                     ? "bg-green-100"
                     : "bg-red-100"
-                }`}
+                  }`}
               >
                 {notification.type === "success" ? (
                   <svg
@@ -3284,11 +3286,10 @@ const AddEditProduct = () => {
                 )}
               </div>
               <p
-                className={`text-center text-lg font-semibold ${
-                  notification.type === "success"
+                className={`text-center text-lg font-semibold ${notification.type === "success"
                     ? "text-green-800"
                     : "text-red-800"
-                }`}
+                  }`}
               >
                 {notification.message}
               </p>
