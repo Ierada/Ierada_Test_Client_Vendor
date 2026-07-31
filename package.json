@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "build-sitemap": "node generateSitemap.js",
     "translate": "npx i18next-json-to-po -i ./src/locales/en/translation.json -o ./src/locales/en/translation.po && npx i18next-conv -l en -s ./src/locales/en/translation.po -t ./src/locales/{{lng}}/translation.json -l fr,es,de"
   },
   "author": {
