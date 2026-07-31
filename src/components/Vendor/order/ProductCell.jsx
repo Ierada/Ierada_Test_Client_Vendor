@@ -2,7 +2,7 @@ import React from "react";
 
 const ProductCell = ({ product }) => {
   const baseWebsiteUrl = import.meta.env.VITE_BASE_WEBSITE_URL || 'https://ierada.com';
-  const baseUrl = import.meta.env.VITE_TEST_API_URL || 'http://localhost:3000/api';
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
   const productIdentifier = product?.slug || product?.productSlug || product?.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || product?.productId || product?.id || product?._id || product?.custom_id;
 
   const handleClick = (e) => {
@@ -13,9 +13,6 @@ const ProductCell = ({ product }) => {
   };
 
   const productImage = product?.image || product?.images?.[0] || product?.ProductImages?.[0]?.file;
-  const imageUrl = productImage && !productImage.startsWith('http') 
-    ? `${baseUrl}/assets/productFiles/${productImage}` 
-    : productImage;
 
   return (
     <div className="flex items-center gap-3 group">
@@ -28,7 +25,7 @@ const ProductCell = ({ product }) => {
           className="flex-shrink-0"
         >
           <img
-            src={imageUrl}
+            src={`api/assets/productFiles/${productImage}`}
             alt={product?.name || "Product"}
             className="w-10 h-10 rounded-lg object-cover cursor-pointer hover:opacity-80 transition-opacity"
           />
