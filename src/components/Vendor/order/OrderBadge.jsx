@@ -1,6 +1,12 @@
 import React from "react";
+import { getVendorStatus, getStatusColorClass } from "../../../utils/orderStatus";
 
-export const StatusBadge = ({ status }) => {
+export const StatusBadge = ({ status, order }) => {
+  // If order object is provided, use vendor status logic
+  const vendorStatus = order ? getVendorStatus(order) : null;
+  const displayStatus = vendorStatus?.status || status;
+  const statusType = vendorStatus?.type || 'system';
+
   const styles = {
     placed: "bg-blue-50 text-blue-700 border-blue-200",
     shipped: "bg-indigo-50 text-indigo-700 border-indigo-200",
@@ -16,12 +22,15 @@ export const StatusBadge = ({ status }) => {
     return: "bg-orange-50 text-orange-700 border-orange-200",
   };
 
-  let label = status;
-  if (status === "intransit") label = "In Transit";
-  else if (status === "out for delivery") label = "Out for Delivery";
+  // Use dynamic color based on status type
+  const dynamicStyle = vendorStatus ? getStatusColorClass(statusType) : styles[status];
+
+  let label = displayStatus;
+  if (displayStatus === "intransit") label = "In Transit";
+  else if (displayStatus === "out for delivery") label = "Out for Delivery";
 
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border capitalize ${styles[status] || "bg-gray-50 text-gray-700 border-gray-200"}`}>
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border whitespace-nowrap ${dynamicStyle || "bg-gray-50 text-gray-700 border-gray-200"}`}>
       {label}
     </span>
   );

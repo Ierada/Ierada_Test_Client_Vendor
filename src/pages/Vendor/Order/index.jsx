@@ -251,7 +251,7 @@ const Order = () => {
         selectedOrders={selectedOrders}
         onSelectOrder={handleSelectOrder}
         onSelectAll={handleSelectAll}
-        onViewOrder={(o) => navigate(`/orders/${o.id}`)}
+        onViewOrder={(o) => setActiveFlowOrderId(o.id)}
         onOrderUpdate={fetchOrders}
         onAcceptSuccess={(orderId) => setActiveFlowOrderId(orderId)}
       />

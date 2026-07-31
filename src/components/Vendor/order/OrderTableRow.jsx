@@ -1,6 +1,6 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, MoreHorizontal, Check, X } from "lucide-react";
+import { Eye, MoreHorizontal, Check, X, Download, FileText } from "lucide-react";
 import { StatusBadge, PaymentBadge, RiskBadge } from "./OrderBadge";
 import ProductCell from "./ProductCell";
 import CustomerCell from "./CustomerCell";
@@ -9,6 +9,10 @@ import SLAProgress from "./SLAProgress";
 import { useClickOutside } from "../../../hooks/useClickOutside";
 import { useFormatDate } from "../../../hooks/useFormatDate";
 import { useOrderActions } from "../../../hooks/useOrderActions";
+import { downloadShippingLabel, downloadManifest } from "../../../services/api.order";
+import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
+import TrackingModal from "./TrackingModal";
+import OrderDetailModal from "../Models/OrderDetailModal";
 
 const OrderTableRow = ({
   order,
@@ -22,6 +26,8 @@ const OrderTableRow = ({
 }) => {
   const navigate = useNavigate();
   const formatDate = useFormatDate();
+  const [trackingAwb, setTrackingAwb] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
 
   const {
     showDropdown,
@@ -35,7 +41,7 @@ const OrderTableRow = ({
     isSubmitting,
     handleAccept,
     handleReject,
-  } = useOrderActions(order, onOrderUpdate, onAcceptSuccess);
+  } = useOrderActions(order, onOrderUpdate, () => setShowDetailModal(true));
 
   const dropdownRef = useRef(null);
   useClickOutside(dropdownRef, () => setShowDropdown(false));
@@ -84,6 +90,58 @@ const OrderTableRow = ({
     order.order_status !== "rejected" &&
     order.order_status !== "returned";
 
+  // Download handlers
+  const handleDownloadLabel = async (e) => {
+    e.stopPropagation();
+    if (!order.tracking_id && !order.provider_shipment_id) {
+      notifyOnFail("No AWB number available for this order");
+      return;
+    }
+    
+    try {
+      const result = await downloadShippingLabel(order.id);
+      if (result.status === 1) {
+        // Use the shippingLabelUrl from the API response
+        const shippingLabelUrl = result.data?.shippingLabelUrl;
+        
+        if (shippingLabelUrl) {
+          // Open the PDF in a new tab
+          window.open(shippingLabelUrl, "_blank", "noopener,noreferrer");
+          notifyOnSuccess("Shipping label downloaded");
+        } else {
+          // Fallback: show success message if URL is not available
+          console.log("Label data:", result.data);
+          notifyOnSuccess("Label data fetched successfully");
+        }
+      }
+    } catch (error) {
+      console.error("Download label error:", error);
+      // Error is already handled by the API function with toast notification
+    }
+  };
+
+  const handleDownloadManifest = async (e) => {
+    e.stopPropagation();
+    
+    try {
+      const result = await downloadManifest([order.id]);
+      if (result.status === 1) {
+        // For now, just show success - PDF generation would be implemented here
+        console.log("Manifest data:", result.data);
+        notifyOnSuccess("Manifest data fetched successfully");
+      }
+    } catch (error) {
+      console.error("Download manifest error:", error);
+      // Error is already handled by the API function with toast notification
+    }
+  };
+
+  // Show download buttons only for orders with shipping provider and AWB
+  const showDownloadButtons = 
+    order.shipping_provider && 
+    order.shipping_provider !== "self_ship" &&
+    (order.tracking_id || order.provider_shipment_id);
+
   return (
     <tr
       className={`border-b border-gray-100 hover:bg-gray-50/50 transition-colors ${
@@ -99,77 +157,81 @@ const OrderTableRow = ({
         />
       </td>
       <td
-        className="px-6 py-4 whitespace-nowrap cursor-pointer group"
-        onClick={() => navigate(`/orders/${order.id || order.order_number}`)}
+        className="px-6 py-4 whitespace-nowrap"
       >
-        <div className="font-semibold text-[#0164CE] hover:underline transition-colors">
+        <div className="font-mono text-xs font-semibold text-gray-800 leading-tight">
           #{order.order_number}
         </div>
-        <div className="text-xs text-gray-500 mt-0.5">
+        <div className="text-xs text-gray-400 mt-0.5">
           {formatDate(order.created_at)}
         </div>
       </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <CustomerCell customer={order.customer} address={order.Address} />
+      </td>
       <td
-        className="px-6 py-4 min-w-[280px] cursor-pointer"
-        onClick={() => navigate(`/orders/${order.id || order.order_number}`)}
+        className="px-6 py-4 min-w-[280px]"
       >
         <div className="hover:opacity-80 transition-opacity">
           <ProductCell product={order.product} />
         </div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <CustomerCell customer={order.customer} address={order.Address} />
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap min-w-[140px]">
-        <CourierCell name={order.courier_name} trackingId={order.tracking_id} />
+        <span className="text-xs text-gray-600 font-mono">
+          {order.product_sku || "—"}
+        </span>
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <PaymentBadge type={order.payment_type} />
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
-        <StatusBadge status={order.order_status} />
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <SLAProgress createdAt={order.created_at} status={order.order_status} />
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
-        <RiskBadge risk={getRisk()} />
+        <CourierCell 
+          name={order.courier_name} 
+          trackingId={order.tracking_id} 
+          onShowTracking={setTrackingAwb}
+        />
       </td>
       <td className="px-6 py-4 whitespace-nowrap font-bold text-gray-950">
         ₹{Number(order.order_total).toLocaleString("en-IN")}
       </td>
+      <td className="px-6 py-4 whitespace-nowrap">
+        <StatusBadge status={order.order_status} />
+      </td>
       <td className="px-6 py-4 whitespace-nowrap relative">
-        <div className="flex items-center gap-2" ref={dropdownRef}>
-          {order.accepted_at ? (
-            <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[10px] font-bold uppercase rounded border border-green-200">
-              Accepted
-            </span>
-          ) : order.rejected_at ? (
-            <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[10px] font-bold uppercase rounded border border-red-200">
-              Rejected
-            </span>
-          ) : (
-            <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase rounded border border-amber-200">
-              Pending
-            </span>
-          )}
-
+        <div className="flex items-center gap-1.5" ref={dropdownRef}>
           <button
-            onClick={() =>
-              navigate(`/orders/${order.id || order.order_number}`)
-            }
-            className="p-1 hover:bg-gray-150 rounded text-gray-500 hover:text-gray-900"
-            title="View details"
+            onClick={() => setShowDetailModal(true)}
+            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+            title="View & Manage"
           >
             <Eye className="w-4 h-4" />
           </button>
+
+          {showDownloadButtons && (
+            <>
+              <button
+                onClick={handleDownloadLabel}
+                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Download shipping label"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleDownloadManifest}
+                className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Download manifest"
+              >
+                <FileText className="w-4 h-4" />
+              </button>
+            </>
+          )}
 
           {showActions && (
             <div className="relative">
               <button
                 onClick={() => setShowDropdown(!showDropdown)}
-                className={`p-1 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-150 transition-colors ${
-                  showDropdown ? "bg-gray-150 text-gray-900" : ""
+                className={`p-1.5 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors ${
+                  showDropdown ? "bg-gray-100 text-gray-900" : ""
                 }`}
                 title="Action menu"
               >
@@ -331,7 +393,7 @@ const OrderTableRow = ({
                 </button>
                 <button
                   onClick={() => {
-                    navigate(`/orders/${order.id || order.order_number}`);
+                    setShowDetailModal(true);
                     setShowAcceptModal(false);
                   }}
                   className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-3 rounded-lg text-center transition-colors"
@@ -403,6 +465,21 @@ const OrderTableRow = ({
           </div>
         )}
       </td>
+
+      {/* Tracking Modal */}
+      {trackingAwb && (
+        <TrackingModal 
+          awb={trackingAwb} 
+          onClose={() => setTrackingAwb(null)} 
+        />
+      )}
+
+      {/* Order Detail Modal */}
+      <OrderDetailModal
+        isOpen={showDetailModal}
+        onClose={() => setShowDetailModal(false)}
+        orderId={order.id || order.order_number}
+      />
     </tr>
   );
 };

@@ -4,8 +4,7 @@ import { Check } from "lucide-react";
 const steps = [
   { label: "Order Details", id: 1 },
   { label: "Invoice", id: 2 },
-  { label: "Shipping Label", id: 3 },
-  { label: "Mark Shipped", id: 4 },
+  { label: "Mark Shipped", id: 3 },
 ];
 
 const OrderStepper = ({ currentStep }) => {

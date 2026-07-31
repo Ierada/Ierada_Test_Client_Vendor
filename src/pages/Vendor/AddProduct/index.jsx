@@ -1371,7 +1371,7 @@ const AddEditProduct = () => {
           </label>
         </div>
         <div className="flex flex-wrap gap-3">
-          {mediaArray.map((file, index) =>
+          {mediaArray?.map((file, index) =>
             renderMediaPreview(file, index, variationIndex),
           )}
         </div>

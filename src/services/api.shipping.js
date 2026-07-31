@@ -32,6 +32,20 @@ export const manifestOrder = async (orderId) => {
   }
 };
 
+export const downloadShippingLabel = async (orderId) => {
+  try {
+    const res = await apiClient.get(`/shipping/label/${orderId}`);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Error downloading shipping label";
+    console.log("api.shipping downloadShippingLabel error:", error);
+    return { status: 0, message, error: error.response?.data?.error };
+  }
+};
+
 export const cancelShipping = async (orderId) => {
   try {
     const res = await apiClient.post(`/shipping/cancel/${orderId}`);

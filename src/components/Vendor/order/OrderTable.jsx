@@ -8,6 +8,9 @@ import {
   Eye,
   MoreHorizontal,
   X,
+  Download,
+  FileStack,
+  FileText,
 } from "lucide-react";
 import {
   formatDate,
@@ -15,9 +18,18 @@ import {
 } from "../../../utils/date&Time/dateAndTimeFormatter";
 import { updateOrderStatus } from "../../../services/api.order";
 import {
+  downloadShippingLabel,
+  manifestOrder,
+} from "../../../services/api.shipping";
+import { downloadLabelPdf } from "../../../pages/Vendor/Order/utils/labelPdf";
+import {
   notifyOnFail,
   notifyOnSuccess,
 } from "../../../utils/notification/toast";
+import TrackingModal from "./TrackingModal";
+import CourierCell from "./CourierCell";
+import ProductCell from "./ProductCell";
+import { StatusBadge } from "./OrderBadge";
 
 // ─── Status badge ──────────────────────────────────────────────────────────────
 const STATUS_CFG = {
@@ -103,13 +115,110 @@ const OrderActions = ({
   onOrderUpdate,
   onAcceptSuccess,
   openUpward,
+  onShowTracking,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [labelLoading, setLabelLoading] = useState(false);
+  const [manifestLoading, setManifestLoading] = useState(false);
   const dropdownRef = useRef(null);
+
+  const provider = (order.shipping_provider || "").toLowerCase();
+  const hasBooking = Boolean(
+    order.provider_shipment_id || order.tracking_id || order.provider_order_id,
+  );
+  const canDownloadShippingDocs =
+    hasBooking && provider && provider !== "self_ship";
+
+  const handleDownloadLabel = async (e) => {
+    e.stopPropagation();
+    setLabelLoading(true);
+    try {
+      const res = await downloadShippingLabel(order.id);
+      if (res?.status !== 1) {
+        notifyOnFail(res?.message || "Failed to download label");
+        return;
+      }
+
+      // Use the shippingLabelUrl from the API response
+      const shippingLabelUrl = res.data?.shippingLabelUrl;
+      
+      if (shippingLabelUrl) {
+        // Open the PDF in a new tab
+        window.open(shippingLabelUrl, "_blank", "noopener,noreferrer");
+        notifyOnSuccess("Shipping label downloaded");
+      } else {
+        // Fallback to client-side PDF generation if URL is not available
+        const customerName = `${order.Address?.first_name || ""} ${
+          order.Address?.last_name || ""
+        }`.trim();
+        const customerAddress = [
+          order.Address?.street_address,
+          order.Address?.city,
+          order.Address?.state,
+          order.Address?.zip,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        downloadLabelPdf(res.data, {
+          orderNumber: order.order_number,
+          awb: order.provider_shipment_id || order.tracking_id,
+          customerName,
+          customerPhone: order.Address?.phone,
+          customerAddress,
+          productName: order.product?.name || order.Product?.name,
+          paymentType: order.payment_type,
+        });
+        notifyOnSuccess("Shipping label downloaded");
+      }
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Error downloading label");
+    } finally {
+      setLabelLoading(false);
+    }
+  };
+
+  const handleDownloadManifest = async (e) => {
+    e.stopPropagation();
+    if (
+      !window.confirm(
+        "Generate manifest for this order?\n\nThis locks the order on the courier side and schedules pickup.",
+      )
+    ) {
+      return;
+    }
+
+    setManifestLoading(true);
+    try {
+      const res = await manifestOrder(order.id);
+      if (res?.status !== 1) {
+        notifyOnFail(res?.message || "Failed to generate manifest");
+        return;
+      }
+
+      const manifestUrl =
+        res?.data?.manifestUrl ||
+        res?.data?.raw?.data?.[0]?.manifestUrl ||
+        res?.data?.raw?.manifestUrl ||
+        null;
+
+      if (manifestUrl) {
+        window.open(manifestUrl, "_blank", "noopener,noreferrer");
+        notifyOnSuccess("Manifest ready — opening download");
+      } else {
+        notifyOnSuccess(res?.message || "Manifest generated successfully");
+      }
+      onOrderUpdate?.();
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Error generating manifest");
+    } finally {
+      setManifestLoading(false);
+    }
+  };
 
   const showActions =
     order.order_status !== "delivered" &&
@@ -166,22 +275,46 @@ const OrderActions = ({
 
   return (
     <>
-      <div className="flex items-center gap-2" ref={dropdownRef}>
-        {/* Eye — view full detail modal */}
+      <div className="flex items-center gap-1.5" ref={dropdownRef}>
         <button
           onClick={() => onViewOrder(order)}
-          className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-900 transition-colors"
-          title="View details"
+          className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+          title="View & Manage"
         >
           <Eye className="w-4 h-4" />
         </button>
+
+        {canDownloadShippingDocs && (
+          <>
+            <button
+              onClick={handleDownloadLabel}
+              disabled={labelLoading}
+              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              title="Download shipping label"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleDownloadManifest}
+              disabled={manifestLoading || order.is_manifested}
+              className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+              title={
+                order.is_manifested
+                  ? "Order already manifested"
+                  : "Download manifest"
+              }
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          </>
+        )}
 
         {/* MoreHorizontal — dropdown menu */}
         {showActions && (
           <div className="relative">
             <button
               onClick={() => setShowDropdown((p) => !p)}
-              className={`p-1 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors ${
+              className={`p-1.5 rounded text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors ${
                 showDropdown ? "bg-gray-100 text-gray-900" : ""
               }`}
               title="Action menu"
@@ -245,13 +378,7 @@ const OrderActions = ({
 
             {/* Status badge */}
             <div className="mb-4">
-              <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${
-                  getStatusCfg(order.order_status).cls
-                }`}
-              >
-                {getStatusCfg(order.order_status).label}
-              </span>
+              <StatusBadge status={order.order_status} order={order} />
             </div>
 
             {/* Customer card */}
@@ -425,37 +552,7 @@ const OrderActions = ({
   );
 };
 
-// ─── Tracking ID cell with copy ────────────────────────────────────────────────
-const TrackingCell = ({ trackingId }) => {
-  const [copied, setCopied] = useState(false);
-  if (!trackingId) return <span className="text-gray-300 text-sm">—</span>;
 
-  const handleCopy = (e) => {
-    e.stopPropagation();
-    navigator.clipboard?.writeText(trackingId);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-sm text-gray-700 font-mono truncate max-w-[100px]">
-        {trackingId}
-      </span>
-      <button
-        onClick={handleCopy}
-        className="p-0.5 text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
-        title="Copy tracking ID"
-      >
-        {copied ? (
-          <Check className="w-3.5 h-3.5 text-green-500" />
-        ) : (
-          <Copy className="w-3.5 h-3.5" />
-        )}
-      </button>
-    </div>
-  );
-};
 
 // ─── Sort icon ─────────────────────────────────────────────────────────────────
 const SortIcon = ({ col, sortCol, sortDir }) => {
@@ -491,20 +588,24 @@ const EmptyState = () => (
 
 // ─── Column definitions ────────────────────────────────────────────────────────
 const COLS = [
-  { key: "customer", label: "Customer Name" },
-  { key: "created_at", label: "Order Date" },
-  { key: "type", label: "Order Type" },
-  { key: "tracking", label: "Tracking ID" },
-  { key: "order_total", label: "Order Total" },
+  { key: "order", label: "Order" },
+  { key: "customer", label: "Customer" },
+  { key: "product", label: "Product" },
+  { key: "sku", label: "SKU" },
+  { key: "payment", label: "Payment" },
+  { key: "shipping", label: "Shipping" },
+  { key: "order_total", label: "Total" },
   { key: "status", label: "Status" },
   { key: "action", label: "Action" },
 ];
 
 const SORTABLE = new Set([
+  "order",
   "customer",
-  "created_at",
-  "type",
-  "tracking",
+  "product",
+  "sku",
+  "payment",
+  "shipping",
   "order_total",
   "status",
 ]);
@@ -522,6 +623,7 @@ const OrderTable = ({
 }) => {
   const [sortCol, setSortCol] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
+  const [trackingAwb, setTrackingAwb] = useState(null);
 
   const handleSort = (col) => {
     if (!SORTABLE.has(col)) return;
@@ -535,22 +637,28 @@ const OrderTable = ({
   // Client-side sort of passed-in orders
   const sorted = [...orders].sort((a, b) => {
     let av, bv;
-    if (sortCol === "customer") {
+    if (sortCol === "order") {
+      av = a.order_number || "";
+      bv = b.order_number || "";
+    } else if (sortCol === "customer") {
       av = `${a.Address?.first_name || ""} ${a.Address?.last_name || ""}`
         .trim()
         .toLowerCase();
       bv = `${b.Address?.first_name || ""} ${b.Address?.last_name || ""}`
         .trim()
         .toLowerCase();
-    } else if (sortCol === "created_at") {
-      av = new Date(a.created_at || 0).getTime();
-      bv = new Date(b.created_at || 0).getTime();
-    } else if (sortCol === "type") {
-      av = getOrderType(a);
-      bv = getOrderType(b);
-    } else if (sortCol === "tracking") {
-      av = a.tracking_id || "";
-      bv = b.tracking_id || "";
+    } else if (sortCol === "product") {
+      av = a.product?.name || a.Product?.name || "";
+      bv = b.product?.name || b.Product?.name || "";
+    } else if (sortCol === "sku") {
+      av = a.product_sku || "";
+      bv = b.product_sku || "";
+    } else if (sortCol === "payment") {
+      av = a.payment_type || "";
+      bv = b.payment_type || "";
+    } else if (sortCol === "shipping") {
+      av = a.courier_name || a.shipping_provider || "";
+      bv = b.courier_name || b.shipping_provider || "";
     } else if (sortCol === "order_total") {
       av = Number(a.order_total || 0);
       bv = Number(b.order_total || 0);
@@ -624,19 +732,12 @@ const OrderTable = ({
               <EmptyState />
             ) : (
               sorted.map((order, index) => {
-                const statusCfg = getStatusCfg(order.order_status);
-                const orderType = getOrderType(order);
                 const isSelected = selectedOrders.includes(order.id);
                 const openUpward = index >= sorted.length - 2;
                 const customerName =
                   `${order.Address?.first_name || ""} ${
                     order.Address?.last_name || ""
                   }`.trim() || "—";
-                const orderDate = order.created_at
-                  ? `${formatDate(order.created_at)} - ${formatTime(
-                      order.created_at,
-                    )}`
-                  : "—";
 
                 return (
                   <tr
@@ -655,27 +756,63 @@ const OrderTable = ({
                       />
                     </td>
 
-                    {/* Customer Name */}
-                    <td
-                      className="px-6 py-4 text-sm font-medium text-gray-800 whitespace-nowrap cursor-pointer hover:text-[#FF6012] transition-colors"
-                      onClick={() => onViewOrder(order)}
-                    >
-                      {customerName}
+                    {/* Order */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="font-mono text-xs font-semibold text-gray-800 leading-tight">
+                        #{order.order_number}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        {formatDate(order.created_at)}
+                      </div>
                     </td>
 
-                    {/* Order Date */}
-                    <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {orderDate}
+                    {/* Customer */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-xs font-medium text-gray-800">
+                        {customerName}
+                      </div>
+                      <div className="text-xs text-gray-400">{order.Address?.phone || "—"}</div>
                     </td>
 
-                    {/* Order Type */}
-                    <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {orderType}
+                    {/* Product */}
+                    <td className="px-6 py-4 min-w-[280px]">
+                      <ProductCell product={order.product || order.Product} />
                     </td>
 
-                    {/* Tracking ID */}
-                    <td className="px-6 py-4">
-                      <TrackingCell trackingId={order.tracking_id} />
+                    {/* SKU */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="text-xs text-gray-600 font-mono">
+                        {order.product_sku || "—"}
+                      </span>
+                    </td>
+
+                    {/* Payment */}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span
+                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                          order.payment_type === "cod"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {(order.payment_type || "").toUpperCase()}
+                      </span>
+                      <p
+                        className={`text-xs mt-1 font-medium ${
+                          order.payment_status === "paid" ? "text-green-600" : "text-red-500"
+                        }`}
+                      >
+                        {order.payment_status === "paid" ? "Paid" : "Unpaid"}
+                      </p>
+                    </td>
+
+                    {/* Shipping */}
+                    <td className="px-6 py-4 whitespace-nowrap min-w-[110px]">
+                      <CourierCell 
+                        name={order.courier_name} 
+                        trackingId={order.tracking_id} 
+                        onShowTracking={setTrackingAwb}
+                      />
                     </td>
 
                     {/* Order Total */}
@@ -685,11 +822,7 @@ const OrderTable = ({
 
                     {/* Status badge */}
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${statusCfg.cls}`}
-                      >
-                        {statusCfg.label}
-                      </span>
+                      <StatusBadge status={order.order_status} order={order} />
                     </td>
 
                     {/* Action — badge + eye + dropdown + accept/reject modals */}
@@ -700,6 +833,7 @@ const OrderTable = ({
                         onOrderUpdate={onOrderUpdate}
                         onAcceptSuccess={onAcceptSuccess}
                         openUpward={openUpward}
+                        onShowTracking={setTrackingAwb}
                       />
                     </td>
                   </tr>
@@ -709,6 +843,14 @@ const OrderTable = ({
           </tbody>
         </table>
       </div>
+
+      {/* Tracking Modal */}
+      {trackingAwb && (
+        <TrackingModal 
+          awb={trackingAwb} 
+          onClose={() => setTrackingAwb(null)} 
+        />
+      )}
     </div>
   );
 };

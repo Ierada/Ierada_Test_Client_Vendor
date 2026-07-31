@@ -46,10 +46,9 @@ const statusToCompletedStep = (status) => {
       "replacementinitiated",
     ].includes(s)
   )
-    return 4;
-  if (s === "packed") return 3;
-  if (s === "accepted") return 2;
-  return 0; // placed/pending/unknown → nothing done yet
+    return 3;
+  if (s === "accepted" || s === "packed") return 2;
+  return 0;
 };
 
 // ─── Page Header ──────────────────────────────────────────────────────────────
@@ -121,13 +120,13 @@ export const PageHeader = ({
             {statusLabel(status)}
           </span>
         )}
-        <button
+        {/* <button
           onClick={handlePrint}
           className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 hover:bg-gray-50 rounded-lg"
         >
           <Printer className="w-4 h-4" />
           Print
-        </button>
+        </button> */}
         <button
           onClick={handleInvoice}
           className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 hover:bg-gray-50 rounded-lg"
@@ -144,8 +143,7 @@ export const PageHeader = ({
 const STEPS = [
   { n: 1, label: "Order Details" },
   { n: 2, label: "Invoice" },
-  { n: 3, label: "Shipping Label" },
-  { n: 4, label: "Mark Shipped" },
+  { n: 3, label: "Mark Shipped" },
 ];
 
 export const OrderStepper = ({ currentStep, currentStatus }) => {

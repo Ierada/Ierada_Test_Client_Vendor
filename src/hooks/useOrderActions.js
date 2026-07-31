@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { updateOrderStatus } from '../services/api.order';
+import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { updateOrderStatus } from "../services/api.order";
 
 export const useOrderActions = (order, onOrderUpdate, onAcceptSuccess) => {
   const navigate = useNavigate();
@@ -15,22 +15,20 @@ export const useOrderActions = (order, onOrderUpdate, onAcceptSuccess) => {
       setIsSubmitting(true);
       await updateOrderStatus(order.id, {
         order_status: "packed",
-        vendor_comment: "Accepted by Vendor"
+        vendor_comment: "Accepted by Vendor",
       });
       setShowAcceptModal(false);
       if (onOrderUpdate) onOrderUpdate();
-      
+
       if (onAcceptSuccess) {
         onAcceptSuccess(order.id);
-      } else {
-        navigate(`/orders/${order.id || order.order_number}`);
       }
     } catch (err) {
       console.error("Error accepting order:", err);
     } finally {
       setIsSubmitting(false);
     }
-  }, [order.id, order.order_number, onOrderUpdate, onAcceptSuccess, navigate]);
+  }, [order.id, onOrderUpdate, onAcceptSuccess]);
 
   const handleReject = useCallback(async () => {
     if (!rejectReason.trim()) return;
@@ -38,7 +36,7 @@ export const useOrderActions = (order, onOrderUpdate, onAcceptSuccess) => {
       setIsSubmitting(true);
       await updateOrderStatus(order.id, {
         order_status: "rejected",
-        vendor_comment: rejectReason
+        vendor_comment: rejectReason,
       });
       setShowRejectModal(false);
       setRejectReason("");
@@ -61,6 +59,6 @@ export const useOrderActions = (order, onOrderUpdate, onAcceptSuccess) => {
     setRejectReason,
     isSubmitting,
     handleAccept,
-    handleReject
+    handleReject,
   };
 };

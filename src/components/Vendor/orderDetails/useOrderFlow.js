@@ -25,8 +25,7 @@ const statusToInitialStep = (status) => {
   const s = (status || "").toLowerCase().replace(/[\s_]+/g, "");
   if (["placed", "pending"].includes(s)) return 1;
   if (s === "accepted") return 2;
-  if (s === "packed") return 3;
-  if (["shipped", "intransit", "outfordelivery"].includes(s)) return 4;
+  if (["shipped", "intransit", "outfordelivery"].includes(s)) return 3;
   // Terminal or unknown → step 1 read-only
   return 1;
 };
@@ -45,8 +44,7 @@ const getNextLabel = (step, status) => {
     return "Next";
   }
   if (step === 2) return "Confirm Invoice";
-  if (step === 3) return "Generate Label";
-  if (step === 4) return "Mark as Shipped";
+  if (step === 3) return "Mark as Shipped";
   return "Next";
 };
 
@@ -111,35 +109,32 @@ export const useOrderFlow = (orderId) => {
             notifyOnSuccess("Order accepted!");
             await fetchOrder(); // refreshes data + updates currentStatus
             setStep(2);
+            return true;
           } else {
             notifyOnFail(res?.message || "Failed to accept order");
+            return false;
           }
         } catch (err) {
           notifyOnFail(err?.response?.data?.message || "Error accepting order");
+          return false;
         } finally {
           setActLoading(false);
         }
       } else {
         // Already accepted/packed/shipped — just navigate forward
         setStep(2);
+        return true;
       }
-      return;
     }
 
     // STEP 2 → 3: no API, just advance
     if (step === 2) {
       setStep(3);
-      return;
+      return true;
     }
 
-    // STEP 3 → 4: no API, just advance
+    // STEP 3: mark as shipped (if not already shipped/beyond)
     if (step === 3) {
-      setStep(4);
-      return;
-    }
-
-    // STEP 4: mark as shipped (if not already shipped/beyond)
-    if (step === 4) {
       const alreadyShipped = [
         "shipped",
         "intransit",
@@ -151,7 +146,7 @@ export const useOrderFlow = (orderId) => {
       if (alreadyShipped) {
         // Nothing to do — just show success or close
         notifyOnSuccess("Order is already shipped.");
-        return;
+        return true; // Return true to indicate completion and allow navigation
       }
 
       setActLoading(true);
@@ -162,11 +157,14 @@ export const useOrderFlow = (orderId) => {
         if (res?.status === 1) {
           notifyOnSuccess("Order marked as shipped!");
           await fetchOrder();
+          return true; // Return true to indicate successful completion
         } else {
           notifyOnFail(res?.message || "Failed to mark as shipped");
+          return false;
         }
       } catch (err) {
         notifyOnFail(err?.response?.data?.message || "Error updating order");
+        return false;
       } finally {
         setActLoading(false);
       }

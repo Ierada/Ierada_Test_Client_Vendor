@@ -1,14 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   getOrderByOrderId,
   updateOrderStatus,
 } from "../../../../services/api.order";
+import { initiateShipping } from "../../../../services/api.shipping";
 import {
   notifyOnFail,
   notifyOnSuccess,
 } from "../../../../utils/notification/toast";
 
-// ─── Status classification ─────────────────────────────────────────────────────
 const TERMINAL_STATUSES = new Set([
   "delivered",
   "cancelled",
@@ -25,9 +25,8 @@ const statusToInitialStep = (status) => {
   const s = (status || "").toLowerCase().replace(/[\s_]+/g, "");
   if (["placed", "pending"].includes(s)) return 1;
   if (s === "accepted") return 2;
-  if (s === "packed") return 3;
-  if (["shipped", "intransit", "outfordelivery"].includes(s)) return 4;
-  // Terminal or unknown → step 1 read-only
+  if (["packed", "shipped", "intransit", "outfordelivery"].includes(s))
+    return 3;
   return 1;
 };
 
@@ -42,30 +41,26 @@ const isShippedStatus = (status) =>
     (status || "").toLowerCase(),
   );
 
-// ─── Next button label per step + status ──────────────────────────────────────
 const getNextLabel = (step, status) => {
   if (step === 1) {
     if (isPlacedStatus(status)) return "Accept Order";
-    if (isTerminalStatus(status)) return null; // no button
+    if (isTerminalStatus(status)) return null;
     return "Next";
   }
-  if (step === 2) return "Confirm Invoice";
-  if (step === 3) return "Generate Label";
-  if (step === 4) {
-    if (isShippedStatus(status)) return null; // no button
+  if (step === 2) return "Next";
+  if (step === 3) {
+    if (isShippedStatus(status)) return null;
     return "Mark as Shipped";
   }
   return "Next";
 };
 
-// ─── Hook ─────────────────────────────────────────────────────────────────────
-export const useOrderFlow = (orderId) => {
+export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
   const [step, setStep] = useState(1);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actLoading, setActLoading] = useState(false);
 
-  // ── Fetch order ─────────────────────────────────────────────────────────────
   const fetchOrder = useCallback(async () => {
     if (!orderId) return;
     setLoading(true);
@@ -73,14 +68,9 @@ export const useOrderFlow = (orderId) => {
       const res = await getOrderByOrderId(orderId);
       if (res?.status === 1) {
         setData(res.data);
-        // Set the initial step from the live order status ONLY on first load
-        // (after that the user drives step navigation)
-        setStep((prev) => {
-          // If this is initial load (step still 1 and data was null), set from status
-          const derivedStep = statusToInitialStep(res.data?.orderStatus);
-          // Always jump to the correct step on fresh load
-          return derivedStep;
-        });
+        setStep(() =>
+          forceStep1 ? 1 : statusToInitialStep(res.data?.orderStatus),
+        );
       } else {
         notifyOnFail("Failed to load order details");
       }
@@ -90,13 +80,12 @@ export const useOrderFlow = (orderId) => {
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, forceStep1]);
 
   useEffect(() => {
     fetchOrder();
   }, [fetchOrder]);
 
-  // ── Derived state ──────────────────────────────────────────────────────────
   const currentStatus = data?.orderStatus || "";
   const terminal = isTerminalStatus(currentStatus);
   const canGoNext = !terminal;
@@ -106,14 +95,11 @@ export const useOrderFlow = (orderId) => {
   );
   const nextLabel = getNextLabel(step, currentStatus);
 
-  // ── handleNext ─────────────────────────────────────────────────────────────
   const handleNext = useCallback(async () => {
     if (!canGoNext) return;
 
-    // STEP 1 → 2
     if (step === 1) {
       if (isPlacedStatus(currentStatus)) {
-        // Must accept via API
         setActLoading(true);
         try {
           const res = await updateOrderStatus(orderId, {
@@ -121,7 +107,7 @@ export const useOrderFlow = (orderId) => {
           });
           if (res?.status === 1) {
             notifyOnSuccess("Order accepted!");
-            await fetchOrder(); // refreshes data + updates currentStatus
+            await fetchOrder();
             setStep(2);
           } else {
             notifyOnFail(res?.message || "Failed to accept order");
@@ -132,48 +118,66 @@ export const useOrderFlow = (orderId) => {
           setActLoading(false);
         }
       } else {
-        // Already accepted/packed/shipped — just navigate forward
         setStep(2);
       }
       return;
     }
 
-    // STEP 2 → 3: no API, just advance
     if (step === 2) {
       setStep(3);
       return;
     }
 
-    // STEP 3 → 4: no API, just advance
     if (step === 3) {
-      setStep(4);
-      return;
-    }
-
-    // STEP 4: mark as shipped (if not already shipped/beyond)
-    if (step === 4) {
-      const alreadyShipped = [
-        "shipped",
-        "intransit",
-        "out_for_delivery",
-        "outfordelivery",
-        "delivered",
-      ].includes(currentStatus.toLowerCase().replace(/[\s_]+/g, ""));
-
-      if (alreadyShipped) {
-        // Nothing to do — just show success or close
+      if (isShippedStatus(currentStatus)) {
         notifyOnSuccess("Order is already shipped.");
         return;
       }
 
       setActLoading(true);
       try {
+        const isSelfShip = data?.shippingProvider === "self_ship";
+        const alreadyBooked = Boolean(
+          data?.providerOrderId || data?.providerShipmentId,
+        );
+
+        if (isSelfShip) {
+          const res = await updateOrderStatus(orderId, {
+            order_status: "shipped",
+            shipping_option: "self_ship",
+            shipping_provider: "self_ship",
+          });
+          if (res?.status === 1) {
+            notifyOnSuccess("Order marked as shipped!");
+            await fetchOrder();
+            if (onClose) onClose();
+          } else {
+            notifyOnFail(res?.message || "Failed to mark as shipped");
+          }
+          return;
+        }
+
+        if (!alreadyBooked) {
+          const shipRes = await initiateShipping(orderId);
+          if (shipRes?.status === 1) {
+            notifyOnSuccess("Order booked and marked as shipped!");
+            await fetchOrder();
+            if (onClose) onClose();
+          } else {
+            notifyOnFail(
+              shipRes?.message || "Failed to book order with shipping provider",
+            );
+          }
+          return;
+        }
+
         const res = await updateOrderStatus(orderId, {
           order_status: "shipped",
         });
         if (res?.status === 1) {
           notifyOnSuccess("Order marked as shipped!");
           await fetchOrder();
+          if (onClose) onClose();
         } else {
           notifyOnFail(res?.message || "Failed to mark as shipped");
         }
@@ -183,22 +187,26 @@ export const useOrderFlow = (orderId) => {
         setActLoading(false);
       }
     }
-  }, [step, currentStatus, canGoNext, orderId, fetchOrder]);
+  }, [
+    step,
+    currentStatus,
+    canGoNext,
+    orderId,
+    fetchOrder,
+    data,
+    forceStep1,
+    onClose,
+  ]);
 
-  // ── handleBack ─────────────────────────────────────────────────────────────
   const handleBack = useCallback(() => {
     if (step > 1) setStep((s) => s - 1);
-    // step === 1 → parent handles (close modal / navigate back)
   }, [step]);
 
-  // ── handleCancel ───────────────────────────────────────────────────────────
-  const handleCancel = useCallback(async () => {
-    // No status mutation — parent handles navigation/close
-  }, []);
+  const handleCancel = useCallback(async () => {}, []);
 
   return {
     step,
-    setStep, // exposed so parent can jump to a specific step if needed
+    setStep,
     data,
     loading,
     actLoading,
@@ -206,7 +214,6 @@ export const useOrderFlow = (orderId) => {
     handleBack,
     handleCancel,
     refetch: fetchOrder,
-    // Derived helpers consumed by FooterNav + OrderStepper
     currentStatus,
     isTerminal: terminal,
     canGoNext,

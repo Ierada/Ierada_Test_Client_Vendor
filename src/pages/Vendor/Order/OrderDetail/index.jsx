@@ -1,15 +1,16 @@
 import React, { useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 
 import { PageHeader, OrderStepper, FooterNav } from "./OrderFlowChrome";
 import OrderDetailsStep from "./OrderDetailsStep";
-import { InvoiceStep, ShippingLabelStep, MarkShippedStep } from "./OrderSteps";
+import { InvoiceStep, MarkShippedStep } from "./OrderSteps";
 import { useOrderFlow } from "./useOrderFlow";
 import useDiscountPercentage from "../../../../hooks/useDiscountPercentage";
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const OrderDetail = ({ orderId: propOrderId, onClose }) => {
   const { id: paramId } = useParams();
+  const navigate = useNavigate();
   const id = propOrderId || paramId;
   const isModal = !!propOrderId;
 
@@ -27,16 +28,11 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     canGoBack,
     canCancel,
     nextLabel,
-  } = useOrderFlow(id);
+  } = useOrderFlow(id, isModal, onClose);
 
-  // ── Step 4 done: close modal ───────────────────────────────────────────────
-  const handleNext = async () => {
-    if (step === 4 && isModal && onClose) {
-      await flowNext();
-      onClose();
-    } else {
-      flowNext();
-    }
+  // ── Step 3 done: close modal or navigate back ───────────────────────────────
+   const handleNext = async () => {
+    flowNext();
   };
 
   // ── Back: step 1 → close/navigate ─────────────────────────────────────────
@@ -66,15 +62,17 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
 
     const prod = data.products?.[0] || {};
     const cust = data.customer || {};
+    const shippingAddress = data.shippingAddress || {};
     const addr = data.shippingAddress || {};
     const orderedAt = data.createdAt ? new Date(data.createdAt) : new Date();
-
+    
     return {
       id: data.orderNumber || data.id || "",
       status: data.orderStatus || "",
 
       product: {
         name: prod.productName || prod.name || "",
+        slug: prod.slug || "",
         sku: prod.sku || "",
         quantity: data.qty || 1,
         image: prod.images?.[0] || null,
@@ -117,7 +115,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
       },
 
       customer: {
-        name: `${cust.firstName || ""} ${cust.lastName || ""}`.trim() || "",
+        name: `${shippingAddress.firstName || ""} ${shippingAddress.lastName || ""}`.trim() || "",
         phone: cust.phone || addr.phone || "",
         email: cust.email || addr.email || "",
         since: cust.createdAt
@@ -136,6 +134,22 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
             ? `₹${Number(cust.totalSpend).toLocaleString("en-IN")}`
             : "—",
           rating: cust.rating || "—",
+        },
+      },
+
+      vendor: {
+        name: `${data.vendor?.firstName || ""} ${data.vendor?.lastName || ""}`.trim() || "",
+        shopName: data.vendor?.shopName || "",
+        email: data.vendor?.email || "",
+        phone: data.vendor?.phone || "",
+        gstin: data.vendor?.gstin || "",
+        address: {
+          line1: data.vendor?.shopAddress || "",
+          line2: [
+            data.vendor?.shopCity,
+            data.vendor?.shopState,
+            data.vendor?.shopZipCode,
+          ].filter(Boolean).join(" — "),
         },
       },
     };
@@ -193,11 +207,12 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         orderId={`#${orderData.id}`}
         productName={orderData.product.name}
         status={orderData.status}
-        showBack={!isModal}
+        showBack={true}
+        onBack={isModal ? onClose : undefined}
         orderData={orderData}
       />
 
-      {/* 4-step stepper — reflects both local step and backend status */}
+      {/* 3-step stepper — reflects both local step and backend status */}
       <OrderStepper currentStep={step} currentStatus={currentStatus} />
 
       {/* Step content (scrollable) */}
@@ -208,15 +223,14 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
       >
         {step === 1 && <OrderDetailsStep orderData={orderData} />}
         {step === 2 && <InvoiceStep orderData={orderData} />}
-        {step === 3 && <ShippingLabelStep orderData={orderData} />}
-        {step === 4 && <MarkShippedStep orderData={orderData} />}
+        {step === 3 && <MarkShippedStep orderData={orderData} />}
       </div>
 
       {/* Footer: Back | Cancel Order | Next (hidden for terminal orders) */}
       <FooterNav
         currentStep={step}
         onBack={handleBack}
-        onCancel={handleCancel}
+        onCancel={onClose}
         onNext={handleNext}
         loading={actLoading}
         isModal={isModal}

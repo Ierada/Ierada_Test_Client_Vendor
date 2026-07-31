@@ -1,6 +1,7 @@
-import React, { useRef } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import html2canvas from "html2canvas";
 import {
   FileText,
   Printer,
@@ -8,7 +9,10 @@ import {
   Package,
   CheckCircle2,
   Truck,
+  Loader2,
+  ExternalLink,
 } from "lucide-react";
+import InvoiceCard from "../../../../components/Vendor/orderDetails/InvoiceCard";
 
 // ─── Shared section shell ──────────────────────────────────────────────────────
 const StepShell = ({ children, title, subtitle, icon: Icon }) => (
@@ -50,48 +54,74 @@ const Row = ({ label, value, bold, green }) => (
 export const InvoiceStep = ({ orderData }) => {
   if (!orderData) return null;
 
-  const { product, orderInfo, customer } = orderData;
+  const cardRef = useRef(null);
+  const [loading, setLoading] = useState(false);
+  const [invoiceUrl, setInvoiceUrl] = useState(null);
+  const [invoiceDownloaded, setInvoiceDownloaded] = useState(false);
 
-  const handleDownloadPDF = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text("Tax Invoice", 14, 20);
-    doc.setFontSize(9);
-    doc.setTextColor(120);
-    doc.text(
-      `Order: #${orderData.id}   Date: ${orderInfo.orderedDate}`,
-      14,
-      28,
-    );
-    doc.text(`Customer: ${customer.name}   Phone: ${customer.phone}`, 14, 34);
-    doc.text(
-      `Address: ${customer.address.line1}, ${customer.address.line2}`,
-      14,
-      40,
-    );
-    doc.setTextColor(0);
-    doc.autoTable({
-      startY: 48,
-      head: [["Description", "Qty", "Unit Price", "Total"]],
-      body: [
-        [
-          product.name || "—",
-          String(product.quantity || 1),
-          orderInfo.price,
-          orderInfo.orderTotal,
-        ],
-      ],
-      headStyles: { fillColor: [1, 100, 206], fontSize: 9 },
-      styles: { fontSize: 9 },
-    });
-    const finalY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(9);
-    doc.text(`Payment: ${orderInfo.paymentType}`, 14, finalY);
-    doc.text(`Discount: ${orderInfo.discount}`, 14, finalY + 6);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(`Total: ${orderInfo.orderTotal}`, 14, finalY + 16);
-    doc.save(`invoice-${orderData.id}.pdf`);
+  // ─── 2. Generate PDF from InvoiceCard (beautiful HTML) ──────────────────
+  const handleDownloadGenerated = useCallback(async () => {
+    const input = cardRef.current;
+    if (!input) return;
+    setLoading(true);
+    try {
+      const canvas = await html2canvas(input, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
+      const imgData = canvas.toDataURL("image/png");
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgWidth = pdfWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight;
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+      pdf.save(`invoice_${orderData.id}.pdf`);
+    } catch (error) {
+      console.error("Error generating invoice PDF:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, [orderData]);
+
+  // ─── 3. Print ─────────────────────────────────────────────────────────────
+  const handlePrint = () => {
+    const printContent = cardRef.current;
+    if (!printContent) return;
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Invoice - ${orderData.id}</title>
+          <style>
+            body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+            @media print { body { margin: 0; } }
+          </style>
+        </head>
+        <body>
+          ${printContent.innerHTML}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.onload = () => {
+      printWindow.print();
+      printWindow.close();
+    };
   };
 
   return (
@@ -100,79 +130,47 @@ export const InvoiceStep = ({ orderData }) => {
       title="Invoice Preview"
       subtitle="Review and download the tax invoice for this order"
     >
-      {/* Invoice document preview */}
-      <div className="border border-dashed border-gray-200 rounded-xl p-5 bg-gray-50 mb-5">
-        {/* Invoice header */}
-        <div className="flex justify-between items-start mb-5">
-          <div>
-            <p className="text-lg font-black text-gray-900 tracking-tight">
-              TAX INVOICE
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">#{orderData.id}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-gray-500">{orderInfo.orderedDate}</p>
-            <p className="text-xs text-gray-400">{orderInfo.orderedTime}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          <div>
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-              Bill To
-            </p>
-            <p className="text-sm font-bold text-gray-900">{customer.name}</p>
-            <p className="text-xs text-gray-500">{customer.address.line1}</p>
-            <p className="text-xs text-gray-500">{customer.address.line2}</p>
-            <p className="text-xs text-gray-500">{customer.phone}</p>
-          </div>
-        </div>
-
-        {/* Line items */}
-        <div className="bg-white rounded-xl border border-gray-100 overflow-hidden mb-4">
-          <div className="grid grid-cols-4 px-4 py-2.5 bg-gray-100 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-            <span className="col-span-2">Description</span>
-            <span className="text-center">Qty</span>
-            <span className="text-right">Total</span>
-          </div>
-          <div className="grid grid-cols-4 px-4 py-3 text-sm">
-            <span className="col-span-2 font-medium text-gray-800 truncate">
-              {product.name}
-            </span>
-            <span className="text-center text-gray-600">
-              {product.quantity || 1}
-            </span>
-            <span className="text-right font-bold text-gray-900">
-              {orderInfo.orderTotal}
-            </span>
-          </div>
-        </div>
-
-        {/* Totals */}
-        <div className="space-y-0">
-          <Row label="Price" value={orderInfo.price} />
-          <Row label="Discount" value={orderInfo.discount} />
-          <Row label="Order Total" value={orderInfo.orderTotal} bold green />
-          <Row label="Payment" value={orderInfo.paymentType} />
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-3">
+      {/* Action Buttons */}
+      <div className="flex flex-wrap gap-3 mb-5">
         <button
-          onClick={handleDownloadPDF}
-          className="flex-1 inline-flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white bg-[#0164CE] rounded-xl hover:bg-blue-700 transition-colors"
+          onClick={handleDownloadGenerated}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-[#0164CE] text-white rounded-lg hover:bg-blue-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Download className="w-4 h-4" />
-          Download Invoice PDF
+          {loading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : invoiceDownloaded ? (
+            <CheckCircle2 className="w-4 h-4" />
+          ) : (
+            <Download className="w-4 h-4" />
+          )}
+          <span>{loading ? 'Downloading...' : invoiceDownloaded ? 'Invoice Downloaded' : 'Download Invoice'}</span>
         </button>
-        <button
-          onClick={() => window.print()}
-          className="inline-flex items-center justify-center gap-2 px-4 py-3 text-sm font-semibold text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+
+        {invoiceUrl && (
+          <a
+            href={invoiceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 text-sm font-medium transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>View Invoice</span>
+          </a>
+        )}
+
+        {/* <button
+          onClick={handlePrint}
+          className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EF] rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 shadow-sm transition-colors"
         >
           <Printer className="w-4 h-4" />
-          Print
-        </button>
+          <span>Print</span>
+        </button> */}
+      </div>
+
+      {/* The beautiful invoice card – captured for PDF */}
+      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50">
+        <InvoiceCard ref={cardRef} orderData={orderData} />
       </div>
     </StepShell>
   );
@@ -485,9 +483,8 @@ export const MarkShippedStep = ({ orderData }) => {
       <div className="space-y-2.5 mb-5">
         {[
           "Product is correctly packed and sealed",
-          "Shipping label has been printed and attached",
-          "Invoice has been included inside the package",
           "Order details have been verified with the customer",
+          "Invoice and shipping label will be provided once order is marked as shipped",
         ].map((item, i) => (
           <div
             key={i}

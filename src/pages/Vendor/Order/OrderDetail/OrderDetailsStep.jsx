@@ -52,7 +52,10 @@ const OrderDetailsStep = ({ orderData }) => {
 
   if (!orderData) return null;
 
-  const { product, orderInfo, customer } = orderData;
+  const { product, orderInfo, customer, vendor } = orderData;
+
+  const baseWebsiteUrl = import.meta.env.VITE_BASE_WEBSITE_URL || 'http://localhost:3000';
+  const productUrl = product.slug ? `${baseWebsiteUrl}/product/${product.slug}` : null;
 
   // Image gallery: use all images or fall back to single
   const images = product.images?.length
@@ -111,7 +114,7 @@ const OrderDetailsStep = ({ orderData }) => {
   const parseBox = () => {
     let raw = product.whatsInTheBox || product.whats_in_the_box;
     if (!raw) return [];
-    console.log(raw);
+    
 
     // Unwrap JSON string first
     if (typeof raw === "string") {
@@ -219,12 +222,28 @@ const OrderDetailsStep = ({ orderData }) => {
               {/* Main image */}
               <div className="relative flex-1 bg-gray-50 rounded-xl overflow-hidden min-h-[220px] flex items-center justify-center">
                 {images[activeImg] ? (
-                  <img
-                    src={images[activeImg]}
-                    alt={product.name}
-                    className="w-full h-full object-contain max-h-56 cursor-zoom-in"
-                    onClick={() => setZoomed(true)}
-                  />
+                  productUrl ? (
+                    <a
+                      href={productUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full h-full"
+                    >
+                      <img
+                        src={images[activeImg]}
+                        alt={product.name}
+                        className="w-full h-full object-contain max-h-56 cursor-zoom-in"
+                        onClick={() => setZoomed(true)}
+                      />
+                    </a>
+                  ) : (
+                    <img
+                      src={images[activeImg]}
+                      alt={product.name}
+                      className="w-full h-full object-contain max-h-56 cursor-zoom-in"
+                      onClick={() => setZoomed(true)}
+                    />
+                  )
                 ) : (
                   <div className="flex flex-col items-center justify-center h-48 text-gray-300">
                     <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-2">
@@ -330,9 +349,20 @@ const OrderDetailsStep = ({ orderData }) => {
             {/* Name + Price block */}
             <div className="flex items-start justify-between gap-4 mb-3">
               <div className="min-w-0">
-                <h1 className="text-2xl font-black text-gray-900 leading-tight">
-                  {product.name || "—"}
-                </h1>
+                {productUrl ? (
+                  <a
+                    href={productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-2xl font-black text-gray-900 leading-tight hover:text-[#FF6012] transition-colors"
+                  >
+                    {product.name || "—"}
+                  </a>
+                ) : (
+                  <h1 className="text-2xl font-black text-gray-900 leading-tight">
+                    {product.name || "—"}
+                  </h1>
+                )}
                 {product.sku && (
                   <span className="inline-block mt-2 px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-mono rounded-lg">
                     {product.sku}
@@ -379,7 +409,7 @@ const OrderDetailsStep = ({ orderData }) => {
               {product.size && <AttrPill label="Size" value={product.size} />}
             </div>
 
-            {/* Order # + Qty + Date */}
+            {/* Order # + Qty + Date + SKU */}
             <div className="flex items-center justify-between pt-4 border-t border-gray-100">
               <p className="text-sm text-gray-600">
                 Order{" "}
@@ -388,6 +418,14 @@ const OrderDetailsStep = ({ orderData }) => {
                 <span className="font-bold text-gray-900">
                   {product.quantity || 1}
                 </span>
+                {product.sku && (
+                  <>
+                    &nbsp;·&nbsp; SKU:{" "}
+                    <span className="font-bold text-gray-900">
+                      {product.sku}
+                    </span>
+                  </>
+                )}
               </p>
               <p className="text-sm text-gray-500">
                 Ordered:{" "}
@@ -523,6 +561,84 @@ const OrderDetailsStep = ({ orderData }) => {
               )}
             </div>
           </div>
+
+          {/* Vendor Details */}
+          {vendor && (vendor.name || vendor.shopName) && (
+            <div className="bg-white rounded-2xl border border-gray-100 p-6">
+              <SectionHeading title="Vendor Details" />
+              <div className="flex items-start gap-5 flex-wrap">
+                {/* Avatar + name + shop */}
+                <div className="flex items-start gap-3 w-48 flex-shrink-0">
+                  <div className="w-11 h-11 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <svg
+                      className="w-6 h-6 text-blue-600"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">
+                      {vendor.name || "—"}
+                    </p>
+                    {vendor.shopName && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {vendor.shopName}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contact + address */}
+                <div className="flex-1 space-y-2 min-w-0">
+                  {vendor.address?.line1 && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <span className="text-sm text-gray-600">
+                        {vendor.address.line1}
+                        {vendor.address.line2
+                          ? ` — ${vendor.address.line2}`
+                          : ""}
+                      </span>
+                    </div>
+                  )}
+                  {vendor.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">
+                        {vendor.phone}
+                      </span>
+                    </div>
+                  )}
+                  {vendor.email && (
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <span className="text-sm text-gray-600">
+                        {vendor.email}
+                      </span>
+                    </div>
+                  )}
+                  {vendor.gstin && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400 font-medium">
+                        GSTIN:
+                      </span>
+                      <span className="text-sm text-gray-600">
+                        {vendor.gstin}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

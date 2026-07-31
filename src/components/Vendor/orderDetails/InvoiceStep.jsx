@@ -45,7 +45,7 @@ const InvoiceStep = ({ orderData }) => {
       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
       heightLeft -= pdfHeight;
     }
-
+    console.log(orderData,"odr")
     pdf.save(`invoice_${orderData.id}.pdf`);
   }, [orderData]);
 

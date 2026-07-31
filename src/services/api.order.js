@@ -301,3 +301,101 @@ export const getSelfShipOrders = async (vendorId) => {
     return { status: 0, message, data: { orders: [] } };
   }
 };
+
+export const downloadShippingLabel = async (orderId) => {
+  try {
+    const res = await apiClient.get(`/shipping/label/${orderId}`);
+
+    if (res.data.status === 1 && res.data.data) {
+      console.log("Label data received:", res.data.data);
+      notifyOnSuccess("Shipping label data fetched successfully");
+      return { status: 1, data: res.data.data };
+    }
+
+    notifyOnFail("Failed to get label data");
+    return { status: 0, message: "No label data available" };
+  } catch (error) {
+    let message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to download shipping label";
+
+    // Provide more user-friendly error message for service unavailability
+    if (
+      message.includes("temporarily unavailable") ||
+      message.includes("503")
+    ) {
+      message =
+        "Innofulfill service is temporarily unavailable. Please try again in a few minutes.";
+    }
+
+    console.error("api.order downloadShippingLabel error:", error);
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const downloadManifest = async (orderIds) => {
+  try {
+    const res = await apiClient.post("/shipping/manifest", { orderIds });
+
+    if (res.data.status === 1 && res.data.data) {
+      console.log("Manifest data received:", res.data.data);
+      notifyOnSuccess("Manifest data fetched successfully");
+      return { status: 1, data: res.data.data };
+    }
+
+    notifyOnFail("Failed to get manifest data");
+    return { status: 0, message: "No manifest data available" };
+  } catch (error) {
+    let message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to download manifest";
+
+    // Provide more user-friendly error message for service unavailability
+    if (
+      message.includes("temporarily unavailable") ||
+      message.includes("503")
+    ) {
+      message =
+        "Innofulfill service is temporarily unavailable. Please try again in a few minutes.";
+    }
+
+    console.error("api.order downloadManifest error:", error);
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const getTrackingByAwb = async (awb) => {
+  try {
+    const res = await apiClient.get(`/shipping/track-by-awb/${awb}`);
+
+    if (res.data.status === 1 && res.data.data) {
+      console.log("Tracking data received:", res.data.data);
+      return { status: 1, data: res.data.data };
+    }
+
+    notifyOnFail("Failed to get tracking data");
+    return { status: 0, message: "No tracking data available" };
+  } catch (error) {
+    let message =
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to fetch tracking details";
+
+    // Provide more user-friendly error message for service unavailability
+    if (
+      message.includes("temporarily unavailable") ||
+      message.includes("503")
+    ) {
+      message =
+        "Innofulfill service is temporarily unavailable. Please try again in a few minutes.";
+    }
+
+    console.error("api.order getTrackingByAwb error:", error);
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
