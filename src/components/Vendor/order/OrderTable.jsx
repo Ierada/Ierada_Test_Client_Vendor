@@ -224,7 +224,11 @@ const OrderActions = ({
     order.order_status !== "delivered" &&
     order.order_status !== "cancelled" &&
     order.order_status !== "rejected" &&
-    order.order_status !== "returned";
+    order.order_status !== "returned" &&
+    order.order_status !== "accepted" &&
+    order.order_status !== "packed" &&
+    order.order_status !== "shipped" &&
+    order.order_status !== "intransit";
 
   // ── Accept ─────────────────────────────────────────────────────────────────
   const handleAccept = async () => {
@@ -328,26 +332,30 @@ const OrderActions = ({
                   openUpward ? "bottom-full mb-1" : "top-full mt-1"
                 }`}
               >
-                <button
-                  onClick={() => {
-                    setShowAcceptModal(true);
-                    setShowDropdown(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
-                >
-                  <Check className="w-3.5 h-3.5 text-green-600" />
-                  Accept
-                </button>
-                <button
-                  onClick={() => {
-                    setShowRejectModal(true);
-                    setShowDropdown(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-colors border-t border-gray-100"
-                >
-                  <X className="w-3.5 h-3.5 text-red-600" />
-                  Reject
-                </button>
+                {order.order_status !== "accepted" && order.order_status !== "packed" && order.order_status !== "shipped" && order.order_status !== "intransit" && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowAcceptModal(true);
+                        setShowDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5 text-green-600" />
+                      Accept
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowRejectModal(true);
+                        setShowDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-1.5 transition-colors border-t border-gray-100"
+                    >
+                      <X className="w-3.5 h-3.5 text-red-600" />
+                      Reject
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

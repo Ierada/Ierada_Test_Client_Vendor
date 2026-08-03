@@ -1,5 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 import { PageHeader, OrderStepper, FooterNav } from "./OrderFlowChrome";
 import OrderDetailsStep from "./OrderDetailsStep";
@@ -7,12 +9,47 @@ import { InvoiceStep, MarkShippedStep } from "./OrderSteps";
 import { useOrderFlow } from "./useOrderFlow";
 import useDiscountPercentage from "../../../../hooks/useDiscountPercentage";
 
+// ─── Shared invoice generation function ─────────────────────────────────────
+const generateInvoicePDF = async (element, filename) => {
+  if (!element) return;
+  
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor: "#ffffff",
+  });
+  const imgData = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pdfWidth = 210;
+  const pdfHeight = 297;
+  const imgWidth = pdfWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  let heightLeft = imgHeight;
+  let position = 0;
+  pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  heightLeft -= pdfHeight;
+  while (heightLeft > 0) {
+    position = heightLeft - imgHeight;
+    pdf.addPage();
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pdfHeight;
+  }
+  pdf.save(filename);
+};
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 const OrderDetail = ({ orderId: propOrderId, onClose }) => {
   const { id: paramId } = useParams();
   const navigate = useNavigate();
   const id = propOrderId || paramId;
   const isModal = !!propOrderId;
+
+  // Invoice card ref for PDF generation
+  const invoiceCardRef = useRef(null);
+  const [invoiceLoading, setInvoiceLoading] = useState(false);
 
   const {
     step,
@@ -155,6 +192,24 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     };
   }, [data, discount]);
 
+  // ── Handle invoice download from header button ───────────────────────────
+  const handleInvoiceDownload = useCallback(async () => {
+    // If we're on step 2 and have the invoice card ref, generate PDF directly
+    if (step === 2 && invoiceCardRef.current) {
+      setInvoiceLoading(true);
+      try {
+        await generateInvoicePDF(invoiceCardRef.current, `invoice_${orderData?.id}.pdf`);
+      } catch (error) {
+        console.error("Error generating invoice PDF:", error);
+      } finally {
+        setInvoiceLoading(false);
+      }
+    } else {
+      // Navigate to step 2 first
+      flowNext();
+    }
+  }, [step, orderData, flowNext]);
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -210,6 +265,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         showBack={true}
         onBack={isModal ? onClose : undefined}
         orderData={orderData}
+        onInvoiceClick={handleInvoiceDownload}
       />
 
       {/* 3-step stepper — reflects both local step and backend status */}
@@ -222,7 +278,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         }`}
       >
         {step === 1 && <OrderDetailsStep orderData={orderData} />}
-        {step === 2 && <InvoiceStep orderData={orderData} />}
+        {step === 2 && <InvoiceStep orderData={orderData} cardRef={invoiceCardRef} />}
         {step === 3 && <MarkShippedStep orderData={orderData} />}
       </div>
 

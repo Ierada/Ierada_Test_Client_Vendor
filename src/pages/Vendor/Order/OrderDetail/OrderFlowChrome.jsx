@@ -59,6 +59,7 @@ export const PageHeader = ({
   showBack = true,
   onBack,
   orderData,
+  onInvoiceClick,
 }) => {
   const navigate = useNavigate();
   const cls =
@@ -67,25 +68,9 @@ export const PageHeader = ({
   const handlePrint = () => window.print();
 
   const handleInvoice = () => {
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.text(`Invoice — Order ${orderId}`, 14, 20);
-    if (orderData) {
-      doc.setFontSize(10);
-      doc.setTextColor(120);
-      doc.text(`Product: ${orderData.product?.name || "—"}`, 14, 32);
-      doc.text(`Customer: ${orderData.customer?.name || "—"}`, 14, 38);
-      doc.text(`Total: ${orderData.orderInfo?.orderTotal || "—"}`, 14, 44);
-      doc.text(`Payment: ${orderData.orderInfo?.paymentType || "—"}`, 14, 50);
-      doc.text(
-        `Date: ${orderData.orderInfo?.orderedDate || "—"} ${
-          orderData.orderInfo?.orderedTime || ""
-        }`,
-        14,
-        56,
-      );
+    if (onInvoiceClick) {
+      onInvoiceClick();
     }
-    doc.save(`invoice-${orderId}.pdf`);
   };
 
   return (
@@ -127,13 +112,13 @@ export const PageHeader = ({
           <Printer className="w-4 h-4" />
           Print
         </button> */}
-        <button
+        {/* <button
           onClick={handleInvoice}
           className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 hover:bg-gray-50 rounded-lg"
         >
           <FileText className="w-4 h-4" />
           Invoice
-        </button>
+        </button> */}
       </div>
     </div>
   );
@@ -230,67 +215,81 @@ export const FooterNav = ({
   canGoNext,
 }) => {
   return (
-    <div
-      className={`${
-        isModal
-          ? "absolute bottom-0 left-0 right-0"
-          : "fixed bottom-0 left-0 right-0"
-      } bg-white border-t border-gray-100 px-8 py-4 flex items-center justify-end gap-4 z-10`}
-    >
-      {/* Back — based on canGoBack */}
-      {canGoBack && (
-        <button
-          onClick={onBack}
-          className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-      )}
+    <div className="w-full bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        {canGoBack && (
+          <button
+            onClick={onBack}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EF] rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+        )}
+        {canCancel && (
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EF] rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <X className="w-4 h-4" />
+            Cancel
+          </button>
+        )}
+      </div>
 
-      {/* Cancel Order — center */}
-      {canCancel && (
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          <X className="w-4 h-4" />
-          Cancel Order
-        </button>
-      )}
-
-      {/* Next / Accept / Mark as Shipped — hidden for terminal orders */}
-      {canGoNext && nextLabel ? (
+      {canGoNext && (
         <button
           onClick={onNext}
           disabled={loading}
-          className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-white bg-[#FF6012] hover:bg-[#e0500a] rounded-xl disabled:opacity-50 transition-colors shadow-sm"
+          className="flex items-center gap-2 px-5 py-2 bg-[#FF6012] text-white rounded-lg hover:bg-orange-600 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
-            <svg
-              className="w-4 h-4 animate-spin"
-              viewBox="0 0 24 24"
-              fill="none"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8z"
-              />
-            </svg>
-          ) : null}
-          {loading ? "Processing…" : nextLabel}
-          {!loading && <ArrowRight className="w-4 h-4" />}
+            <span className="flex items-center gap-2">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Processing...
+            </span>
+          ) : (
+            <>
+              {nextLabel || "Next"}
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
-      ) : null}
+      )}
+    </div>
+  );
+};
+
+// ─── Modal wrapper ─────────────────────────────────────────────────────────────
+export const ModalWrapper = ({ isOpen, onClose, children }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        {children}
+      </div>
     </div>
   );
 };
