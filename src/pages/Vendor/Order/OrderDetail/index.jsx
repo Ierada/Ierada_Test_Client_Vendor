@@ -126,6 +126,8 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         discountedPrice: prod.discountedPrice || 0,
         specifications: prod.specifications || [],
         whatsInTheBox: prod.whatsInTheBox || prod.whats_in_the_box || [],
+        codAmount: prod.codAmount || 0,
+        codTotal: prod.codTotal || 0,
       },
 
       orderInfo: {
@@ -188,6 +190,15 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
             data.vendor?.shopZipCode,
           ].filter(Boolean).join(" — "),
         },
+        pickupAddress: data.vendor?.pickupAddress ? {
+          line1: data.vendor?.pickupAddress?.line1 || data.vendor?.pickupAddress?.streetAddress || "",
+          line2: [
+            data.vendor?.pickupAddress?.city || data.vendor?.pickupAddress?.shopCity,
+            data.vendor?.pickupAddress?.state || data.vendor?.pickupAddress?.shopState,
+            data.vendor?.pickupAddress?.zipCode || data.vendor?.pickupAddress?.shopZipCode,
+          ].filter(Boolean).join(" — "),
+        } : null,
+        pickupAddressLines: data.vendor?.pickupAddressLines || [],
       },
     };
   }, [data, discount]);
