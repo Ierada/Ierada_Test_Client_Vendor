@@ -23,7 +23,7 @@ export const registerVendorByAdmin = async (vendorData) => {
   try {
     const res = await apiClient.post(
       `/auth/vendor/registerbyadmin`,
-      vendorData
+      vendorData,
     );
     if (res.data.status === 1) {
       notifyOnSuccess(res.data.message);
@@ -83,7 +83,7 @@ export const sendOtp = async ({ type, value, verifiedValue }) => {
         headers: {
           "Project-Id": config.VITE_EMAIL_PROJECT_ID, // Add required header}
         },
-      }
+      },
     );
     if (response.data.status === 1) {
       notifyOnSuccess(response.data.message);
@@ -174,7 +174,7 @@ export const verifyVendorMobile = async (data) => {
   try {
     const response = await apiClient.post(
       `/auth/customer/verifyVendorMobile`,
-      data
+      data,
     );
     return response.data;
   } catch (error) {
@@ -238,7 +238,7 @@ export const changePassword = async (userId, changePasswordData) => {
   try {
     const response = await apiClient.put(
       `/auth/change-password/${userId}`,
-      changePasswordData
+      changePasswordData,
     );
 
     console.log("Backend Response:", response.data);
@@ -272,5 +272,85 @@ export const resendOtp = async (mobileNumber) => {
     return response.data;
   } catch (error) {
     notifyOnFail("Error reaching the server");
+  }
+};
+
+// Vendor Mobile OTP Login APIs
+export const vendorMobileOtpLogin = async (phone, otp) => {
+  try {
+    const res = await apiClient.post(`/auth/vendor/login/verify-mob-otp`, {
+      phone: `+91${phone}`,
+      otp,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+  }
+};
+
+export const vendorMobileOtpSend = async (phone) => {
+  try {
+    const res = await apiClient.post(`/auth/vendor/login/send-mob-otp`, {
+      phone: `+91${phone}`,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+  }
+};
+
+// Vendor Password Reset APIs
+export const vendorSendResetOTP = async (mobile) => {
+  try {
+    const res = await apiClient.post("/auth/vendor/password-reset/send-otp", {
+      mobile,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+    return { status: 0, message: "Error reaching the server" };
+  }
+};
+
+export const vendorVerifyResetOTP = async (mobile, otp) => {
+  try {
+    const res = await apiClient.post("/auth/vendor/password-reset/verify-otp", {
+      mobile,
+      otp,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+    return { status: 0, message: "Error reaching the server" };
+  }
+};
+
+export const vendorResetPassword = async (
+  resetToken,
+  newPassword,
+  confirmPassword,
+) => {
+  try {
+    const res = await apiClient.post("/auth/vendor/password-reset/reset", {
+      resetToken,
+      newPassword,
+      confirmPassword,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+    return { status: 0, message: "Error reaching the server" };
+  }
+};
+
+export const vendorResendResetOTP = async (mobile) => {
+  try {
+    const res = await apiClient.post("/auth/vendor/password-reset/resend-otp", {
+      mobile,
+    });
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error reaching the server");
+    return { status: 0, message: "Error reaching the server" };
   }
 };

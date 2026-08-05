@@ -10,6 +10,7 @@ import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import config from "../config/config";
 import VendorSignIn from "../pages/Vendor/Authentication/SignIn";
+import VendorForgotPassword from "../pages/Vendor/ForgotPassword/index";
 import VendorLayout from "../layout/DefaultLayout.jsx";
 import NotFoundPage from "../pages/NotFound/index.jsx";
 
@@ -145,6 +146,7 @@ const VendorProtectedRoute = ({ children }) => {
 const VendorRoutes = () => {
   return useRoutes([
     { path: "/login", element: <VendorSignIn /> },
+    { path: "/forgot-password", element: <VendorForgotPassword /> },
     {
       path: "/",
       element: (

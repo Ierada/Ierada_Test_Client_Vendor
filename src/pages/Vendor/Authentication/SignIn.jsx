@@ -1,570 +1,473 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import Cookies from "js-cookie";
-import { jwtDecode } from "jwt-decode";
+
+
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { vendorLogin } from "../../../services/api.auth";
-import PasswordResetModal from "../../../components/Vendor/Models/PasswordResetModal";
-import config from "../../../config/config";
-import { useAppContext } from "../../../context/AppContext";
-import { setUserCookie } from "../../../utils/userIdentifier";
+import { FcGoogle } from "react-icons/fc";
+import { FaFacebook } from "react-icons/fa";
+import { CheckCircle2, Eye, EyeOff, Mail, Lock, Phone, ArrowRight } from "lucide-react";
+import { toast } from "react-toastify";
+
 import {
-  notifyOnFail,
-  notifyOnWarning,
-} from "../../../utils/notification/toast";
-import { getSettings } from "../../../services/api.settings";
+  vendorLogin,
+  vendorMobileOtpLogin,
+  vendorMobileOtpSend,
+} from "../../../services/api.auth";
+import { setUserCookie } from "../../../utils/userIdentifier";
+import { useOtpVerification } from "../../../hooks/useOtpVerification";
 
-const OtpInput = React.memo(
-  ({ otp, handleOtpChange, handleOtpKeyDown, otpRefs }) => {
-    const handleFocus = (input) => {};
+import { SellerFormContainer, SellerLeftPanel, SellerRightPanel } from "../../../components/Shared/SellerFormContainer";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../../components/Shared/Tabs";
+import TwoFAModal from "../../../components/Shared/TwoFAModal";
 
-    return (
-      <div className="flex justify-between gap-4">
-        {otp.map((digit, index) => (
-          <input
-            key={index}
-            ref={(el) => (otpRefs.current[index] = el)}
-            type="text"
-            value={digit}
-            onChange={(e) => handleOtpChange(e.target.value, index)}
-            onKeyDown={(e) => handleOtpKeyDown(e, index)}
-            onFocus={(e) => handleFocus(e.target)}
-            className="w-14 h-14 text-center border rounded-lg focus:ring-2 focus:ring-black text-xl font-semibold"
-            maxLength={1}
-          />
-        ))}
-      </div>
-    );
-  },
-);
+// Define validation schemas
+const emailSchema = {
+  email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : "Please enter a valid email address",
+  password: (value) => value.length >= 1 ? null : "Password is required",
+};
 
-const OtpTimer = React.memo(
-  ({ timerState, isLoading, handleResendOtp, formatCountdown }) => {
-    return (
-      <div className="flex justify-between text-sm">
-        <button
-          disabled={isLoading || timerState.isResendDisabled}
-          onClick={handleResendOtp}
-          className={`${
-            timerState.isResendDisabled ? "text-gray-400" : "text-gray-900"
-          }`}
-        >
-          Resend OTP{" "}
-          {timerState.isResendDisabled ? `(${formatCountdown()})` : ""}
-        </button>
-      </div>
-    );
-  },
-);
+const mobileSchema = {
+  mobile: (value) => /^\d{10}$/.test(value) ? null : "Please enter a valid mobile number",
+};
 
-const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
-  const [otp, setOtp] = useState(
-    twoFactorType === "otp" || twoFactorType === ""
-      ? ["", "", "", ""]
-      : ["", "", "", "", "", ""],
-  );
-  const [timerState, setTimerState] = useState({
-    countdown: 60,
-    isResendDisabled: true,
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({});
-  const otpRefs = useRef([]);
-  const { setUser } = useAppContext();
+export default function SellerLoginPage() {
   const navigate = useNavigate();
-  const timerRef = useRef(null);
+  const [authMethod, setAuthMethod] = useState("mobile");
 
-  const startOtpTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-    }
+  // Visibility toggle state for password
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
 
-    setTimerState({
-      countdown: 60,
-      isResendDisabled: true,
-    });
+  // 2FA modal state (email + password login flow)
+  const [showTwoFAModal, setShowTwoFAModal] = useState(false);
+  const [twoFactorType, setTwoFactorType] = useState("otp");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-    timerRef.current = setInterval(() => {
-      setTimerState((prevState) => {
-        if (prevState.countdown <= 1) {
-          clearInterval(timerRef.current);
-          return {
-            countdown: 0,
-            isResendDisabled: false,
-          };
-        }
-        return {
-          ...prevState,
-          countdown: prevState.countdown - 1,
-        };
+  // Form state
+  const [emailForm, setEmailForm] = useState({ email: "", password: "" });
+  const [mobileForm, setMobileForm] = useState({ mobile: "" });
+  const [errors, setErrors] = useState({});
+
+  // Mobile OTP Hook
+  const mobileOtp = useOtpVerification({
+    length: 6,
+    sendOtp: (value) => vendorMobileOtpSend(value),
+    verifyOtp: (value, otp) => vendorMobileOtpLogin(value, otp),
+    validate: (value) =>
+      !/^\d{10}$/.test(value)
+        ? "Please enter a valid 10-digit mobile number"
+        : null,
+  });
+
+  // Handle Email Submit
+  const handleEmailSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validate
+    const emailError = emailSchema.email(emailForm.email);
+    const passwordError = emailSchema.password(emailForm.password);
+    
+    if (emailError || passwordError) {
+      setErrors({
+        email: emailError,
+        password: passwordError,
       });
-    }, 1000);
-  }, []);
-
-  const formatCountdown = useCallback(() => {
-    return `00:${
-      timerState.countdown < 10
-        ? "0" + timerState.countdown
-        : timerState.countdown
-    }`;
-  }, [timerState.countdown]);
-
-  const handleVerify2FA = useCallback(
-    async (code) => {
-      if (!formData.email || !formData.password) {
-        setErrors({ two_factor: "Email or password is missing" });
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        const res = await vendorLogin({
-          email: formData.email,
-          password: formData.password,
-          two_factor_code: code,
-        });
-
-        if (res.status === 1) {
-          setUserCookie(res.token, res.data, "vendor");
-          setUser(res.data);
-          navigate("/dashboard");
-        } else {
-          setErrors({ two_factor: res.message || "Invalid 2FA code" });
-        }
-      } catch (error) {
-        setErrors({
-          two_factor:
-            error.response?.data?.message || "Failed to verify 2FA code",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [formData, setUser, navigate],
-  );
-
-  const handleOtpChange = useCallback(
-    (value, index) => {
-      if (/^\d*$/.test(value)) {
-        setOtp((prevOtp) => {
-          const newOtp = [...prevOtp];
-          if (value.length > 1) {
-            const digits = value.split("");
-            for (let i = 0; i < digits.length; i++) {
-              if (index + i < newOtp.length) {
-                newOtp[index + i] = digits[i];
-              }
-            }
-            const nextIndex = Math.min(
-              index + digits.length,
-              newOtp.length - 1,
-            );
-            setTimeout(() => {
-              otpRefs.current[nextIndex]?.focus();
-              if (
-                nextIndex === newOtp.length - 1 &&
-                digits.length === newOtp.length
-              ) {
-                const otpCode = newOtp.join("");
-                handleVerify2FA(otpCode);
-              }
-            }, 0);
-            return newOtp;
-          } else {
-            newOtp[index] = value;
-            if (value && index < newOtp.length - 1) {
-              setTimeout(() => {
-                otpRefs.current[index + 1]?.focus();
-              }, 0);
-            }
-            if (value && index === newOtp.length - 1) {
-              const otpCode = newOtp.join("");
-              setTimeout(() => {
-                handleVerify2FA(otpCode);
-              }, 100);
-            }
-            return newOtp;
-          }
-        });
-      }
-    },
-    [handleVerify2FA],
-  );
-
-  const handleOtpKeyDown = useCallback(
-    (e, index) => {
-      if (e.key === "Backspace" && !otp[index] && index > 0) {
-        setOtp((prevOtp) => {
-          const newOtp = [...prevOtp];
-          newOtp[index - 1] = "";
-          return newOtp;
-        });
-        setTimeout(() => {
-          otpRefs.current[index - 1]?.focus();
-        }, 0);
-      }
-    },
-    [otp],
-  );
-
-  const handleResendOtp = useCallback(async () => {
-    if (!formData.email || !formData.password) {
-      setErrors({ two_factor: "Email or password is missing" });
-      setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    setLoading(true);
     setErrors({});
-    setOtp(
-      twoFactorType === "otp" ? ["", "", "", ""] : ["", "", "", "", "", ""],
-    );
+    try {
+      const response = await vendorLogin({
+        email: emailForm.email,
+        password: emailForm.password,
+        role: "vendor",
+      });
 
+      if (response?.status === 1) {
+        toast.success("Welcome back! Login successful.");
+        setUserCookie(response.token, response.data, "vendor");
+        navigate("/dashboard");
+      } else if (response?.status === 2) {
+        setEmail(emailForm.email);
+        setPassword(emailForm.password);
+        setShowTwoFAModal(true);
+      } else {
+        toast.error(response?.message || "Invalid email or password");
+      }
+    } catch (error) {
+      toast.error("An error occurred during login. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Send OTP
+  const handleSendOtp = async () => {
+    const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
+    try {
+      await mobileOtp.handleSendOtp(cleanMobile);
+      toast.success("OTP sent to your registered mobile number!");
+    } catch (error) {
+      toast.error(error?.message || "Failed to send OTP");
+    }
+  };
+
+  // Handle Verify OTP explicitly
+  const handleVerifyOtpClick = async () => {
+    const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
+
+    // Check if all OTP digits are filled
+    if (mobileOtp.otp.some((digit) => digit === "")) {
+      toast.error("Please enter all 6 digits of the OTP");
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    try {
+      const res = await mobileOtp.handleVerifyOtp(cleanMobile);
+
+      if (res?.status === 1) {
+        toast.success("OTP verified successfully!");
+        // The hook will set verified to true
+      } else if (res?.status === 2) {
+        // 2FA required
+        setEmail(cleanMobile);
+        setShowTwoFAModal(true);
+      } else {
+        toast.error(res?.message || "Invalid OTP");
+      }
+    } catch (error) {
+      toast.error("OTP verification failed. Please try again.");
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // Handle Mobile Submit (Login to Dashboard)
+  const handleMobileSubmit = (e) => {
+    e.preventDefault();
+    if (!mobileOtp.verified) {
+      toast.error("Please verify your OTP first");
+      return;
+    }
+
+    toast.success("Login successful!");
+
+    // Use token from the hook response
+    const token =
+      mobileOtp.token ||
+      document.cookie.match(/IERADAFASHIONVendorToken=([^;]+)/)?.[1];
+    navigate(`/dashboard?token=${token || ""}`);
+  };
+
+  // Handle 2FA verification from modal
+  const handleTwoFAVerify = async (twoFactorCode) => {
     try {
       const res = await vendorLogin({
-        email: formData.email,
-        password: formData.password,
+        email: email,
+        password: password,
+        role: "vendor",
+        two_factor_code: twoFactorCode,
       });
 
-      if (res.status === 2) {
-        startOtpTimer();
+      if (res.status === 1) {
+        toast.success("2FA verified successfully!");
+        setUserCookie(res.token, res.data, "vendor");
+        window.location.href = "/dashboard";
       } else {
-        setErrors({ two_factor: res.message || "Failed to send OTP" });
+        toast.error(res.message || "Invalid 2FA code");
       }
     } catch (error) {
-      setErrors({
-        two_factor: error.response?.data?.message || "Failed to send OTP",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [formData, startOtpTimer, twoFactorType]);
-
-  useEffect(() => {
-    if (isOpen && twoFactorType === "otp") {
-      startOtpTimer();
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isOpen, twoFactorType, startOtpTimer]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-      <div className="bg-white rounded-lg p-8 max-w-md w-full">
-        <div className="space-y-6">
-          <div className="text-center space-y-2">
-            <h2 className="text-3xl font-semibold">
-              {twoFactorType === "otp" ? "Enter OTP" : "Enter 2FA Code"}
-            </h2>
-            <p className="text-base text-gray-600">
-              {twoFactorType === "otp"
-                ? `OTP sent to ${formData.email || "your email"}`
-                : "Enter the code from Google Authenticator"}
-            </p>
-          </div>
-
-          <OtpInput
-            otp={otp}
-            handleOtpChange={handleOtpChange}
-            handleOtpKeyDown={handleOtpKeyDown}
-            otpRefs={otpRefs}
-          />
-
-          {twoFactorType === "otp" && (
-            <OtpTimer
-              timerState={timerState}
-              isLoading={isLoading}
-              handleResendOtp={handleResendOtp}
-              formatCountdown={formatCountdown}
-            />
-          )}
-
-          {errors.two_factor && (
-            <p className="text-red-500 text-sm text-center">
-              {errors.two_factor}
-            </p>
-          )}
-
-          <div className="flex gap-4">
-            <button
-              onClick={() => {
-                setOtp(
-                  twoFactorType === "otp"
-                    ? ["", "", "", ""]
-                    : ["", "", "", "", "", ""],
-                );
-                setErrors({});
-                onClose();
-              }}
-              className="w-1/2 border border-gray-300 text-gray-700 py-3 rounded-lg"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => handleVerify2FA(otp.join(""))}
-              disabled={otp.some((digit) => !digit) || isLoading}
-              className="w-1/2 bg-[#737A6C] text-white py-3 rounded-lg disabled:bg-gray-300"
-            >
-              {isLoading ? "Verifying..." : "Verify"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const VendorSignIn = () => {
-  const navigate = useNavigate();
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-  const [showTwoFAModal, setShowTwoFAModal] = useState(false);
-  const [twoFactorType, setTwoFactorType] = useState("");
-  const { setUser } = useAppContext();
-  const [settingsData, setSettingsData] = useState({});
-  const [isImageLoaded, setIsImageLoaded] = useState(false);
-
-  useEffect(() => {
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = "visible";
-    };
-  }, []);
-
-  const fetchSettings = async () => {
-    try {
-      const response = await getSettings();
-      if (response.status === 1) {
-        setSettingsData(response.data);
-      }
-    } catch (error) {
-      notifyOnFail("Error fetching settings");
+      console.error("2FA error:", error);
+      toast.error("2FA verification failed");
     }
   };
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  const handleImageLoad = () => {
-    setIsImageLoaded(true);
+  const handleOtpInputChange = (index, value) => {
+    mobileOtp.handleOtpChange(index, value);
   };
 
-  const handleSignIn = useCallback(
-    async (e) => {
-      e.preventDefault();
-
-      if (!formData.email || !formData.password) {
-        notifyOnWarning("Please fill all required fields");
-        return;
-      }
-
-      try {
-        setLoading(true);
-        const res = await vendorLogin({
-          email: formData.email,
-          password: formData.password,
-        });
-
-        if (res.status === 1) {
-          setUserCookie(res.token, res.data, "vendor");
-          setUser(res.data);
-          const decoded = jwtDecode(res.token);
-          navigate("/dashboard");
-        } else if (res.status === 2) {
-          setTwoFactorType(res.two_factor_type || "otp");
-          setShowTwoFAModal(true);
-        } else {
-          notifyOnFail(res.message || "Invalid email or password");
-        }
-      } catch (error) {
-        console.error("Login error:", error);
-        notifyOnFail("An error occurred during login, please try again.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [formData, setUser, navigate],
-  );
-
   return (
-    <div className="min-h-screen bg-[white]">
-      <div className="container mx-auto flex min-h-screen items-center justify-center">
-        <div className="w-full max-w-[1200px] bg-white shadow-xl">
-          <div className="flex flex-col lg:flex-row lg:justify-center border">
-            <div className="relative hidden w-full lg:block lg:w-1/2">
-              {!isImageLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-                  <div className="w-16 h-16 border-4 border-t-4 border-gray-400 border-solid rounded-full animate-spin border-t-[#000000]"></div>
-                </div>
-              )}
-              <img
-                src={settingsData?.vendor_login_banner}
-                alt="Vendor Login Banner"
-                className={`w-full h-full ${
-                  isImageLoaded ? "opacity-100" : "opacity-0"
-                }`}
-                onLoad={handleImageLoad}
-                onError={() => setIsImageLoaded(true)}
-              />
+    <SellerFormContainer containerHeight="lg:h-[900px]">
+      <SellerLeftPanel className="px-6 py-12 lg:pl-14 lg:pr-20 lg:pt-20">
+        <div className="w-full max-w-[434px] flex flex-col gap-10">
+          {/* Tabs Container */}
+          <Tabs
+            value={authMethod}
+            onValueChange={setAuthMethod}
+            className="w-full flex flex-col gap-20"
+          >
+            {/* Sign-in Method Toggle */}
+            <TabsList className="w-full h-12 bg-[#F5F6F8] border border-[#ECECF2] rounded-[12px] p-1 flex flex-row gap-1 select-none">
+              <TabsTrigger
+                value="email"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold data-active:bg-[#1C1D21] data-active:text-white text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+              >
+                Email
+              </TabsTrigger>
+              <TabsTrigger
+                value="mobile"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold data-active:bg-[#1C1D21] data-active:text-white text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+              >
+                Mobile Number
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Welcome message group */}
+            <div className="flex flex-col gap-3">
+              <h1 className="text-[32px] font-bold leading-10.5 text-[#1C1D21] font-lato">
+                Welcome Back!
+              </h1>
+              <p className="text-[14px] leading-5.25 text-[#8181A5] font-lato font-normal">
+                Please enter your credentials to access your seller account.
+              </p>
             </div>
 
-            <div className="w-full lg:w-1/2 p-20">
-              <div className="max-w-md mx-auto">
-                <h2 className="text-3xl text-[black] mb-12">Sign In</h2>
-
-                <form className="space-y-6" onSubmit={handleSignIn}>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email*
-                    </label>
+            {/* Email Form Content */}
+            <TabsContent value="email" className="flex flex-col gap-6">
+              <form onSubmit={handleEmailSubmit} className="flex flex-col gap-5">
+                {/* Email Field */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[14px] font-semibold text-[#1C1D21] font-lato">
+                    Email ID
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                     <input
                       type="email"
-                      required
-                      placeholder="Email"
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-800 focus:border-[#6B705C] focus:outline-none"
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          email: e.target.value,
-                        }))
-                      }
+                      placeholder="e.g. seller@acme.com"
+                      value={emailForm.email}
+                      onChange={(e) => setEmailForm({ ...emailForm, email: e.target.value })}
+                      className="w-full h-11 pl-12 pr-4 border-[#ECECF2] rounded-[10px] text-[#1C1D21] placeholder:text-[#C4C4D4] focus-visible:ring-[#FF6B36]/25 focus-visible:border-[#FF6B36] font-lato text-[14px] outline-none"
                     />
                   </div>
+                  {errors.email && (
+                    <p className="text-red-500 text-sm">{errors.email}</p>
+                  )}
+                </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Password*
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        placeholder="Password"
-                        className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-800 focus:border-[#6B705C] focus:outline-none"
-                        value={formData.password}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            password: e.target.value,
-                          }))
-                        }
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2"
-                      >
-                        {showPassword ? (
-                          <svg
-                            className="h-5 w-5 text-gray-500"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                            />
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                            />
-                          </svg>
-                        ) : (
-                          <svg
-                            className="h-5 w-5 text-gray-500"
-                            fill="none"
-                            viewBox="0 0 24 24"
-                            stroke="currentColor"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                            />
-                          </svg>
-                        )}
-                      </button>
+                {/* Password Field */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[14px] font-semibold text-[#1C1D21] font-lato">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={emailForm.password}
+                      onChange={(e) => setEmailForm({ ...emailForm, password: e.target.value })}
+                      className="w-full h-11 pl-12 pr-12 border-[#ECECF2] rounded-[10px] text-[#1C1D21] placeholder:text-[#C4C4D4] focus-visible:ring-[#FF6B36]/25 focus-visible:border-[#FF6B36] font-lato text-[14px] outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400"
+                    >
+                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {errors.password && (
+                    <p className="text-red-500 text-sm">{errors.password}</p>
+                  )}
+                </div>
+
+                {/* Forgot Password Link */}
+                <div className="flex justify-end mt-1">
+                  <span
+                    onClick={() => (window.location.href = "/forgot-password")}
+                    className="text-[13px] font-semibold text-[#FF6B36] hover:underline cursor-pointer"
+                  >
+                    Forgot password?
+                  </span>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-11.5 mt-6 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? "Logging in..." : "Login"}
+                </button>
+              </form>
+
+              {/* Social Login */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                  <span className="text-[14px] text-gray-500 font-lato">Or continue with</span>
+                  <div className="flex-1 h-px bg-gray-300"></div>
+                </div>
+
+                <div className="flex gap-4">
+                  <button className="w-11.5 h-11.5 bg-white border border-[#ECECF2] rounded-[8px] flex items-center justify-center hover:bg-gray-50 hover:border-[#8181A5] transition-all cursor-pointer">
+                    <FcGoogle size={20} />
+                  </button>
+                  <button className="w-11.5 h-11.5 bg-white border border-[#ECECF2] rounded-[8px] flex items-center justify-center hover:bg-gray-50 hover:border-[#8181A5] transition-all cursor-pointer">
+                    <FaFacebook
+                      size={20}
+                      className="text-[#8181A5] hover:text-[#1877F2] transition-colors"
+                    />
+                  </button>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Mobile Form Content */}
+            <TabsContent value="mobile" className="flex flex-col gap-6">
+              <form onSubmit={handleMobileSubmit} className="flex flex-col gap-5">
+                {/* Mobile Field */}
+                <div className="flex flex-row items-end gap-3 w-full">
+                  <div className="flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[14px] font-semibold text-[#1C1D21] font-lato">
+                        Mobile Number
+                      </label>
+                      <div className="relative">
+                        <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <input
+                          type="tel"
+                          placeholder="Enter the Mobile Number"
+                          value={mobileForm.mobile}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, "").slice(0, 10);
+                            setMobileForm({ mobile: value });
+                          }}
+                          className="w-full h-11 pl-12 pr-4 border-[#ECECF2] rounded-[10px] text-[#1C1D21] placeholder:text-[#C4C4D4] focus-visible:ring-[#FF6B36]/25 focus-visible:border-[#FF6B36] font-lato text-[14px] outline-none"
+                          maxLength={10}
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  <div className="text-xs text-gray-600">
-                    By proceeding, you agree to our{" "}
-                    <a
-                      href={settingsData?.seller_terms_condition_link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline"
-                    >
-                      Terms and Conditions
-                    </a>
-                    .
-                  </div>
+                  {/* Send OTP Button */}
+                  {!mobileOtp.otpSent && (
+                    <div className="shrink-0 pb-1">
+                      <button
+                        type="button"
+                        onClick={handleSendOtp}
+                        disabled={mobileOtp.sending || mobileForm.mobile.length !== 10}
+                        className="h-10 px-4 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                      >
+                        {mobileOtp.sending ? "Sending..." : "Send OTP"}
+                      </button>
+                    </div>
+                  )}
+                </div>
 
+                {/* OTP Input Section */}
+                {mobileOtp.otpSent && (
+                  <div className="mt-1">
+                    {mobileOtp.verified ? (
+                      <p className="text-[12px] font-bold text-green-600 flex items-center gap-1.5">
+                        <CheckCircle2 size={16} className="text-green-500" />{" "}
+                        Mobile number verified
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {/* OTP Input Boxes */}
+                        <div className="flex gap-2">
+                          {mobileOtp.otp.map((digit, index) => (
+                            <input
+                              key={index}
+                              type="text"
+                              inputMode="numeric"
+                              maxLength={1}
+                              value={digit}
+                              onChange={(e) => handleOtpInputChange(index, e.target.value)}
+                              placeholder="-"
+                              className="w-12 h-12 border border-[#ECECF2] rounded-[8px] text-center text-[18px] font-bold text-[#1C1D21] focus:border-[#FF6B36] focus:ring-2 focus:ring-[#FF6B36]/20 focus:outline-none transition-all"
+                            />
+                          ))}
+                        </div>
+
+                        {/* Verify OTP Button */}
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={handleVerifyOtpClick}
+                            disabled={isVerifyingOtp || mobileOtp.otp.some((d) => d === "")}
+                            className="flex-1 h-10 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                          >
+                            {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
+                          </button>
+                          
+                          {/* Resend link */}
+                          <div className="text-[12px] text-neutral-500">
+                            {mobileOtp.resendDisabled ? (
+                              <span>
+                                Resend in{" "}
+                                <span className="font-semibold text-neutral-800">
+                                  00:
+                                  {mobileOtp.resendTimer < 10
+                                    ? `0${mobileOtp.resendTimer}`
+                                    : mobileOtp.resendTimer}
+                                </span>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleSendOtp}
+                                className="text-[#FF6B36] font-semibold hover:underline cursor-pointer"
+                              >
+                                Resend Code
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {mobileOtp.verifying && (
+                          <p className="text-[11px] text-[#FF6B36] font-semibold animate-pulse">
+                            Verifying code...
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Login Button */}
+                {mobileOtp.verified && (
                   <button
                     type="submit"
-                    disabled={loading}
-                    className="w-full rounded-lg bg-[#0164CE] py-3 px-12 text-sm font-medium text-white hover:bg-[#0148A4] focus:outline-none focus:ring-2 focus:ring-[#6B705C] focus:ring-offset-2 disabled:bg-gray-400"
+                    className="w-full h-11.5 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20"
                   >
-                    {loading ? "Signing in..." : "Sign In"}
+                    Login to Dashboard
                   </button>
-                  <div className="flex flex-row-reverse items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setIsPasswordModalOpen(true)}
-                      className="text-sm font-medium text-[black] hover:text-[#6B705C]"
-                    >
-                      Forgot password?
-                    </button>
+                )}
+              </form>
+            </TabsContent>
+          </Tabs>
 
-                    <button
-                      onClick={() =>
-                        window.open(
-                          `${config.VITE_BASE_WEBSITE_URL}/become-a-seller`,
-                          "_blank",
-                        )
-                      }
-                      className="text-sm font-medium text-[black] hover:text-[#6B705C]"
-                    >
-                      Sign-Up as a Selling Partner
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+          {/* Sign Up Link */}
+          <div className="text-center mt-2 w-full max-w-[434px]">
+            <p className="text-[14px] text-[#8181A5] font-lato">
+              New to Ierada?{" "}
+              <span className="font-bold text-[#FF6B36] hover:underline cursor-pointer">
+                Create Free Account
+              </span>
+            </p>
           </div>
         </div>
-      </div>
+      </SellerLeftPanel>
 
-      <PasswordResetModal
-        isOpen={isPasswordModalOpen}
-        onClose={() => setIsPasswordModalOpen(false)}
+      <SellerRightPanel
+        heroImageSrc="/assets/signin_page/Signin_Img.png"
+        heroImageAlt="Seller Login Hero"
+        rightSectionBgColor="bg-[#1C1D21]"
+        showVectorDeco={true}
       />
+
+      {/* 2FA Modal */}
       <TwoFAModal
         isOpen={showTwoFAModal}
         onClose={() => setShowTwoFAModal(false)}
-        formData={formData}
+        formData={{ email, password }}
         twoFactorType={twoFactorType}
       />
-    </div>
+    </SellerFormContainer>
   );
-};
-
-export default VendorSignIn;
+}

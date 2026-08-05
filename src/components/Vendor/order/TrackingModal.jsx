@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, Package, Clock, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { getTrackingByAwb } from "../../../services/api.order";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import TrackingTimeline from "./TrackingTimeline";
 
 const TrackingModal = ({ awb, onClose }) => {
   const [trackingData, setTrackingData] = useState(null);
@@ -235,32 +236,7 @@ const TrackingModal = ({ awb, onClose }) => {
         </div>
 
         {/* Tracking Timeline */}
-        <div>
-          <h4 className="text-sm font-bold text-gray-950 mb-4">Tracking Timeline</h4>
-          <div className="space-y-3">
-            {trackingData.orderStateInfo && trackingData.orderStateInfo.length > 0 ? (
-              trackingData.orderStateInfo.map((event, index) => (
-                <div key={event._id || index} className="flex items-start gap-3">
-                  <div className="flex-shrink-0 mt-1">
-                    {getStatusIcon(event.state)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-950 capitalize">
-                      {event.state}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {formatDate(event.createdAt)}
-                    </div>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-4 text-gray-500 text-sm">
-                No tracking events available
-              </div>
-            )}
-          </div>
-        </div>
+        <TrackingTimeline events={trackingData.orderStateInfo || []} />
 
         {/* Line Items */}
         {trackingData.lineItems && trackingData.lineItems.length > 0 && (
