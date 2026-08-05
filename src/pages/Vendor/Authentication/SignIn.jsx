@@ -36,9 +36,6 @@ export default function SellerLoginPage() {
   // Visibility toggle state for password
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-
-  // 2FA modal state (email + password login flow)
   const [showTwoFAModal, setShowTwoFAModal] = useState(false);
   const [twoFactorType, setTwoFactorType] = useState("otp");
   const [email, setEmail] = useState("");
@@ -114,40 +111,8 @@ export default function SellerLoginPage() {
     }
   };
 
-  // Handle Verify OTP explicitly
-  const handleVerifyOtpClick = async () => {
-    const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
-
-    // Check if all OTP digits are filled
-    if (mobileOtp.otp.some((digit) => digit === "")) {
-      toast.error("Please enter all 6 digits of the OTP");
-      return;
-    }
-
-    setIsVerifyingOtp(true);
-    try {
-      const res = await mobileOtp.handleVerifyOtp(cleanMobile);
-
-      if (res?.status === 1) {
-        toast.success("OTP verified successfully!");
-        // The hook will set verified to true
-      } else if (res?.status === 2) {
-        // 2FA required
-        setEmail(cleanMobile);
-        setShowTwoFAModal(true);
-      } else {
-        toast.error(res?.message || "Invalid OTP");
-      }
-    } catch (error) {
-      toast.error("OTP verification failed. Please try again.");
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
-
   // Handle Mobile Submit (Login to Dashboard)
-  const handleMobileSubmit = (e) => {
-    e.preventDefault();
+  const handleMobileSubmit = () => {
     if (!mobileOtp.verified) {
       toast.error("Please verify your OTP first");
       return;
@@ -294,32 +259,11 @@ export default function SellerLoginPage() {
                   {loading ? "Logging in..." : "Login"}
                 </button>
               </form>
-
-              {/* Social Login */}
-              <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                  <span className="text-[14px] text-gray-500 font-lato">Or continue with</span>
-                  <div className="flex-1 h-px bg-gray-300"></div>
-                </div>
-
-                <div className="flex gap-4">
-                  <button className="w-11.5 h-11.5 bg-white border border-[#ECECF2] rounded-[8px] flex items-center justify-center hover:bg-gray-50 hover:border-[#8181A5] transition-all cursor-pointer">
-                    <FcGoogle size={20} />
-                  </button>
-                  <button className="w-11.5 h-11.5 bg-white border border-[#ECECF2] rounded-[8px] flex items-center justify-center hover:bg-gray-50 hover:border-[#8181A5] transition-all cursor-pointer">
-                    <FaFacebook
-                      size={20}
-                      className="text-[#8181A5] hover:text-[#1877F2] transition-colors"
-                    />
-                  </button>
-                </div>
-              </div>
             </TabsContent>
 
             {/* Mobile Form Content */}
             <TabsContent value="mobile" className="flex flex-col gap-6">
-              <form onSubmit={handleMobileSubmit} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-5">
                 {/* Mobile Field */}
                 <div className="flex flex-row items-end gap-3 w-full">
                   <div className="flex-1">
@@ -336,6 +280,12 @@ export default function SellerLoginPage() {
                           onChange={(e) => {
                             const value = e.target.value.replace(/\D/g, "").slice(0, 10);
                             setMobileForm({ mobile: value });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !mobileOtp.otpSent && mobileForm.mobile.length === 10) {
+                              e.preventDefault();
+                              handleSendOtp();
+                            }
                           }}
                           className="w-full h-11 pl-12 pr-4 border-[#ECECF2] rounded-[10px] text-[#1C1D21] placeholder:text-[#C4C4D4] focus-visible:ring-[#FF6B36]/25 focus-visible:border-[#FF6B36] font-lato text-[14px] outline-none"
                           maxLength={10}
@@ -374,11 +324,13 @@ export default function SellerLoginPage() {
                           {mobileOtp.otp.map((digit, index) => (
                             <input
                               key={index}
+                              ref={(el) => (mobileOtp.otpRefs.current[index] = el)}
                               type="text"
                               inputMode="numeric"
                               maxLength={1}
                               value={digit}
-                              onChange={(e) => handleOtpInputChange(index, e.target.value)}
+                              onChange={(e) => mobileOtp.handleOtpChange(e.target.value, index)}
+                              onKeyDown={(e) => mobileOtp.handleOtpKeyDown(e, index)}
                               placeholder="-"
                               className="w-12 h-12 border border-[#ECECF2] rounded-[8px] text-center text-[18px] font-bold text-[#1C1D21] focus:border-[#FF6B36] focus:ring-2 focus:ring-[#FF6B36]/20 focus:outline-none transition-all"
                             />
@@ -388,11 +340,18 @@ export default function SellerLoginPage() {
                         {/* Verify OTP Button */}
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={handleVerifyOtpClick}
-                            disabled={isVerifyingOtp || mobileOtp.otp.some((d) => d === "")}
+                            onClick={() => {
+                              const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
+                              if (mobileOtp.otp.some((d) => d === "")) {
+                                toast.error("Please enter all 6 digits of the OTP");
+                                return;
+                              }
+                              mobileOtp.handleVerifyOtp(cleanMobile);
+                            }}
+                            disabled={mobileOtp.verifying || mobileOtp.otp.some((d) => d === "")}
                             className="flex-1 h-10 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
                           >
-                            {isVerifyingOtp ? "Verifying..." : "Verify OTP"}
+                            {mobileOtp.verifying ? "Verifying..." : "Verify OTP"}
                           </button>
                           
                           {/* Resend link */}
@@ -432,13 +391,13 @@ export default function SellerLoginPage() {
                 {/* Login Button */}
                 {mobileOtp.verified && (
                   <button
-                    type="submit"
+                    onClick={handleMobileSubmit}
                     className="w-full h-11.5 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20"
                   >
                     Login to Dashboard
                   </button>
                 )}
-              </form>
+              </div>
             </TabsContent>
           </Tabs>
 

@@ -1,7 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { toast } from "react-toastify";
 
 export const useOtpVerification = ({
-  length,
+  length = 6,
+  resendSeconds = 60,
   sendOtp,
   verifyOtp,
   validate,
@@ -15,28 +17,38 @@ export const useOtpVerification = ({
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState(null);
   const [resendDisabled, setResendDisabled] = useState(true);
-  const [resendTimer, setResendTimer] = useState(60);
+  const [resendTimer, setResendTimer] = useState(resendSeconds);
+
   const timerRef = useRef(null);
+  const otpRefs = useRef([]);
+  const valueRef = useRef("");
+  const verifyingRef = useRef(false);
+  const autoVerifyTimeoutRef = useRef(null);
 
   useEffect(() => {
-    if (otpSent && resendTimer > 0) {
-      timerRef.current = setInterval(() => {
-        setResendTimer((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            setResendDisabled(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
     return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (autoVerifyTimeoutRef.current)
+        clearTimeout(autoVerifyTimeoutRef.current);
     };
-  }, [otpSent, resendTimer]);
+  }, []);
+
+  const startTimer = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    setResendTimer(resendSeconds);
+    setResendDisabled(true);
+
+    timerRef.current = setInterval(() => {
+      setResendTimer((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          setResendDisabled(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [resendSeconds]);
 
   const handleSendOtp = useCallback(
     async (value) => {
@@ -49,12 +61,16 @@ export const useOtpVerification = ({
         }
       }
 
+      valueRef.current = value;
       setSending(true);
       try {
         const response = await sendOtp(value);
         setOtpSent(true);
         setResendDisabled(true);
-        setResendTimer(60);
+        setResendTimer(resendSeconds);
+        setOtp(Array(length).fill(""));
+        startTimer();
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
         return response;
       } catch (err) {
         setError(err.message || "Failed to send OTP");
@@ -63,59 +79,115 @@ export const useOtpVerification = ({
         setSending(false);
       }
     },
-    [sendOtp, validate],
+    [sendOtp, validate, length, startTimer, resendSeconds],
   );
 
   const handleVerifyOtp = useCallback(
-    async (value) => {
-      setError(null);
-      const otpValue = otp.join("");
-
-      if (otpValue.length !== length) {
-        setError(`Please enter all ${length} digits`);
-        throw new Error("Incomplete OTP");
+    async (otpCode) => {
+      if (verifyingRef.current) {
+        return;
       }
 
+      if (verified) {
+        return;
+      }
+
+      verifyingRef.current = true;
       setVerifying(true);
+
       try {
-        const response = await verifyOtp(value, otpValue);
+        const response = await verifyOtp(valueRef.current, otpCode);
 
         if (response?.status === 1) {
           setVerified(true);
           setToken(response.token || null);
+          toast.success("OTP verified successfully!");
+          return response;
+        } else if (response?.status === 2) {
+          setVerified(false);
+          return response;
+        } else {
+          toast.error(response?.message || "Invalid OTP. Please try again.");
+          setOtp(Array(length).fill(""));
+          setTimeout(() => otpRefs.current[0]?.focus(), 100);
+          return response;
         }
-
-        return response;
       } catch (err) {
-        setError(err.message || "Failed to verify OTP");
+        toast.error("OTP verification failed. Please try again.");
+        setOtp(Array(length).fill(""));
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
         throw err;
       } finally {
         setVerifying(false);
+        verifyingRef.current = false;
       }
     },
-    [otp, length, verifyOtp],
+    [verifyOtp, length, verified],
   );
 
   const handleOtpChange = useCallback(
-    (index, value) => {
-      if (/^\d*$/.test(value)) {
-        const newOtp = [...otp];
-        newOtp[index] = value;
-        setOtp(newOtp);
+    (value, index) => {
+      if (isNaN(Number(value)) && value !== "") return;
+
+      setOtp((prev) => {
+        const newOtp = [...prev];
+        newOtp[index] = value.substring(value.length - 1);
+        return newOtp;
+      });
+
+      // Move to next input if value is entered
+      if (value && index < length - 1) {
+        otpRefs.current[index + 1]?.focus();
+      }
+    },
+    [length],
+  );
+
+  // Auto-verify when all digits are filled
+  useEffect(() => {
+    if (autoVerifyTimeoutRef.current) {
+      clearTimeout(autoVerifyTimeoutRef.current);
+      autoVerifyTimeoutRef.current = null;
+    }
+
+    const allFilled = otp.every((digit) => digit !== "");
+
+    if (allFilled && otpSent && !verified && !verifying) {
+      autoVerifyTimeoutRef.current = setTimeout(() => {
+        const otpCode = otp.join("");
+        handleVerifyOtp(otpCode);
+      }, 300);
+    }
+
+    return () => {
+      if (autoVerifyTimeoutRef.current) {
+        clearTimeout(autoVerifyTimeoutRef.current);
+        autoVerifyTimeoutRef.current = null;
+      }
+    };
+  }, [otp, otpSent, verified, verifying, handleVerifyOtp]);
+
+  const handleOtpKeyDown = useCallback(
+    (e, index) => {
+      if (e.key === "Backspace" && !otp[index] && index > 0) {
+        otpRefs.current[index - 1]?.focus();
       }
     },
     [otp],
   );
 
   const resetOtp = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (autoVerifyTimeoutRef.current)
+      clearTimeout(autoVerifyTimeoutRef.current);
     setOtp(Array(length).fill(""));
     setVerified(false);
     setOtpSent(false);
     setToken(null);
     setError(null);
     setResendDisabled(true);
-    setResendTimer(60);
-  }, [length]);
+    setResendTimer(resendSeconds);
+  }, [length, resendSeconds]);
 
   return {
     otp,
@@ -129,9 +201,11 @@ export const useOtpVerification = ({
     error,
     resendDisabled,
     resendTimer,
+    otpRefs,
     handleSendOtp,
     handleVerifyOtp,
     handleOtpChange,
+    handleOtpKeyDown,
     resetOtp,
   };
 };
