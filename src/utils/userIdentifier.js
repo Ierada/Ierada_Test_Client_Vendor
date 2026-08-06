@@ -1,15 +1,27 @@
 import Cookies from "js-cookie";
 import config from "../config/config";
 import { jwtDecode } from "jwt-decode";
+import { clearActivityMarker } from "./idleTimeout";
+
+const SESSION_MAX_MS =
+  Number(import.meta.env.VITE_SESSION_MAX_MS) || 64_800_000; // 18h
+const COOKIE_EXPIRES_DAYS = SESSION_MAX_MS / (24 * 60 * 60 * 1000);
+
+const capitalize = (role) =>
+  role ? role.charAt(0).toUpperCase() + role.slice(1) : "Customer";
+
+export const getTokenKey = (role = "vendor") =>
+  `${config.BRAND_NAME}${capitalize(role)}Token`;
+
+export const getUserKey = (role = "vendor") =>
+  `${config.BRAND_NAME}${capitalize(role)}User`;
+
+export const getGuestKey = () => `${config.BRAND_NAME}guestUserId`;
 
 export const getUserIdentifier = (role = "vendor") => {
-  const tokenKey = `${config.BRAND_NAME}${
-    role.charAt(0).toUpperCase() + role.slice(1)
-  }Token`;
-  const userKey = `${config.BRAND_NAME}${
-    role.charAt(0).toUpperCase() + role.slice(1)
-  }User`;
-  const guestKey = `${config.BRAND_NAME}guestUserId`;
+  const tokenKey = getTokenKey(role);
+  const userKey = getUserKey(role);
+  const guestKey = getGuestKey();
 
   // Check for existing user token
   const userToken = Cookies.get(tokenKey);
@@ -48,10 +60,7 @@ export const getUserIdentifier = (role = "vendor") => {
 };
 
 export const getUserToken = (role = "vendor") => {
-  const tokenKey = `${config.BRAND_NAME}${
-    role.charAt(0).toUpperCase() + role.slice(1)
-  }Token`;
-  return Cookies.get(tokenKey);
+  return Cookies.get(getTokenKey(role));
 };
 
 export const getRoleFromPath = (pathname) => {
@@ -60,29 +69,22 @@ export const getRoleFromPath = (pathname) => {
     pathParts[0] === "admin"
       ? "admin"
       : pathParts[0] === "vendor"
-      ? "vendor"
-      : "website";
+        ? "vendor"
+        : "website";
   return panel === "website" ? "customer" : panel;
 };
 
 // Helper function to get role-specific key
 export const getUserStorageKey = (role) => {
-  const capitalizedRole = role
-    ? role.charAt(0).toUpperCase() + role.slice(1)
-    : "Customer";
-  return `${config.BRAND_NAME}${capitalizedRole}User`;
+  return getUserKey(role);
 };
 
 export const setUserCookie = (token, user, role) => {
-  const tokenKey = `${config.BRAND_NAME}${
-    role.charAt(0).toUpperCase() + role.slice(1)
-  }Token`;
-  const userKey = `${config.BRAND_NAME}${
-    role.charAt(0).toUpperCase() + role.slice(1)
-  }User`;
+  const tokenKey = getTokenKey(role);
+  const userKey = getUserKey(role);
 
   Cookies.set(tokenKey, token, {
-    expires: 30,
+    expires: COOKIE_EXPIRES_DAYS,
     path: "/",
     secure: true,
     sameSite: "Lax",
@@ -91,6 +93,16 @@ export const setUserCookie = (token, user, role) => {
   localStorage.setItem(userKey, JSON.stringify(user));
 
   if (role === "customer") {
-    localStorage.removeItem(`${config.BRAND_NAME}guestUserId`);
+    localStorage.removeItem(getGuestKey());
+  }
+};
+
+export const clearUserSession = (role = "vendor") => {
+  Cookies.remove(getTokenKey(role), { path: "/" });
+  localStorage.removeItem(getUserKey(role));
+  clearActivityMarker();
+
+  if (role === "customer") {
+    localStorage.removeItem(getGuestKey());
   }
 };

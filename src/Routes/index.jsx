@@ -66,8 +66,10 @@ const VendorProtectedRoute = ({ children }) => {
             throw new Error("Invalid vendor role");
           }
 
+          const sessionMaxMs =
+            Number(import.meta.env.VITE_SESSION_MAX_MS) || 64_800_000;
           Cookies.set(`${config.BRAND_NAME}VendorToken`, queryToken, {
-            expires: 7,
+            expires: sessionMaxMs / (24 * 60 * 60 * 1000),
             secure: window.location.protocol === "https:",
             sameSite: "lax",
           });

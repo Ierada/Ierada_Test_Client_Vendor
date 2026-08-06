@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getUserToken } from "./utils/userIdentifier";
+import { touchActivity } from "./utils/idleTimeout";
 
 const apiClient = axios.create({
   // baseURL: import.meta.env.VITE_TEST_API_URL,
@@ -20,6 +21,7 @@ apiClient.interceptors.request.use(
     const passwordToken = getCookie("passwordToken");
     if (userToken) {
       config.headers["auth-token"] = userToken;
+      touchActivity();
     }
     if (passwordToken) {
       config.headers["password-token"] = passwordToken;

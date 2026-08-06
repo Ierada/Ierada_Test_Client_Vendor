@@ -7,6 +7,7 @@ import { ToastContainer } from "react-toastify";
 import { HelmetProvider } from "react-helmet-async";
 import "react-toastify/dist/ReactToastify.css";
 import "./App.css";
+import SessionGuard from "./components/Vendor/SessionGuard";
 
 const App = () => {
   const location = useLocation();
@@ -18,6 +19,7 @@ const App = () => {
     <AuthProvider>
       <AppProvider>
         <ToastContainer />
+        <SessionGuard />
         <HelmetProvider>
           <VendorRoutes />
         </HelmetProvider>
