@@ -38,7 +38,7 @@ export function TabsTrigger({ value: triggerValue, onValueChange, currentValue, 
     <button
       type="button"
       onClick={() => onValueChange(triggerValue)}
-      className={className}
+      className={`${className} ${isActive ? 'bg-[#ff6b36] text-white' : 'text-[#8181A5]'}`}
       data-active={isActive}
     >
       {children}

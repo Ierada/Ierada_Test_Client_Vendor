@@ -65,12 +65,17 @@ export const useOtpVerification = ({
       setSending(true);
       try {
         const response = await sendOtp(value);
-        setOtpSent(true);
-        setResendDisabled(true);
-        setResendTimer(resendSeconds);
-        setOtp(Array(length).fill(""));
-        startTimer();
-        setTimeout(() => otpRefs.current[0]?.focus(), 100);
+
+        // Only proceed with OTP flow if status is 1 (success)
+        if (response?.status === 1) {
+          setOtpSent(true);
+          setResendDisabled(true);
+          setResendTimer(resendSeconds);
+          setOtp(Array(length).fill(""));
+          startTimer();
+          setTimeout(() => otpRefs.current[0]?.focus(), 100);
+        }
+
         return response;
       } catch (err) {
         setError(err.message || "Failed to send OTP");
@@ -189,6 +194,24 @@ export const useOtpVerification = ({
     setResendTimer(resendSeconds);
   }, [length, resendSeconds]);
 
+  // Handle value change - reset OTP if value changes after OTP was sent
+  const handleValueChange = useCallback(
+    (newValue) => {
+      if (otpSent && valueRef.current && valueRef.current !== newValue) {
+        // Value changed after OTP was sent, reset OTP state
+        resetOtp();
+      } else if (otpSent) {
+        // Any edit to the number after OTP sent clears the resend timer
+        // allowing immediate resend to the same number
+        if (timerRef.current) clearInterval(timerRef.current);
+        setResendDisabled(false);
+        setResendTimer(0);
+      }
+      valueRef.current = newValue;
+    },
+    [otpSent, resetOtp],
+  );
+
   return {
     otp,
     setOtp,
@@ -207,5 +230,6 @@ export const useOtpVerification = ({
     handleOtpChange,
     handleOtpKeyDown,
     resetOtp,
+    handleValueChange,
   };
 };

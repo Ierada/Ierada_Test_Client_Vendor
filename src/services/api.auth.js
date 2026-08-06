@@ -295,7 +295,7 @@ export const vendorMobileOtpSend = async (phone) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    return { status: 0, message: "Error reaching the server" };
   }
 };
 

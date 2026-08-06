@@ -1,6 +1,6 @@
 
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
@@ -57,6 +57,13 @@ export default function SellerLoginPage() {
         : null,
   });
 
+  // Detect mobile number changes and reset OTP state if needed
+  useEffect(() => {
+    if (mobileForm.mobile) {
+      mobileOtp.handleValueChange(mobileForm.mobile);
+    }
+  }, [mobileForm.mobile, mobileOtp.handleValueChange]);
+
   // Handle Email Submit
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
@@ -104,8 +111,18 @@ export default function SellerLoginPage() {
   const handleSendOtp = async () => {
     const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
     try {
-      await mobileOtp.handleSendOtp(cleanMobile);
-      toast.success("OTP sent to your registered mobile number!");
+      const response = await mobileOtp.handleSendOtp(cleanMobile);
+      
+      // Check if the response indicates an error
+      if (response?.status === 0) {
+        toast.error(response?.message || "Vendor not found or not approved");
+        return;
+      }
+      
+      // Only show success if OTP was actually sent
+      if (response?.status === 1) {
+        toast.success("OTP sent to your registered mobile number!");
+      }
     } catch (error) {
       toast.error(error?.message || "Failed to send OTP");
     }
@@ -168,13 +185,13 @@ export default function SellerLoginPage() {
             <TabsList className="w-full h-12 bg-[#F5F6F8] border border-[#ECECF2] rounded-[12px] p-1 flex flex-row gap-1 select-none">
               <TabsTrigger
                 value="email"
-                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold data-active:bg-[#1C1D21] data-active:text-white text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
               >
                 Email
               </TabsTrigger>
               <TabsTrigger
                 value="mobile"
-                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold data-active:bg-[#1C1D21] data-active:text-white text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
               >
                 Mobile Number
               </TabsTrigger>
@@ -372,60 +389,39 @@ export default function SellerLoginPage() {
                                 onClick={handleSendOtp}
                                 className="text-[#FF6B36] font-semibold hover:underline cursor-pointer"
                               >
-                                Resend Code
+                                Resend OTP
                               </button>
                             )}
                           </div>
                         </div>
-
-                        {mobileOtp.verifying && (
-                          <p className="text-[11px] text-[#FF6B36] font-semibold animate-pulse">
-                            Verifying code...
-                          </p>
-                        )}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Login Button */}
+                {/* Login Button (shown after verification) */}
                 {mobileOtp.verified && (
                   <button
                     onClick={handleMobileSubmit}
-                    className="w-full h-11.5 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20"
+                    className="w-full h-11.5 mt-6 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20"
                   >
-                    Login to Dashboard
+                    Login
                   </button>
                 )}
               </div>
             </TabsContent>
           </Tabs>
 
-          {/* Sign Up Link */}
-          <div className="text-center mt-2 w-full max-w-[434px]">
-            <p className="text-[14px] text-[#8181A5] font-lato">
-              New to Ierada?{" "}
-              <span className="font-bold text-[#FF6B36] hover:underline cursor-pointer">
-                Create Free Account
-              </span>
-            </p>
-          </div>
+          {/* Social Login Section */}
+          
         </div>
       </SellerLeftPanel>
 
-      <SellerRightPanel
+     <SellerRightPanel
         heroImageSrc="/assets/signin_page/Signin_Img.png"
         heroImageAlt="Seller Login Hero"
         rightSectionBgColor="bg-[#1C1D21]"
         showVectorDeco={true}
-      />
-
-      {/* 2FA Modal */}
-      <TwoFAModal
-        isOpen={showTwoFAModal}
-        onClose={() => setShowTwoFAModal(false)}
-        formData={{ email, password }}
-        twoFactorType={twoFactorType}
       />
     </SellerFormContainer>
   );
