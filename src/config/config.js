@@ -6,7 +6,6 @@ const config = {
   VITE_BASE_INFLUENCER_URL: import.meta.env.VITE_BASE_INFLUENCER_URL,
   VITE_BASE_ADMIN_URL: import.meta.env.VITE_BASE_ADMIN_URL,
   RAZORPAY_KEY_ID: import.meta.env.VITE_RAZORPAY_KEY_ID,
-  RAZORPAY_KEY_SECRET: import.meta.env.RAZORPAY_KEY_SECRET,
   FIREBASE_API_KEY: import.meta.env.VITE_FIREBASE_API_KEY,
   FIREBASE_authDomain: import.meta.env.VITE_FIREBASE_authDomain,
   FIREBASE_projectId: import.meta.env.VITE_FIREBASE_projectId,
