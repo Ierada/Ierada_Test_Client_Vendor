@@ -215,13 +215,13 @@ export default function SellerLoginPage() {
             <TabsList className="w-full h-12 bg-[#F5F6F8] border border-[#ECECF2] rounded-[12px] p-1 flex flex-row gap-1 select-none">
               <TabsTrigger
                 value="email"
-                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold border-none focus-visible:outline-none"
               >
                 Email
               </TabsTrigger>
               <TabsTrigger
                 value="mobile"
-                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold text-[#8181A5] bg-transparent border-none focus-visible:outline-none"
+                className="flex-1 h-10 rounded-[8px] flex items-center justify-center transition-all cursor-pointer font-lato text-[14px] font-semibold border-none focus-visible:outline-none"
               >
                 Mobile Number
               </TabsTrigger>
@@ -301,7 +301,7 @@ export default function SellerLoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-11.5 mt-6 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-11.5 mt-6 bg-[#ff5500] hover:bg-[#e04c00] active:bg-[#c94400] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#ff5500]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? "Logging in..." : "Login"}
                 </button>
@@ -348,7 +348,7 @@ export default function SellerLoginPage() {
                         type="button"
                         onClick={handleSendOtp}
                         disabled={mobileOtp.sending || mobileForm.mobile.length !== 10}
-                        className="h-10 px-4 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                        className="h-10 px-4 !bg-[#ff5500] hover:!bg-[#e04c00] rounded-[10px] !text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
                       >
                         {mobileOtp.sending ? "Sending..." : "Send OTP"}
                       </button>
@@ -390,7 +390,7 @@ export default function SellerLoginPage() {
                             type="button"
                             onClick={handleVerifyOtpClick}
                             disabled={mobileOtp.verifying || mobileOtp.otp.some((d) => d === "")}
-                            className="flex-1 h-10 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
+                            className="flex-1 h-10 !bg-[#ff5500] hover:!bg-[#e04c00] rounded-[10px] !text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
                           >
                             {mobileOtp.verifying ? "Verifying..." : "Verify OTP"}
                           </button>
