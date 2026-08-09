@@ -47,8 +47,9 @@ const INITIAL_STATE = {
   shop_logo: "",
   shop_banner: "",
   deactivation_requested: false,
-  is_2fa_enabled: false,
-  two_factor_type: "none",
+  // Vendor 2FA on by default until explicitly disabled in profile
+  is_2fa_enabled: true,
+  two_factor_type: "otp",
   isBankVerified: false,
 };
 
@@ -192,8 +193,15 @@ const Profile = () => {
         shop_banner: vendorData?.data?.vendor?.shop_banner || "",
         deactivation_requested:
           vendorData?.data?.deactivation_requested || false,
-        is_2fa_enabled: vendorData?.data?.is_2fa_enabled || false,
-        two_factor_type: vendorData?.data?.two_factor_type || "none",
+        // null/undefined → enabled; explicit false stays disabled
+        is_2fa_enabled: vendorData?.data?.is_2fa_enabled !== false,
+        two_factor_type:
+          vendorData?.data?.is_2fa_enabled === false
+            ? "none"
+            : vendorData?.data?.two_factor_type &&
+                vendorData.data.two_factor_type !== "none"
+              ? vendorData.data.two_factor_type
+              : "otp",
         isBankVerified: vendorData?.data?.vendor?.account_number ? true : false,
       };
 
@@ -358,17 +366,21 @@ const Profile = () => {
   };
 
   const handleToggle2FA = async () => {
-    if (userData.is_2fa_enabled) {
-      setShow2FAModal(true);
-      notifyOnWarning(
-        "Disabling Two-Factor Authentication will reduce the security of your account. You will no longer receive OTP verification for sensitive actions. Are you sure you want to proceed?",
-      );
+    const enabling = !userData.is_2fa_enabled;
+    // Disable requires OTP confirm in modal; first click requests OTP, second submits it
+    if (!enabling && show2FAModal && !otp) {
+      notifyOnFail("Please enter the OTP");
       return;
     }
 
     try {
       setIsLoading(true);
-      const data = { enable: !userData.is_2fa_enabled };
+      const data = enabling
+        ? { enable: true }
+        : show2FAModal && otp
+          ? { enable: false, otp }
+          : { enable: false };
+
       const response = await toggleVendor2FA(user.id, data);
       if (response.status === 1) {
         if (response.requires_otp) {
@@ -928,7 +940,9 @@ const Profile = () => {
               </div>
               <p className="text-sm text-gray-600 mb-4">
                 {userData.is_2fa_enabled
-                  ? "Disabling Two-Factor Authentication will reduce the security of your account. You will no longer receive OTP verification for sensitive actions."
+                  ? "An OTP has been sent to your " +
+                    (userData.email ? "email" : "phone") +
+                    ". Enter it below to disable Two-Factor Authentication."
                   : "An OTP has been sent to your " +
                     (userData.email ? "email" : "phone") +
                     ". Please enter the OTP below."}

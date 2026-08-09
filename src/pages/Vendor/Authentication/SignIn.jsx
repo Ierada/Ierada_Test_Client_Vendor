@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
@@ -40,6 +40,7 @@ export default function SellerLoginPage() {
   const [twoFactorType, setTwoFactorType] = useState("otp");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const mobileLoginCompletedRef = useRef(false);
 
   // Form state
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
@@ -63,6 +64,35 @@ export default function SellerLoginPage() {
       mobileOtp.handleValueChange(mobileForm.mobile);
     }
   }, [mobileForm.mobile, mobileOtp.handleValueChange]);
+
+  // Complete mobile login once OTP is verified (auto-login; no second Login click)
+  const completeMobileLogin = useCallback(
+    (tokenFromVerify) => {
+      if (mobileLoginCompletedRef.current) return;
+
+      const token =
+        tokenFromVerify ||
+        mobileOtp.token ||
+        document.cookie.match(/IERADAFASHIONVendorToken=([^;]+)/)?.[1];
+
+      if (!token) return;
+
+      mobileLoginCompletedRef.current = true;
+      toast.success("Login successful!");
+      navigate(`/dashboard?token=${token}`);
+    },
+    [mobileOtp.token, navigate],
+  );
+
+  useEffect(() => {
+    if (!mobileOtp.verified) {
+      mobileLoginCompletedRef.current = false;
+      return;
+    }
+    if (mobileOtp.token) {
+      completeMobileLogin(mobileOtp.token);
+    }
+  }, [mobileOtp.verified, mobileOtp.token, completeMobileLogin]);
 
   // Handle Email Submit
   const handleEmailSubmit = async (e) => {
@@ -128,20 +158,20 @@ export default function SellerLoginPage() {
     }
   };
 
-  // Handle Mobile Submit (Login to Dashboard)
-  const handleMobileSubmit = () => {
-    if (!mobileOtp.verified) {
-      toast.error("Please verify your OTP first");
+  // Manual verify OTP (auto-verify also runs from the hook when all digits are filled)
+  const handleVerifyOtpClick = async () => {
+    if (mobileOtp.otp.some((d) => d === "")) {
+      toast.error("Please enter all 6 digits of the OTP");
       return;
     }
-
-    toast.success("Login successful!");
-
-    // Use token from the hook response
-    const token =
-      mobileOtp.token ||
-      document.cookie.match(/IERADAFASHIONVendorToken=([^;]+)/)?.[1];
-    navigate(`/dashboard?token=${token || ""}`);
+    try {
+      const response = await mobileOtp.handleVerifyOtp(mobileOtp.otp.join(""));
+      if (response?.status === 1) {
+        completeMobileLogin(response.token);
+      }
+    } catch {
+      // Error toast already handled in the OTP hook
+    }
   };
 
   // Handle 2FA verification from modal
@@ -357,14 +387,8 @@ export default function SellerLoginPage() {
                         {/* Verify OTP Button */}
                         <div className="flex items-center gap-3">
                           <button
-                            onClick={() => {
-                              const cleanMobile = mobileForm.mobile.replace(/[^0-9+]/g, "");
-                              if (mobileOtp.otp.some((d) => d === "")) {
-                                toast.error("Please enter all 6 digits of the OTP");
-                                return;
-                              }
-                              mobileOtp.handleVerifyOtp(cleanMobile);
-                            }}
+                            type="button"
+                            onClick={handleVerifyOtpClick}
                             disabled={mobileOtp.verifying || mobileOtp.otp.some((d) => d === "")}
                             className="flex-1 h-10 bg-[#FF6B36] hover:bg-[#e05928] rounded-[10px] text-white font-bold text-sm font-lato transition-all flex items-center justify-center cursor-pointer disabled:opacity-50"
                           >
@@ -399,14 +423,11 @@ export default function SellerLoginPage() {
                   </div>
                 )}
 
-                {/* Login Button (shown after verification) */}
+                {/* After OTP verify, login completes automatically */}
                 {mobileOtp.verified && (
-                  <button
-                    onClick={handleMobileSubmit}
-                    className="w-full h-11.5 mt-6 bg-[#FF6B36] hover:bg-[#e05928] active:bg-[#c94b1f] rounded-[10px] text-white font-bold text-[14px] font-lato transition-all flex items-center justify-center cursor-pointer shadow-sm shadow-[#FF6B36]/20"
-                  >
-                    Login
-                  </button>
+                  <p className="text-[13px] text-[#8181A5] font-lato mt-2">
+                    Signing you in...
+                  </p>
                 )}
               </div>
             </TabsContent>
