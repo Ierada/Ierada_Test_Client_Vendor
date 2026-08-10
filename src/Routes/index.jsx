@@ -1,7 +1,6 @@
 import {
   useRoutes,
   Navigate,
-  Outlet,
   useLocation,
   useNavigate,
 } from "react-router-dom";
@@ -40,6 +39,9 @@ import VendorLogoutPage from "../pages/Vendor/Logout/index.jsx";
 import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
+import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
+import { setUserCookie, clearUserSession } from "../utils/userIdentifier";
+import { toast } from "react-toastify";
 
 // import CreateInvoice from "../pages/Vendor/Invoice/Create.jsx";
 
@@ -48,16 +50,15 @@ const VendorProtectedRoute = ({ children }) => {
   const location = useLocation();
   const [isAuthorized, setIsAuthorized] = useState(false);
 
- useEffect(() => {
+  useEffect(() => {
     const authorizeVendor = () => {
       const searchParams = new URLSearchParams(location.search);
 
-      // Token received from another website
-      const queryToken = searchParams.get("token");
+      // Token received from website (legacy /dashboard?token=) — prefer /auth/handoff
+      const queryToken = (searchParams.get("token") || "").trim();
 
       let token = Cookies.get(`${config.BRAND_NAME}VendorToken`);
 
-      // Save query token in cookie
       if (queryToken) {
         try {
           const decoded = jwtDecode(queryToken);
@@ -66,32 +67,28 @@ const VendorProtectedRoute = ({ children }) => {
             throw new Error("Invalid vendor role");
           }
 
-          const sessionMaxMs =
-            Number(import.meta.env.VITE_SESSION_MAX_MS) || 64_800_000;
-          Cookies.set(`${config.BRAND_NAME}VendorToken`, queryToken, {
-            expires: sessionMaxMs / (24 * 60 * 60 * 1000),
-            secure: window.location.protocol === "https:",
-            sameSite: "lax",
-          });
+          if (decoded.exp && decoded.exp * 1000 < Date.now()) {
+            throw new Error("Token expired");
+          }
 
-          token = queryToken;
+          setUserCookie(queryToken, decoded, "vendor");
+          localStorage.setItem("user", JSON.stringify(decoded));
 
-          // Remove token from URL after saving
           searchParams.delete("token");
-
           const cleanSearch = searchParams.toString();
-
           navigate(
             {
               pathname: location.pathname,
               search: cleanSearch ? `?${cleanSearch}` : "",
             },
-            { replace: true }
+            { replace: true },
           );
+          setIsAuthorized(true);
+          return;
         } catch (error) {
           console.error("Invalid query token:", error);
-
-          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          clearUserSession("vendor");
+          toast.error("Invalid or expired login link. Please sign in again.");
           navigate("/login", { replace: true });
           return;
         }
@@ -107,16 +104,17 @@ const VendorProtectedRoute = ({ children }) => {
 
       try {
         const decoded = jwtDecode(token);
-         localStorage.setItem("user", JSON.stringify(decoded));
+        localStorage.setItem("user", JSON.stringify(decoded));
         if (decoded.role !== "vendor") {
-          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          clearUserSession("vendor");
+          toast.error("Invalid session. Please sign in again.");
           navigate("/login", { replace: true });
           return;
         }
 
-        // Check token expiration
         if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-          Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+          clearUserSession("vendor");
+          toast.error("Your session has expired. Please sign in again.");
           navigate("/login", { replace: true });
           return;
         }
@@ -124,8 +122,8 @@ const VendorProtectedRoute = ({ children }) => {
         setIsAuthorized(true);
       } catch (error) {
         console.error("Token decode error:", error);
-
-        Cookies.remove(`${config.BRAND_NAME}VendorToken`);
+        clearUserSession("vendor");
+        toast.error("Invalid session. Please sign in again.");
         navigate("/login", { replace: true });
       }
     };
@@ -133,7 +131,6 @@ const VendorProtectedRoute = ({ children }) => {
     authorizeVendor();
   }, [location.pathname, location.search, navigate]);
 
-  // Show loading until authorized
   if (!isAuthorized) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -149,6 +146,7 @@ const VendorRoutes = () => {
   return useRoutes([
     { path: "/login", element: <VendorSignIn /> },
     { path: "/forgot-password", element: <VendorForgotPassword /> },
+    { path: "/auth/handoff", element: <AuthHandoff /> },
     {
       path: "/",
       element: (

@@ -18,6 +18,30 @@ import { useOtpVerification } from "../../../hooks/useOtpVerification";
 import { SellerFormContainer, SellerLeftPanel, SellerRightPanel } from "../../../components/Shared/SellerFormContainer";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../../../components/Shared/Tabs";
 import TwoFAModal from "../../../components/Shared/TwoFAModal";
+import config from "../../../config/config";
+
+// Website origin for KYC / become-a-seller (TEST vs PROD via env only).
+const websiteBase = String(config.VITE_BASE_WEBSITE_URL || "")
+  .trim()
+  .replace(/\/$/, "");
+
+const kycStepRedirect = (stepKey, token) => {
+  const pathMap = {
+    pan_card: "/vendor/pan-details",
+    bank: "/vendor/bank-details",
+    aadhaar: "/vendor/aadhaar-verification",
+    address: "/vendor/pickup-address",
+  };
+  const path = pathMap[stepKey];
+  if (!path) return null;
+  if (!websiteBase) {
+    toast.error(
+      "Website URL is not configured. Set VITE_BASE_WEBSITE_URL.",
+    );
+    return null;
+  }
+  return `${websiteBase}${path}?token=${encodeURIComponent(token)}`;
+};
 
 // Define validation schemas
 const emailSchema = {
@@ -80,7 +104,7 @@ export default function SellerLoginPage() {
       mobileLoginCompletedRef.current = true;
       toast.success("Login successful!");
       
-      // Check if KYC is incomplete and redirect to ierada.com
+      // Check if KYC is incomplete and redirect to website KYC flow
       if (responseData && !responseData.isKycCompleted && responseData.kycSteps) {
         const kycSteps = responseData.kycSteps;
         const incompleteStep = Object.entries(kycSteps).find(
@@ -88,17 +112,10 @@ export default function SellerLoginPage() {
         );
         
         if (incompleteStep) {
-          const [stepKey, stepData] = incompleteStep;
-          const stepRedirectMap = {
-            pan_card: "https://ierada.com/vendor/pan-details",
-            bank: "https://ierada.com/vendor/bank-details",
-            aadhaar: "https://ierada.com/vendor/aadhaar-verification",
-            address: "https://ierada.com/vendor/pickup-address"
-          };
-          
-          const redirectUrl = stepRedirectMap[stepKey];
+          const [stepKey] = incompleteStep;
+          const redirectUrl = kycStepRedirect(stepKey, token);
           if (redirectUrl) {
-            window.location.href = `${redirectUrl}?token=${token}`;
+            window.location.href = redirectUrl;
             return;
           }
         }
@@ -148,7 +165,7 @@ export default function SellerLoginPage() {
         toast.success("Welcome back! Login successful.");
         setUserCookie(response.token, response.data, "vendor");
         
-        // Check if KYC is incomplete and redirect to ierada.com
+        // Check if KYC is incomplete and redirect to website KYC flow
         if (!response.data.isKycCompleted && response.data.kycSteps) {
           const kycSteps = response.data.kycSteps;
           const incompleteStep = Object.entries(kycSteps).find(
@@ -156,17 +173,10 @@ export default function SellerLoginPage() {
           );
           
           if (incompleteStep) {
-            const [stepKey, stepData] = incompleteStep;
-            const stepRedirectMap = {
-              pan_card: "https://ierada.com/vendor/pan-details",
-              bank: "https://ierada.com/vendor/bank-details",
-              aadhaar: "https://ierada.com/vendor/aadhaar-verification",
-              address: "https://ierada.com/vendor/pickup-address"
-            };
-            
-            const redirectUrl = stepRedirectMap[stepKey];
+            const [stepKey] = incompleteStep;
+            const redirectUrl = kycStepRedirect(stepKey, response.token);
             if (redirectUrl) {
-              window.location.href = `${redirectUrl}?token=${response.token}`;
+              window.location.href = redirectUrl;
               return;
             }
           }
@@ -238,7 +248,7 @@ export default function SellerLoginPage() {
         toast.success("2FA verified successfully!");
         setUserCookie(res.token, res.data, "vendor");
         
-        // Check if KYC is incomplete and redirect to ierada.com
+        // Check if KYC is incomplete and redirect to website KYC flow
         if (!res.data.isKycCompleted && res.data.kycSteps) {
           const kycSteps = res.data.kycSteps;
           const incompleteStep = Object.entries(kycSteps).find(
@@ -246,17 +256,10 @@ export default function SellerLoginPage() {
           );
           
           if (incompleteStep) {
-            const [stepKey, stepData] = incompleteStep;
-            const stepRedirectMap = {
-              pan_card: "https://ierada.com/vendor/pan-details",
-              bank: "https://ierada.com/vendor/bank-details",
-              aadhaar: "https://ierada.com/vendor/aadhaar-verification",
-              address: "https://ierada.com/vendor/pickup-address"
-            };
-            
-            const redirectUrl = stepRedirectMap[stepKey];
+            const [stepKey] = incompleteStep;
+            const redirectUrl = kycStepRedirect(stepKey, res.token);
             if (redirectUrl) {
-              window.location.href = `${redirectUrl}?token=${res.token}`;
+              window.location.href = redirectUrl;
               return;
             }
           }
