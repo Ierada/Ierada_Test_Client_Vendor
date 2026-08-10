@@ -4,10 +4,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { useState, useEffect } from "react";
-import Cookies from "js-cookie";
+import { useState, useEffect, useRef } from "react";
 import { jwtDecode } from "jwt-decode";
-import config from "../config/config";
 import VendorSignIn from "../pages/Vendor/Authentication/SignIn";
 import VendorForgotPassword from "../pages/Vendor/ForgotPassword/index";
 import VendorLayout from "../layout/DefaultLayout.jsx";
@@ -40,7 +38,11 @@ import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
 import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
-import { setUserCookie, clearUserSession } from "../utils/userIdentifier";
+import {
+  setUserCookie,
+  clearUserSession,
+  getUserToken,
+} from "../utils/userIdentifier";
 import { toast } from "react-toastify";
 
 // import CreateInvoice from "../pages/Vendor/Invoice/Create.jsx";
@@ -49,17 +51,19 @@ const VendorProtectedRoute = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [isAuthorized, setIsAuthorized] = useState(false);
+  const handledQueryTokenRef = useRef(false);
 
   useEffect(() => {
     const authorizeVendor = () => {
       const searchParams = new URLSearchParams(location.search);
 
-      // Token received from website (legacy /dashboard?token=) — prefer /auth/handoff
+      // Legacy /dashboard?token= — prefer /auth/handoff for new website flows
       const queryToken = (searchParams.get("token") || "").trim();
 
-      let token = Cookies.get(`${config.BRAND_NAME}VendorToken`);
-
       if (queryToken) {
+        if (handledQueryTokenRef.current) return;
+        handledQueryTokenRef.current = true;
+
         try {
           const decoded = jwtDecode(queryToken);
 
@@ -74,16 +78,13 @@ const VendorProtectedRoute = ({ children }) => {
           setUserCookie(queryToken, decoded, "vendor");
           localStorage.setItem("user", JSON.stringify(decoded));
 
+          // Hard navigation to a clean URL (same as /auth/handoff).
           searchParams.delete("token");
           const cleanSearch = searchParams.toString();
-          navigate(
-            {
-              pathname: location.pathname,
-              search: cleanSearch ? `?${cleanSearch}` : "",
-            },
-            { replace: true },
-          );
-          setIsAuthorized(true);
+          const cleanUrl = `${location.pathname}${
+            cleanSearch ? `?${cleanSearch}` : ""
+          }`;
+          window.location.replace(cleanUrl || "/dashboard");
           return;
         } catch (error) {
           console.error("Invalid query token:", error);
@@ -94,7 +95,10 @@ const VendorProtectedRoute = ({ children }) => {
         }
       }
 
+      const token = getUserToken("vendor");
+
       if (!token) {
+        setIsAuthorized(false);
         navigate("/login", {
           replace: true,
           state: { from: location.pathname },
@@ -105,6 +109,7 @@ const VendorProtectedRoute = ({ children }) => {
       try {
         const decoded = jwtDecode(token);
         localStorage.setItem("user", JSON.stringify(decoded));
+
         if (decoded.role !== "vendor") {
           clearUserSession("vendor");
           toast.error("Invalid session. Please sign in again.");

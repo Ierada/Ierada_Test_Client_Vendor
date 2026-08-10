@@ -1,18 +1,18 @@
 
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
 import { FaFacebook } from "react-icons/fa";
 import { CheckCircle2, Eye, EyeOff, Mail, Lock, Phone, ArrowRight } from "lucide-react";
 import { toast } from "react-toastify";
+import { jwtDecode } from "jwt-decode";
 
 import {
   vendorLogin,
   vendorMobileOtpLogin,
   vendorMobileOtpSend,
 } from "../../../services/api.auth";
-import { setUserCookie } from "../../../utils/userIdentifier";
+import { setUserCookie, getUserToken } from "../../../utils/userIdentifier";
 import { useOtpVerification } from "../../../hooks/useOtpVerification";
 
 import { SellerFormContainer, SellerLeftPanel, SellerRightPanel } from "../../../components/Shared/SellerFormContainer";
@@ -43,6 +43,46 @@ const kycStepRedirect = (stepKey, token) => {
   return `${websiteBase}${path}?token=${encodeURIComponent(token)}`;
 };
 
+/** Persist session then hard-nav to dashboard (same pattern as /auth/handoff). */
+const goToVendorDashboard = (token, userData = null) => {
+  if (!token) return;
+
+  const sessionUser = userData || (() => {
+    try {
+      return jwtDecode(token);
+    } catch {
+      return null;
+    }
+  })();
+
+  setUserCookie(token, sessionUser || {}, "vendor");
+  if (sessionUser) {
+    localStorage.setItem("user", JSON.stringify(sessionUser));
+  }
+
+  // Full navigation so ProtectedRoute reads a fresh cookie (avoids SPA race).
+  window.location.replace("/dashboard");
+};
+
+const redirectIfKycIncomplete = (token, responseData) => {
+  if (!responseData || responseData.isKycCompleted || !responseData.kycSteps) {
+    return false;
+  }
+
+  const incompleteStep = Object.entries(responseData.kycSteps).find(
+    ([, step]) => !step?.completed,
+  );
+
+  if (!incompleteStep) return false;
+
+  const [stepKey] = incompleteStep;
+  const redirectUrl = kycStepRedirect(stepKey, token);
+  if (!redirectUrl) return false;
+
+  window.location.href = redirectUrl;
+  return true;
+};
+
 // Define validation schemas
 const emailSchema = {
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) ? null : "Please enter a valid email address",
@@ -54,7 +94,6 @@ const mobileSchema = {
 };
 
 export default function SellerLoginPage() {
-  const navigate = useNavigate();
   const [authMethod, setAuthMethod] = useState("mobile");
 
   // Visibility toggle state for password
@@ -97,33 +136,18 @@ export default function SellerLoginPage() {
       const token =
         tokenFromVerify ||
         mobileOtp.token ||
-        document.cookie.match(/IERADAFASHIONVendorToken=([^;]+)/)?.[1];
+        getUserToken("vendor");
 
       if (!token) return;
 
       mobileLoginCompletedRef.current = true;
       toast.success("Login successful!");
-      
-      // Check if KYC is incomplete and redirect to website KYC flow
-      if (responseData && !responseData.isKycCompleted && responseData.kycSteps) {
-        const kycSteps = responseData.kycSteps;
-        const incompleteStep = Object.entries(kycSteps).find(
-          ([key, step]) => !step.completed
-        );
-        
-        if (incompleteStep) {
-          const [stepKey] = incompleteStep;
-          const redirectUrl = kycStepRedirect(stepKey, token);
-          if (redirectUrl) {
-            window.location.href = redirectUrl;
-            return;
-          }
-        }
-      }
-      
-      navigate(`/dashboard?token=${token}`);
+
+      if (redirectIfKycIncomplete(token, responseData)) return;
+
+      goToVendorDashboard(token, responseData);
     },
-    [mobileOtp.token, navigate],
+    [mobileOtp.token],
   );
 
   useEffect(() => {
@@ -162,27 +186,16 @@ export default function SellerLoginPage() {
       });
 
       if (response?.status === 1) {
-        toast.success("Welcome back! Login successful.");
-        setUserCookie(response.token, response.data, "vendor");
-        
-        // Check if KYC is incomplete and redirect to website KYC flow
-        if (!response.data.isKycCompleted && response.data.kycSteps) {
-          const kycSteps = response.data.kycSteps;
-          const incompleteStep = Object.entries(kycSteps).find(
-            ([key, step]) => !step.completed
-          );
-          
-          if (incompleteStep) {
-            const [stepKey] = incompleteStep;
-            const redirectUrl = kycStepRedirect(stepKey, response.token);
-            if (redirectUrl) {
-              window.location.href = redirectUrl;
-              return;
-            }
-          }
+        if (!response.token) {
+          toast.error("Login succeeded but session token is missing. Please try again.");
+          return;
         }
-        
-        navigate("/dashboard");
+
+        toast.success("Welcome back! Login successful.");
+
+        if (redirectIfKycIncomplete(response.token, response.data)) return;
+
+        goToVendorDashboard(response.token, response.data);
       } else if (response?.status === 2) {
         setEmail(emailForm.email);
         setPassword(emailForm.password);
@@ -232,51 +245,6 @@ export default function SellerLoginPage() {
     } catch {
       // Error toast already handled in the OTP hook
     }
-  };
-
-  // Handle 2FA verification from modal
-  const handleTwoFAVerify = async (twoFactorCode) => {
-    try {
-      const res = await vendorLogin({
-        email: email,
-        password: password,
-        role: "vendor",
-        two_factor_code: twoFactorCode,
-      });
-
-      if (res.status === 1) {
-        toast.success("2FA verified successfully!");
-        setUserCookie(res.token, res.data, "vendor");
-        
-        // Check if KYC is incomplete and redirect to website KYC flow
-        if (!res.data.isKycCompleted && res.data.kycSteps) {
-          const kycSteps = res.data.kycSteps;
-          const incompleteStep = Object.entries(kycSteps).find(
-            ([key, step]) => !step.completed
-          );
-          
-          if (incompleteStep) {
-            const [stepKey] = incompleteStep;
-            const redirectUrl = kycStepRedirect(stepKey, res.token);
-            if (redirectUrl) {
-              window.location.href = redirectUrl;
-              return;
-            }
-          }
-        }
-        
-        window.location.href = "/dashboard";
-      } else {
-        toast.error(res.message || "Invalid 2FA code");
-      }
-    } catch (error) {
-      console.error("2FA error:", error);
-      toast.error("2FA verification failed");
-    }
-  };
-
-  const handleOtpInputChange = (index, value) => {
-    mobileOtp.handleOtpChange(index, value);
   };
 
   return (
@@ -521,6 +489,17 @@ export default function SellerLoginPage() {
         heroImageAlt="Seller Login Hero"
         rightSectionBgColor="bg-[#1C1D21]"
         showVectorDeco={true}
+      />
+
+      <TwoFAModal
+        isOpen={showTwoFAModal}
+        onClose={() => setShowTwoFAModal(false)}
+        formData={{ email, password }}
+        twoFactorType={twoFactorType}
+        onSuccess={(token, data) => {
+          if (redirectIfKycIncomplete(token, data)) return;
+          goToVendorDashboard(token, data);
+        }}
       />
     </SellerFormContainer>
   );

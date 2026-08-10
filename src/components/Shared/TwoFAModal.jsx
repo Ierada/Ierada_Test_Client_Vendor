@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X } from "lucide-react";
 import { vendorLogin } from "../../services/api.auth";
 import { setUserCookie } from "../../utils/userIdentifier";
-import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 
-const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
+const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType, onSuccess }) => {
   const [otp, setOtp] = useState(
     twoFactorType === "otp" || twoFactorType === ""
       ? ["", "", "", ""]
@@ -18,7 +16,6 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const otpRefs = useRef([]);
-  const navigate = useNavigate();
   const timerRef = useRef(null);
 
   const startOtpTimer = useCallback(() => {
@@ -58,13 +55,19 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
 
   const handleVerify2FA = useCallback(
     async (code) => {
+      if (isLoading) return;
+
       if (!formData.email || !formData.password) {
         setErrors({ two_factor: "Email or password is missing" });
-        setIsLoading(false);
+        return;
+      }
+
+      if (!code || code.length !== otp.length) {
         return;
       }
 
       setIsLoading(true);
+      setErrors({});
       try {
         const res = await vendorLogin({
           email: formData.email,
@@ -74,22 +77,54 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
         });
 
         if (res.status === 1) {
+          if (!res.token) {
+            setErrors({
+              two_factor:
+                "2FA succeeded but session token is missing. Please try again.",
+            });
+            return;
+          }
+
           toast.success("2FA verified successfully!");
+
+          if (typeof onSuccess === "function") {
+            onSuccess(res.token, res.data);
+            return;
+          }
+
+          // Fallback when caller does not pass onSuccess (cookie + hard nav).
           setUserCookie(res.token, res.data, "vendor");
-          window.location.href = "/dashboard";
+          if (res.data) {
+            localStorage.setItem("user", JSON.stringify(res.data));
+          }
+          window.location.replace("/dashboard");
         } else {
-          setErrors({ two_factor: res.message || "Invalid 2FA code" });
+          const message = res.message || "Invalid 2FA code";
+          setErrors({ two_factor: message });
+          toast.error(message);
+          setOtp(
+            twoFactorType === "otp" || twoFactorType === ""
+              ? ["", "", "", ""]
+              : ["", "", "", "", "", ""],
+          );
+          setTimeout(() => otpRefs.current[0]?.focus(), 100);
         }
       } catch (error) {
-        setErrors({
-          two_factor:
-            error.response?.data?.message || "Failed to verify 2FA code",
-        });
+        const message =
+          error.response?.data?.message || "Failed to verify 2FA code";
+        setErrors({ two_factor: message });
+        toast.error(message);
+        setOtp(
+          twoFactorType === "otp" || twoFactorType === ""
+            ? ["", "", "", ""]
+            : ["", "", "", "", "", ""],
+        );
+        setTimeout(() => otpRefs.current[0]?.focus(), 100);
       } finally {
         setIsLoading(false);
       }
     },
-    [formData, navigate],
+    [formData, onSuccess, isLoading, otp.length, twoFactorType],
   );
 
   const handleOtpChange = useCallback(
@@ -126,7 +161,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType }) => {
                 otpRefs.current[index + 1]?.focus();
               }, 0);
             }
-            if (value && index === newOtp.length - 1) {
+            if (value && index === newOtp.length - 1 && newOtp.every((d) => d !== "")) {
               const otpCode = newOtp.join("");
               setTimeout(() => {
                 handleVerify2FA(otpCode);
