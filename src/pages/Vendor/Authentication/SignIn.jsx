@@ -67,7 +67,7 @@ export default function SellerLoginPage() {
 
   // Complete mobile login once OTP is verified (auto-login; no second Login click)
   const completeMobileLogin = useCallback(
-    (tokenFromVerify) => {
+    (tokenFromVerify, responseData = null) => {
       if (mobileLoginCompletedRef.current) return;
 
       const token =
@@ -79,6 +79,31 @@ export default function SellerLoginPage() {
 
       mobileLoginCompletedRef.current = true;
       toast.success("Login successful!");
+      
+      // Check if KYC is incomplete and redirect to ierada.com
+      if (responseData && !responseData.isKycCompleted && responseData.kycSteps) {
+        const kycSteps = responseData.kycSteps;
+        const incompleteStep = Object.entries(kycSteps).find(
+          ([key, step]) => !step.completed
+        );
+        
+        if (incompleteStep) {
+          const [stepKey, stepData] = incompleteStep;
+          const stepRedirectMap = {
+            pan_card: "https://ierada.com/vendor/pan-details",
+            bank: "https://ierada.com/vendor/bank-details",
+            aadhaar: "https://ierada.com/vendor/aadhaar-verification",
+            address: "https://ierada.com/vendor/pickup-address"
+          };
+          
+          const redirectUrl = stepRedirectMap[stepKey];
+          if (redirectUrl) {
+            window.location.href = `${redirectUrl}?token=${token}`;
+            return;
+          }
+        }
+      }
+      
       navigate(`/dashboard?token=${token}`);
     },
     [mobileOtp.token, navigate],
@@ -90,9 +115,9 @@ export default function SellerLoginPage() {
       return;
     }
     if (mobileOtp.token) {
-      completeMobileLogin(mobileOtp.token);
+      completeMobileLogin(mobileOtp.token, mobileOtp.responseData);
     }
-  }, [mobileOtp.verified, mobileOtp.token, completeMobileLogin]);
+  }, [mobileOtp.verified, mobileOtp.token, mobileOtp.responseData, completeMobileLogin]);
 
   // Handle Email Submit
   const handleEmailSubmit = async (e) => {
@@ -122,6 +147,31 @@ export default function SellerLoginPage() {
       if (response?.status === 1) {
         toast.success("Welcome back! Login successful.");
         setUserCookie(response.token, response.data, "vendor");
+        
+        // Check if KYC is incomplete and redirect to ierada.com
+        if (!response.data.isKycCompleted && response.data.kycSteps) {
+          const kycSteps = response.data.kycSteps;
+          const incompleteStep = Object.entries(kycSteps).find(
+            ([key, step]) => !step.completed
+          );
+          
+          if (incompleteStep) {
+            const [stepKey, stepData] = incompleteStep;
+            const stepRedirectMap = {
+              pan_card: "https://ierada.com/vendor/pan-details",
+              bank: "https://ierada.com/vendor/bank-details",
+              aadhaar: "https://ierada.com/vendor/aadhaar-verification",
+              address: "https://ierada.com/vendor/pickup-address"
+            };
+            
+            const redirectUrl = stepRedirectMap[stepKey];
+            if (redirectUrl) {
+              window.location.href = `${redirectUrl}?token=${response.token}`;
+              return;
+            }
+          }
+        }
+        
         navigate("/dashboard");
       } else if (response?.status === 2) {
         setEmail(emailForm.email);
@@ -167,7 +217,7 @@ export default function SellerLoginPage() {
     try {
       const response = await mobileOtp.handleVerifyOtp(mobileOtp.otp.join(""));
       if (response?.status === 1) {
-        completeMobileLogin(response.token);
+        completeMobileLogin(response.token, response.data);
       }
     } catch {
       // Error toast already handled in the OTP hook
@@ -187,6 +237,31 @@ export default function SellerLoginPage() {
       if (res.status === 1) {
         toast.success("2FA verified successfully!");
         setUserCookie(res.token, res.data, "vendor");
+        
+        // Check if KYC is incomplete and redirect to ierada.com
+        if (!res.data.isKycCompleted && res.data.kycSteps) {
+          const kycSteps = res.data.kycSteps;
+          const incompleteStep = Object.entries(kycSteps).find(
+            ([key, step]) => !step.completed
+          );
+          
+          if (incompleteStep) {
+            const [stepKey, stepData] = incompleteStep;
+            const stepRedirectMap = {
+              pan_card: "https://ierada.com/vendor/pan-details",
+              bank: "https://ierada.com/vendor/bank-details",
+              aadhaar: "https://ierada.com/vendor/aadhaar-verification",
+              address: "https://ierada.com/vendor/pickup-address"
+            };
+            
+            const redirectUrl = stepRedirectMap[stepKey];
+            if (redirectUrl) {
+              window.location.href = `${redirectUrl}?token=${res.token}`;
+              return;
+            }
+          }
+        }
+        
         window.location.href = "/dashboard";
       } else {
         toast.error(res.message || "Invalid 2FA code");

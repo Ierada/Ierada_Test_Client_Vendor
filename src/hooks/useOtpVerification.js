@@ -12,6 +12,7 @@ export const useOtpVerification = ({
   const [verified, setVerified] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [token, setToken] = useState(null);
+  const [responseData, setResponseData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -106,6 +107,7 @@ export const useOtpVerification = ({
         if (response?.status === 1) {
           setVerified(true);
           setToken(response.token || null);
+          setResponseData(response.data || null);
           toast.success("OTP verified successfully!");
           return response;
         } else if (response?.status === 2) {
@@ -189,6 +191,7 @@ export const useOtpVerification = ({
     setVerified(false);
     setOtpSent(false);
     setToken(null);
+    setResponseData(null);
     setError(null);
     setResendDisabled(true);
     setResendTimer(resendSeconds);
@@ -218,6 +221,7 @@ export const useOtpVerification = ({
     verified,
     otpSent,
     token,
+    responseData,
     loading,
     sending,
     verifying,
