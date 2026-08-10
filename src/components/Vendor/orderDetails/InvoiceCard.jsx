@@ -194,11 +194,11 @@ const InvoiceCard = React.forwardRef(({ orderData }, ref) => {
         className="bg-white text-black text-[11px] w-full max-w-[780px] mx-auto border border-black"
         style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
       >
-        <div className="text-center border-b border-black py-1">
+        <div className="text-left border-b border-black py-1 pl-2">
           <p className="text-orange-600 font-bold text-[13px]">
-          {vendor?.companyName || vendor?.shopName || ieradaData.companyName}
+          {vendor?.companyName || vendor?.shopName}
           </p>
-          <p className="font-bold text-[11px]">(Tax Invoice)</p>
+          <p className="font-bold text-[11px]">Tax Invoice</p>
         </div>
 
         <div className="grid grid-cols-2 border-b border-black">
@@ -214,14 +214,13 @@ const InvoiceCard = React.forwardRef(({ orderData }, ref) => {
           </div>
         </div>
 
-        <div className="p-2 border-b border-black">
-          <p className="font-bold">Sold By</p>
-          <p>{vendor?.name || vendor?.shopName || ieradaData.companyName}</p>
-           <p>{shippedFromAddr}</p>
-          <p>GST: {vendor?.gstin || ieradaData.gstin}</p>
-        </div>
-
-        <div className="grid grid-cols-2 border-b border-black">
+        <div className="grid grid-cols-3 border-b border-black">
+          <div className="p-2 border-r border-black">
+            <p className="font-bold">Sold By</p>
+            <p>{vendor?.name || vendor?.shopName || ieradaData.companyName}</p>
+             <p>{shippedFromAddr}</p>
+            <p>GST: {vendor?.gstin || ieradaData.gstin}</p>
+          </div>
           <div className="p-2 border-r border-black">
             <p className="font-bold">Shipping Address</p>
             <p>{customer?.name},</p>
@@ -231,10 +230,10 @@ const InvoiceCard = React.forwardRef(({ orderData }, ref) => {
           </div>
           <div className="p-2">
             <p className="font-bold">Billing Address</p>
-            <p>{customer?.name},</p>
-            <p>{customer?.address?.line1},</p>
-            <p>{customer?.address?.line2},</p>
-            <p>{customer?.address?.line3}</p>
+            <p>{customer?.billingAddress?.name || customer?.name},</p>
+            <p>{customer?.billingAddress?.address?.line1 || customer?.address?.line1},</p>
+            <p>{customer?.billingAddress?.address?.line2 || customer?.address?.line2},</p>
+            <p>{customer?.billingAddress?.address?.line3 || customer?.address?.line3}</p>
           </div>
         </div>
 
@@ -258,7 +257,7 @@ const InvoiceCard = React.forwardRef(({ orderData }, ref) => {
               <td className="p-2 border-r border-black">
                 {product?.name2 || product?.name}
               </td>
-              <td className="p-2 border-r border-black">HSN: {product?.hsn}</td>
+              <td className="p-2 border-r border-black">{product?.hsn}</td>
               <td className="p-2 border-r border-black">{qty2}</td>
               <td className="p-2 border-r border-black">{gross2}</td>
               <td className="p-2 border-r border-black">{discount2}</td>

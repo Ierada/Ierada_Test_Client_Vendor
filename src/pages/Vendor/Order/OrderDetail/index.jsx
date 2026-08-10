@@ -128,6 +128,11 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         whatsInTheBox: prod.whatsInTheBox || prod.whats_in_the_box || [],
         codAmount: prod.codAmount || 0,
         codTotal: prod.codTotal || 0,
+        hsn: prod.hsn || "",
+        grossAmount: prod.discountedPrice || 0,
+        taxableValue: prod.discountedPrice || 0,
+        gst: prod.gst || 0,
+        discount: Number(data.productDiscountAmount || 0),
       },
 
       orderInfo: {
@@ -151,6 +156,11 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
             ? "Prepaid"
             : data.paymentType || "Prepaid",
         discount: `${discount}% OFF`,
+        orderNumber: data.orderNumber || data.id || "",
+        invoiceNo: `INV-${data.id}`,
+        invoiceDate: orderedAt.toLocaleDateString("en-IN"),
+        invoiceNo2: `INV2-${data.id}`,
+        invoiceDate2: orderedAt.toLocaleDateString("en-IN"),
       },
 
       customer: {
@@ -166,7 +176,16 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         address: {
           line1: addr.streetAddress || "",
           line2: [addr.city, addr.state, addr.zip].filter(Boolean).join(" — "),
+          line3: addr.zip || "",
         },
+        billingAddress: data.billingAddress ? {
+          name: `${data.billingAddress.first_name || ""} ${data.billingAddress.last_name || ""}`.trim() || "",
+          address: {
+            line1: data.billingAddress.street_address || "",
+            line2: [data.billingAddress.city, data.billingAddress.state].filter(Boolean).join(", "),
+            line3: data.billingAddress.zip || "",
+          },
+        } : null,
         stats: {
           orders: cust.orderCount || "—",
           totalSpend: cust.totalSpend
