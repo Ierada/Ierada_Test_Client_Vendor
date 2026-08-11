@@ -34,10 +34,15 @@ const INITIAL_STATE = {
   adhaar_number: "",
   brand_name: "",
   adhaarCardFile: "",
+  adhaarCardFileUploadedAt: "",
   panCardFile: "",
+  panCardFileUploadedAt: "",
   gstFile: "",
+  gstFileUploadedAt: "",
   businessRegistrationFile: "",
+  businessRegistrationFileUploadedAt: "",
   cancelledChequeFile: "",
+  cancelledChequeFileUploadedAt: "",
   shop_logo: "",
   shop_banner: "",
   shop_address: "",
@@ -94,6 +99,17 @@ const maskSensitive = (value) => {
   return `${masked}${last4}`;
 };
 
+const formatUploadDateTime = (dateString) => {
+  if (!dateString) return "—";
+  const date = new Date(dateString);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+};
+
 const getFileNameFromValue = (value) => {
   if (!value) return "—";
   if (value.startsWith("data:")) return "New file selected";
@@ -142,6 +158,7 @@ const Profile = () => {
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [otp, setOtp] = useState("");
   const [showLocationModal, setShowLocationModal] = useState(false);
+  const [vendorData, setVendorData] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -254,6 +271,7 @@ const Profile = () => {
       }
 
       const vendorData = response;
+      setVendorData(vendorData);
 
       const formatDOB = (isoDate) => {
         if (!isoDate) return "";
@@ -282,12 +300,19 @@ const Profile = () => {
         adhaar_number: vendorData?.data?.vendor?.adhaar_number || "",
         brand_name: vendorData?.data?.vendor?.brand_name || "",
         adhaarCardFile: vendorData?.data?.vendor?.documents?.adhaarcard || "",
+        adhaarCardFileUploadedAt: vendorData?.data?.vendor?.documents?.adhaarcard_uploaded_at || "",
         panCardFile: vendorData?.data?.vendor?.documents?.pancard || "",
+        panCardFileUploadedAt: vendorData?.data?.vendor?.documents?.pancard_uploaded_at || "",
         gstFile: vendorData?.data?.vendor?.documents?.gst_file || "",
+        gstFileUploadedAt: vendorData?.data?.vendor?.documents?.gst_file_uploaded_at || "",
         businessRegistrationFile:
           vendorData?.data?.vendor?.documents?.business_registration || "",
+        businessRegistrationFileUploadedAt:
+          vendorData?.data?.vendor?.documents?.business_registration_uploaded_at || "",
         cancelledChequeFile:
           vendorData?.data?.vendor?.documents?.cancelled_cheque || "",
+        cancelledChequeFileUploadedAt:
+          vendorData?.data?.vendor?.documents?.cancelled_cheque_uploaded_at || "",
         shop_logo: vendorData?.data?.vendor?.shop_logo || "",
         shop_banner: vendorData?.data?.vendor?.shop_banner || "",
         shop_address: vendorData?.data?.vendor?.shop_address || "",
@@ -386,6 +411,11 @@ const Profile = () => {
             "kyc_address",
             "pan_number",
             "adhaar_number",
+            "adhaarCardFileUploadedAt",
+            "panCardFileUploadedAt",
+            "gstFileUploadedAt",
+            "businessRegistrationFileUploadedAt",
+            "cancelledChequeFileUploadedAt",
           ].includes(key) &&
           !value.toString().includes("data:")
         ) {
@@ -608,13 +638,27 @@ const Profile = () => {
 
   const renderDocumentRow = (row) => {
     const value = userData[row.key];
+    // Map document keys to their corresponding upload date fields in userData
+    const uploadDateFieldMap = {
+      adhaarCardFile: 'adhaarCardFileUploadedAt',
+      panCardFile: 'panCardFileUploadedAt', 
+      gstFile: 'gstFileUploadedAt',
+      businessRegistrationFile: 'businessRegistrationFileUploadedAt',
+      cancelledChequeFile: 'cancelledChequeFileUploadedAt',
+    };
+    
+    const uploadDateField = uploadDateFieldMap[row.key];
+    const uploadDate = uploadDateField ? userData[uploadDateField] : null;
+    // Use the formatted upload date if available, otherwise use the local upload date from docDates
+    const displayDate = uploadDate ? formatUploadDateTime(uploadDate) : (docDates[row.key] || "—");
+    
     return (
       <tr key={row.key} className="border-b border-gray-100 last:border-0">
         <td className="py-3.5 px-4 text-sm font-medium text-gray-800">
           {row.label}
         </td>
         <td className="py-3.5 px-4 text-sm text-gray-500">
-          {docDates[row.key] || "—"}
+          {displayDate}
         </td>
         <td className="py-3.5 px-4 text-sm text-gray-500">
           {getFileNameFromValue(value)}
