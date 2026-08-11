@@ -7,8 +7,7 @@ import {
   toggleVendor2FA,
   verifyVendor2FA,
 } from "../../../services/api.vendor";
-import { addBankDetails } from "../../../services/api.kyc";
-import { Edit, X, Eye, MapPin, ImagePlus, ShieldCheck,ChevronDown } from "lucide-react";
+import { Edit, X, Eye, MapPin, ImagePlus, ChevronDown } from "lucide-react";
 import LocationMapModal from "../../../components/Vendor/Models/LocationMapModal";
 import DefaultImg from "/assets/user/person-circle.png";
 import {
@@ -33,17 +32,6 @@ const INITIAL_STATE = {
   gst: "",
   pan_number: "",
   adhaar_number: "",
-  bank_name: "",
-  account_number: "",
-  ifsc_code: "",
-  name_at_bank: "",
-  shop_address: "",
-  shop_city: "",
-  shop_state: "",
-  shop_country: "India",
-  shop_zipCode: "",
-  shop_latitude: "",
-  shop_longitude: "",
   brand_name: "",
   adhaarCardFile: "",
   panCardFile: "",
@@ -52,28 +40,23 @@ const INITIAL_STATE = {
   cancelledChequeFile: "",
   shop_logo: "",
   shop_banner: "",
+  shop_address: "",
+  shop_city: "",
+  shop_state: "",
+  shop_country: "India",
+  shop_zipCode: "",
+  shop_latitude: "",
+  shop_longitude: "",
   // Main Seller KYC (separate from the vendor's own personal details above)
   kyc_pan_number: "",
   kyc_adhaar_number: "",
   kyc_full_name: "",
   kyc_dob: "",
   kyc_address: "",
-  kyc_verification_status: "",
-  kyc_account_number: "",
-  kyc_ifsc_code: "",
-  kyc_account_type: "",
   deactivation_requested: false,
   // Vendor 2FA on by default until explicitly disabled in profile
   is_2fa_enabled: true,
   two_factor_type: "otp",
-  isBankVerified: false,
-};
-
-const INITIAL_BANK_STATE = {
-  bank_name: "",
-  account_number: "",
-  ifsc_code: "",
-  name_at_bank: "",
 };
 
 const DOCUMENT_ROWS = [
@@ -95,7 +78,6 @@ const calculateProfileCompletion = (userData) => {
     "gst",
     "pan_number",
     "adhaar_number",
-    "bank_name",
   ];
   const filledFields = requiredFields.filter((field) =>
     userData[field]?.trim(),
@@ -160,12 +142,10 @@ const Profile = () => {
     isOpen: false,
     document: null,
     title: "",
+    type: "image", // 'image' or 'pdf'
   });
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [otp, setOtp] = useState("");
-  const [showBankVerificationModal, setShowBankVerificationModal] =
-    useState(false);
-  const [bankData, setBankData] = useState(INITIAL_BANK_STATE);
   const [showLocationModal, setShowLocationModal] = useState(false);
 
   const handleChange = (e) => {
@@ -186,11 +166,6 @@ const Profile = () => {
       firstName: first || "",
       lastName: rest.join(" "),
     }));
-  };
-
-  const handleBankChange = (e) => {
-    const { name, value } = e.target;
-    setBankData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handlePreview = (field, dataUrl) => {
@@ -260,11 +235,17 @@ const Profile = () => {
   };
 
   const openDocumentViewer = (document, title) => {
-    setViewerModal({ isOpen: true, document, title });
+    const isPdf = document?.toLowerCase().endsWith('.pdf');
+    setViewerModal({ 
+      isOpen: true, 
+      document, 
+      title,
+      type: isPdf ? 'pdf' : 'image'
+    });
   };
 
   const closeDocumentViewer = () => {
-    setViewerModal({ isOpen: false, document: null, title: "" });
+    setViewerModal({ isOpen: false, document: null, title: "", type: "image" });
   };
 
   const fetchUserDetails = async (id) => {
@@ -302,19 +283,6 @@ const Profile = () => {
         userAvatar: vendorData?.data?.vendor?.avatar || "",
         shop_name: vendorData?.data?.vendor?.shop_name || "",
         gst: vendorData?.data?.vendor?.gstin || "",
-        pan_number: vendorData?.data?.vendor?.pan_number || "",
-        adhaar_number: vendorData?.data?.vendor?.adhaar_number || "",
-        bank_name: vendorData?.data?.vendor?.bank_name || "",
-        account_number: vendorData?.data?.vendor?.account_number || "",
-        ifsc_code: vendorData?.data?.vendor?.ifsc_code || "",
-        name_at_bank: vendorData?.data?.vendor?.name_at_bank || "",
-        shop_address: vendorData?.data?.vendor?.shop_address || "",
-        shop_city: vendorData?.data?.vendor?.shop_city || "",
-        shop_state: vendorData?.data?.vendor?.shop_state || "",
-        shop_country: vendorData?.data?.vendor?.shop_country || "India",
-        shop_zipCode: vendorData?.data?.vendor?.shop_zip_code || "",
-        shop_latitude: vendorData?.data?.vendor?.shop_latitude || "",
-        shop_longitude: vendorData?.data?.vendor?.shop_longitude || "",
         brand_name: vendorData?.data?.vendor?.brand_name || "",
         adhaarCardFile: vendorData?.data?.vendor?.documents?.adhaarcard || "",
         panCardFile: vendorData?.data?.vendor?.documents?.pancard || "",
@@ -325,16 +293,18 @@ const Profile = () => {
           vendorData?.data?.vendor?.documents?.cancelled_cheque || "",
         shop_logo: vendorData?.data?.vendor?.shop_logo || "",
         shop_banner: vendorData?.data?.vendor?.shop_banner || "",
+        shop_address: vendorData?.data?.vendor?.shop_address || "",
+        shop_city: vendorData?.data?.vendor?.shop_city || "",
+        shop_state: vendorData?.data?.vendor?.shop_state || "",
+        shop_country: vendorData?.data?.vendor?.shop_country || "India",
+        shop_zipCode: vendorData?.data?.vendor?.shop_zip_code || "",
+        shop_latitude: vendorData?.data?.vendor?.shop_latitude || "",
+        shop_longitude: vendorData?.data?.vendor?.shop_longitude || "",
         kyc_pan_number: vendorData?.data?.vendor?.kyc?.pan_number || "",
         kyc_adhaar_number: vendorData?.data?.vendor?.kyc?.adhaar_number || "",
         kyc_full_name: vendorData?.data?.vendor?.kyc?.full_name || "",
         kyc_dob: formatDOB(vendorData?.data?.vendor?.kyc?.dob) || "",
         kyc_address: vendorData?.data?.vendor?.kyc?.address || "",
-        kyc_verification_status:
-          vendorData?.data?.vendor?.kyc?.verification_status || "",
-        kyc_account_number: vendorData?.data?.vendor?.kyc?.account_number || "",
-        kyc_ifsc_code: vendorData?.data?.vendor?.kyc?.ifsc_code || "",
-        kyc_account_type: vendorData?.data?.vendor?.kyc?.account_type || "",
         deactivation_requested:
           vendorData?.data?.deactivation_requested || false,
         // null/undefined → enabled; explicit false stays disabled
@@ -346,9 +316,6 @@ const Profile = () => {
                 vendorData.data.two_factor_type !== "none"
               ? vendorData.data.two_factor_type
               : "otp",
-        isBankVerified: vendorData?.data?.vendor?.account_number
-          ? true
-          : false,
       };
 
       setUserData(newUserData);
@@ -390,28 +357,6 @@ const Profile = () => {
     return age >= 18;
   };
 
-  const handleAddBank = async () => {
-    try {
-      setIsLoading(true);
-      const response = await addBankDetails({
-        bank_name: bankData.bank_name,
-        account_number: bankData.account_number,
-        ifsc_code: bankData.ifsc_code,
-        name_at_bank: bankData.name_at_bank,
-      });
-
-      if (response.status === 1) {
-        setShowBankVerificationModal(false);
-        setBankData(INITIAL_BANK_STATE);
-        await fetchUserDetails(user.id);
-      }
-    } catch (error) {
-      notifyOnFail("Failed to add bank details");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleProfileUpdate = async () => {
     if (!isValidDOB(userData.dob)) {
       notifyOnFail("You must be at least 18 years old.");
@@ -437,20 +382,13 @@ const Profile = () => {
             "deactivation_requested",
             "is_2fa_enabled",
             "two_factor_type",
-            "isBankVerified",
-            "bank_name",
-            "account_number",
-            "ifsc_code",
-            "name_at_bank",
             "kyc_pan_number",
             "kyc_adhaar_number",
             "kyc_full_name",
             "kyc_dob",
             "kyc_address",
-            "kyc_account_number",
-            "kyc_ifsc_code",
-            "kyc_account_type",
-            "kyc_verification_status",
+            "pan_number",
+            "adhaar_number",
           ].includes(key) &&
           !value.toString().includes("data:")
         ) {
@@ -497,10 +435,6 @@ const Profile = () => {
       }
 
       // Add KYC fields
-      if (userData.kyc_pan_number) formData.append("kyc_pan_number", userData.kyc_pan_number);
-      if (userData.kyc_account_number) formData.append("kyc_account_number", userData.kyc_account_number);
-      if (userData.kyc_ifsc_code) formData.append("kyc_ifsc_code", userData.kyc_ifsc_code);
-      if (userData.kyc_account_type) formData.append("kyc_account_type", userData.kyc_account_type);
       if (userData.kyc_dob) {
         // Convert DD-MM-YYYY to YYYY-MM-DD for backend
         const parts = userData.kyc_dob.split("-");
@@ -671,7 +605,7 @@ const Profile = () => {
   const renderReadOnlyField = (label, value) => (
     <div className="flex flex-col">
       <label className={fieldLabel}>{label}</label>
-      <p className={fieldView}>{value || "Pending"}</p>
+      <p className={fieldView}>{value || "—"}</p>
     </div>
   );
 
@@ -812,8 +746,8 @@ const Profile = () => {
             {renderField("Email ID", "email", "email")}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
-            {renderField("PAN Number", "pan_number")}
-            {renderField("Aadhaar Number", "adhaar_number", "text", !isEditing)}
+            {renderReadOnlyField("PAN Number", userData.pan_number)}
+            {renderReadOnlyField("Aadhaar Number", userData.adhaar_number)}
             {renderField("Date of Birth (DOB)", "dob", "date")}
           </div>
         </Card>
@@ -964,60 +898,17 @@ const Profile = () => {
           </div>
         </Card>
 
-        {/* Bank Details */}
-        <Card
-          title="Bank Details"
-          subtitle="Payout configuration. Verify details to guarantee error-free settlement runs"
-          right={
-            <div className="flex items-center gap-3">
-              <span
-                className={`inline-flex items-center gap-1 text-xs font-medium ${
-                  userData.isBankVerified ? "text-green-600" : "text-red-500"
-                }`}
-              >
-                <ShieldCheck className="w-3.5 h-3.5" />
-                {userData.isBankVerified ? "Verified" : "Not Verified"}
-              </span>
-              <button
-                onClick={() => setShowBankVerificationModal(true)}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                disabled={isLoading}
-              >
-                Add Bank Details
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-1 gap-5">
-              {renderField("Bank Name", "bank_name")}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {renderField("Account Number", "account_number", "text", !isEditing)}
-              {renderField("IFSC Code / Routing Transit Number", "ifsc_code")}
-              {/* {renderField("Name as per bank record", "name_at_bank")} */}
-            </div>
-          </div>
-        </Card>
-
         {/* Main Seller KYC Details */}
         <Card
           title="Main Seller KYC Details"
           subtitle="Primary KYC verification details for the main seller"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-            {renderField("PAN Number", "kyc_pan_number")}
-            {renderField("Aadhaar Number", "kyc_adhaar_number", "text", !isEditing)}
+            {renderReadOnlyField("PAN Number", userData.kyc_pan_number)}
+            {renderReadOnlyField("Aadhaar Number", userData.kyc_adhaar_number)}
             {renderField("Full Name (as per KYC)", "kyc_full_name")}
             {renderField("Date of Birth", "kyc_dob", "date")}
             {renderField("Address", "kyc_address")}
-            {renderField("Account Number", "kyc_account_number", "text", !isEditing)}
-            {renderField("IFSC Code", "kyc_ifsc_code")}
-            {renderField("Account Type", "kyc_account_type")}
-            {renderReadOnlyField(
-              "Verification Status",
-              userData.kyc_verification_status,
-            )}
           </div>
         </Card>
 
@@ -1128,16 +1019,43 @@ const Profile = () => {
                 </button>
               </div>
               <div className="p-4 flex-grow overflow-auto flex items-center justify-center bg-gray-100">
-                <img
-                  src={viewerModal.document}
-                  alt={viewerModal.title}
-                  className="max-w-full max-h-full object-contain"
-                />
+                {viewerModal.type === 'pdf' ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center">
+                    <iframe
+                      src={viewerModal.document}
+                      title={viewerModal.title}
+                      className="w-full h-full border-0"
+                      style={{ minHeight: '500px' }}
+                      onError={() => {
+                        // Fallback if iframe fails to load
+                        console.error('Failed to load PDF in iframe');
+                      }}
+                    />
+                    <p className="mt-4 text-sm text-gray-600">
+                      If the PDF doesn't display properly, please use the Download button below.
+                    </p>
+                  </div>
+                ) : (
+                  <img
+                    src={viewerModal.document}
+                    alt={viewerModal.title}
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
               </div>
-              <div className="p-4 border-t flex justify-end">
+              <div className="p-4 border-t flex justify-between">
+                {viewerModal.type === 'pdf' && (
+                  <a
+                    href={viewerModal.document}
+                    download
+                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                  >
+                    Download
+                  </a>
+                )}
                 <button
                   onClick={closeDocumentViewer}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors ml-auto"
                 >
                   Close
                 </button>
@@ -1251,94 +1169,6 @@ const Profile = () => {
                     <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
                   ) : (
                     "Verify OTP"
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Bank Verification Modal */}
-        {showBankVerificationModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Add Bank Details
-                </h3>
-                <button
-                  onClick={() => setShowBankVerificationModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <p className="text-sm text-gray-600 mb-4">
-                Enter your bank details for verification.
-              </p>
-              <div className="flex flex-col space-y-4 mb-4">
-                <div>
-                  <label className="text-sm text-gray-600">
-                    Name at Bank
-                  </label>
-                  <input
-                    type="text"
-                    name="name_at_bank"
-                    value={bankData.name_at_bank}
-                    onChange={handleBankChange}
-                    className="w-full p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">Bank Name</label>
-                  <input
-                    type="text"
-                    name="bank_name"
-                    value={bankData.bank_name}
-                    onChange={handleBankChange}
-                    className="w-full p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">
-                    Account Number
-                  </label>
-                  <input
-                    type="text"
-                    name="account_number"
-                    value={bankData.account_number}
-                    onChange={handleBankChange}
-                    className="w-full p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">IFSC Code</label>
-                  <input
-                    type="text"
-                    name="ifsc_code"
-                    value={bankData.ifsc_code}
-                    onChange={handleBankChange}
-                    className="w-full p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end space-x-4">
-                <button
-                  onClick={() => setShowBankVerificationModal(false)}
-                  className="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                  disabled={isLoading}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddBank}
-                  className="px-4 py-2 text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white"></div>
-                  ) : (
-                    "Add Bank Details"
                   )}
                 </button>
               </div>
