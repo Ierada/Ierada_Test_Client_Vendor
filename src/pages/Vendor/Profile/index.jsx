@@ -90,13 +90,8 @@ const maskSensitive = (value) => {
   const str = value.toString();
   if (str.length <= 4) return str;
   const last4 = str.slice(-4);
-  let remaining = str.length - 4;
-  const groups = [];
-  while (remaining > 0) {
-    groups.push("••••".slice(0, Math.min(4, remaining)));
-    remaining -= 4;
-  }
-  return `${groups.join(" ")} ${last4}`;
+  const masked = str.slice(0, -4).replace(/./g, '*');
+  return `${masked}${last4}`;
 };
 
 const getFileNameFromValue = (value) => {
@@ -283,6 +278,8 @@ const Profile = () => {
         userAvatar: vendorData?.data?.vendor?.avatar || "",
         shop_name: vendorData?.data?.vendor?.shop_name || "",
         gst: vendorData?.data?.vendor?.gstin || "",
+        pan_number: vendorData?.data?.vendor?.pan_number || "",
+        adhaar_number: vendorData?.data?.vendor?.adhaar_number || "",
         brand_name: vendorData?.data?.vendor?.brand_name || "",
         adhaarCardFile: vendorData?.data?.vendor?.documents?.adhaarcard || "",
         panCardFile: vendorData?.data?.vendor?.documents?.pancard || "",
@@ -411,8 +408,8 @@ const Profile = () => {
         adhaarCardFile: "adhaarcard_file",
         panCardFile: "pancard_file",
         gstFile: "gst_file",
-        businessRegistrationFile: "business_registration_file",
-        cancelledChequeFile: "cancelled_cheque_file",
+        businessRegistrationFile: "businessRegistrationFile",
+        cancelledChequeFile: "cancelledChequeFile",
         shop_logo: "shop_logo",
         shop_banner: "shop_banner",
         userAvatar: "avatar",
@@ -747,7 +744,7 @@ const Profile = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
             {renderReadOnlyField("PAN Number", userData.pan_number)}
-            {renderReadOnlyField("Aadhaar Number", userData.adhaar_number)}
+            {renderReadOnlyField("Aadhaar Number", maskSensitive(userData.adhaar_number))}
             {renderField("Date of Birth (DOB)", "dob", "date")}
           </div>
         </Card>
@@ -905,7 +902,7 @@ const Profile = () => {
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
             {renderReadOnlyField("PAN Number", userData.kyc_pan_number)}
-            {renderReadOnlyField("Aadhaar Number", userData.kyc_adhaar_number)}
+            {renderReadOnlyField("Aadhaar Number", maskSensitive(userData.kyc_adhaar_number))}
             {renderField("Full Name (as per KYC)", "kyc_full_name")}
             {renderField("Date of Birth", "kyc_dob", "date")}
             {renderField("Address", "kyc_address")}
