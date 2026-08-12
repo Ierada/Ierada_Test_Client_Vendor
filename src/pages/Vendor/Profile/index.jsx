@@ -23,6 +23,8 @@ const INITIAL_STATE = {
   email: "",
   phone: "",
   vendor_address: "",
+  vendor_landmark: "",
+  vendor_google_coordinates: "",
   vendor_city: "",
   vendor_state: "",
   vendor_country: "India",
@@ -44,8 +46,9 @@ const INITIAL_STATE = {
   cancelledChequeFile: "",
   cancelledChequeFileUploadedAt: "",
   shop_logo: "",
-  shop_banner: "",
   shop_address: "",
+  shop_landmark: "",
+  shop_google_coordinates: "",
   shop_city: "",
   shop_state: "",
   shop_country: "India",
@@ -124,16 +127,49 @@ const fieldView =
 const fieldInput =
   "w-full px-3 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors";
 
-const Card = ({ title, subtitle, right, children }) => (
-  <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-6">
-    <div className="flex items-start justify-between mb-5 gap-4">
+const Card = ({ title, subtitle, right, children, section, onEdit, onSave, onCancel, isSectionEditing, savingSection }) => (
+  <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+    <div className="flex items-start justify-between mb-3 gap-4">
       <div>
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         {subtitle && (
           <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>
         )}
       </div>
-      {right}
+      <div className="flex items-center gap-3">
+        {right}
+        {section && !isSectionEditing && (
+          <button
+            onClick={onEdit}
+            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            disabled={savingSection !== null}
+          >
+            Edit
+          </button>
+        )}
+        {section && isSectionEditing && (
+          <>
+            <button
+              onClick={onCancel}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              disabled={savingSection !== null}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={onSave}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              disabled={savingSection !== null}
+            >
+              {savingSection ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
+              ) : (
+                "Save"
+              )}
+            </button>
+          </>
+        )}
+      </div>
     </div>
     {children}
   </section>
@@ -142,7 +178,8 @@ const Card = ({ title, subtitle, right, children }) => (
 const Profile = () => {
   const { user } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [savingSection, setSavingSection] = useState(null);
+  const [editingSection, setEditingSection] = useState(null); // null, 'personal', 'documents', 'shop', 'kyc'
   const [userData, setUserData] = useState(INITIAL_STATE);
   const [originalUserData, setOriginalUserData] = useState(INITIAL_STATE);
   const [previews, setPreviews] = useState({});
@@ -168,6 +205,142 @@ const Profile = () => {
       formattedValue = `${day}-${month}-${year}`;
     }
     setUserData((prev) => ({ ...prev, [name]: formattedValue }));
+  };
+
+  const startEditing = (section) => {
+    setEditingSection(section);
+    setOriginalUserData({ ...userData });
+  };
+
+  const cancelEditing = () => {
+    setEditingSection(null);
+    setUserData(originalUserData);
+    setPreviews({});
+    setDocDates({});
+  };
+
+  const saveSection = async (section) => {
+    try {
+      // Validate DOB for personal section
+      if (section === 'personal' && !isValidDOB(userData.dob)) {
+        notifyOnFail("You must be at least 18 years old.");
+        return;
+      }
+
+      setSavingSection(section);
+      
+      // Prepare form data based on section
+      const formData = new FormData();
+      formData.append("vendorId", user.id);
+
+      // Only include fields relevant to the section being saved
+      const sectionFields = {
+        personal: ["firstName", "lastName", "dob", "email", "phone", "vendor_address", "vendor_landmark", "vendor_google_coordinates", "vendor_city", "vendor_state", "vendor_country", "vendor_zipCode"],
+        documents: [],
+        shop: ["shop_name", "brand_name", "shop_address", "shop_landmark", "shop_google_coordinates", "shop_city", "shop_state", "shop_country", "shop_zipCode", "shop_latitude", "shop_longitude"],
+        kyc: ["kyc_full_name", "kyc_dob", "kyc_address"]
+      };
+
+      sectionFields[section].forEach(key => {
+        const value = userData[key];
+        // Include fields even if empty string for new fields to ensure they're sent
+        if (value !== undefined) {
+          // Skip file fields - they're handled separately
+          if (
+            [
+              "adhaarCardFile",
+              "panCardFile", 
+              "gstFile",
+              "businessRegistrationFile",
+              "cancelledChequeFile",
+              "shop_logo",
+              "shop_banner",
+              "userAvatar",
+            ].includes(key)
+          ) {
+            // Skip all file fields - they're handled in the file upload section
+            return;
+          }
+          
+          if (key === "dob" && value) {
+            const parts = value.split("-");
+            if (parts.length === 3) {
+              const [day, month, year] = parts;
+              formData.append(key, `${year}-${month}-${day}`);
+            } else {
+              formData.append(key, value);
+            }
+          } else if (key === "kyc_dob" && value) {
+            const parts = value.split("-");
+            if (parts.length === 3) {
+              const [day, month, year] = parts;
+              formData.append(key, `${year}-${month}-${day}`);
+            } else {
+              formData.append(key, value);
+            }
+          } else {
+            formData.append(key, value);
+          }
+        }
+      });
+
+      // Handle file uploads for the section
+      const sectionFileFields = {
+        personal: ["userAvatar"],
+        documents: ["adhaarCardFile", "panCardFile", "gstFile", "businessRegistrationFile", "cancelledChequeFile"],
+        shop: ["shop_logo"],
+        kyc: []
+      };
+
+      const fileUpdates = {
+        adhaarCardFile: "adhaarcard_file",
+        panCardFile: "pancard_file",
+        gstFile: "gst_file",
+        businessRegistrationFile: "business_reg_file",
+        cancelledChequeFile: "bank_file",
+        shop_logo: "shop_logo",
+        userAvatar: "avatar",
+      };
+
+      // Only process files for the current section
+      const filesToProcess = sectionFileFields[section] || [];
+      for (const frontendKey of filesToProcess) {
+        const fileData = userData[frontendKey];
+        const backendKey = fileUpdates[frontendKey];
+
+        // Only process if it's a new file (base64 data URL)
+        if (fileData && fileData.toString().includes("data:") && backendKey) {
+          try {
+            const base64Response = await fetch(fileData);
+            const blob = await base64Response.blob();
+            const mimeType =
+              base64Response.headers.get("content-type") || blob.type;
+            const extension = mimeType.split("/")[1];
+            const file = new File([blob], `${backendKey}.${extension}`, {
+              type: mimeType,
+            });
+            formData.append(frontendKey, file);
+          } catch (error) {
+            console.error(`Error processing file ${frontendKey}:`, error);
+          }
+        }
+      }
+
+      const response = await updateVendor(user.id, formData);
+
+      if (response?.status === 1) {
+        await fetchUserDetails(user.id);
+        setEditingSection(null);
+        notifyOnSuccess("Section updated successfully");
+      } else {
+        notifyOnFail(response?.message || "Update failed");
+      }
+    } catch (error) {
+      console.error("Error updating section:", error);
+      notifyOnFail("Failed to update section");
+    } finally {
+      setSavingSection(null);
+    }
   };
 
   const handleFullNameChange = (e) => {
@@ -211,6 +384,53 @@ const Profile = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleZipCodeChange = async (e, isShop = false) => {
+    const zipCode = e.target.value;
+    const cityField = isShop ? "shop_city" : "vendor_city";
+    const stateField = isShop ? "shop_state" : "vendor_state";
+    const countryField = isShop ? "shop_country" : "vendor_country";
+
+    setUserData((prev) => ({
+      ...prev,
+      [isShop ? "shop_zipCode" : "vendor_zipCode"]: zipCode,
+    }));
+
+    // Fetch location data from ZIP code (using a free API)
+    if (zipCode && zipCode.length >= 6) {
+      try {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${zipCode}`);
+        const data = await response.json();
+        
+        if (data && data[0] && data[0].Status === "Success") {
+          const locationData = data[0].PostOffice[0];
+          setUserData((prev) => ({
+            ...prev,
+            [cityField]: locationData.District || "",
+            [stateField]: locationData.State || "",
+            [countryField]: locationData.Country || "India",
+          }));
+        }
+      } catch (error) {
+        console.error("Error fetching location from ZIP code:", error);
+      }
+    }
+  };
+
+  const handleAddressLineChange = (e, line, isShop = false) => {
+    const value = e.target.value;
+    const addressField = isShop ? "shop_address" : "vendor_address";
+    const currentAddress = userData[addressField] || "";
+    const lines = currentAddress.split("\n");
+    
+    // Update the specific line
+    lines[line] = value;
+    
+    setUserData((prev) => ({
+      ...prev,
+      [addressField]: lines.join("\n"),
+    }));
+  };
+
   const handleSetLiveLocation = () => {
     if (!navigator.geolocation) {
       notifyOnFail("Geolocation is not supported by your browser");
@@ -236,6 +456,7 @@ const Profile = () => {
       ...prev,
       shop_latitude: locationData.lat.toFixed(6),
       shop_longitude: locationData.lng.toFixed(6),
+      shop_google_coordinates: `${locationData.lat.toFixed(6)},${locationData.lng.toFixed(6)}`,
       shop_address: locationData.fullAddress || prev.shop_address,
       shop_city: locationData.city || prev.shop_city,
       shop_state: locationData.state || prev.shop_state,
@@ -244,6 +465,15 @@ const Profile = () => {
     }));
     setShowLocationModal(false);
     notifyOnSuccess("Location selected successfully");
+  };
+
+  const handleGoogleCoordinatesChange = (e, isShop = false) => {
+    const value = e.target.value;
+    const field = isShop ? "shop_google_coordinates" : "vendor_google_coordinates";
+    setUserData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
   const openDocumentViewer = (document, title) => {
@@ -289,6 +519,8 @@ const Profile = () => {
         email: vendorData?.data?.email || "",
         phone: vendorData?.data?.phone?.replace("+91", "") || "",
         vendor_address: vendorData?.data?.vendor?.address || "",
+        vendor_landmark: vendorData?.data?.vendor?.landmark || "",
+        vendor_google_coordinates: vendorData?.data?.vendor?.google_coordinates || "",
         vendor_city: vendorData?.data?.vendor?.city || "",
         vendor_state: vendorData?.data?.vendor?.state || "",
         vendor_country: vendorData?.data?.vendor?.country || "India",
@@ -314,8 +546,9 @@ const Profile = () => {
         cancelledChequeFileUploadedAt:
           vendorData?.data?.vendor?.documents?.cancelled_cheque_uploaded_at || "",
         shop_logo: vendorData?.data?.vendor?.shop_logo || "",
-        shop_banner: vendorData?.data?.vendor?.shop_banner || "",
         shop_address: vendorData?.data?.vendor?.shop_address || "",
+        shop_landmark: vendorData?.data?.vendor?.shop_landmark || "",
+        shop_google_coordinates: vendorData?.data?.vendor?.shop_google_coordinates || "",
         shop_city: vendorData?.data?.vendor?.shop_city || "",
         shop_state: vendorData?.data?.vendor?.shop_state || "",
         shop_country: vendorData?.data?.vendor?.shop_country || "India",
@@ -377,117 +610,6 @@ const Profile = () => {
     if (!dob) return false;
     const age = calculateAge(dob);
     return age >= 18;
-  };
-
-  const handleProfileUpdate = async () => {
-    if (!isValidDOB(userData.dob)) {
-      notifyOnFail("You must be at least 18 years old.");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      const formData = new FormData();
-
-      Object.entries(userData).forEach(([key, value]) => {
-        if (
-          value &&
-          ![
-            "adhaarCardFile",
-            "panCardFile",
-            "gstFile",
-            "businessRegistrationFile",
-            "cancelledChequeFile",
-            "shop_logo",
-            "shop_banner",
-            "userAvatar",
-            "deactivation_requested",
-            "is_2fa_enabled",
-            "two_factor_type",
-            "kyc_pan_number",
-            "kyc_adhaar_number",
-            "kyc_full_name",
-            "kyc_dob",
-            "kyc_address",
-            "pan_number",
-            "adhaar_number",
-            "adhaarCardFileUploadedAt",
-            "panCardFileUploadedAt",
-            "gstFileUploadedAt",
-            "businessRegistrationFileUploadedAt",
-            "cancelledChequeFileUploadedAt",
-          ].includes(key) &&
-          !value.toString().includes("data:")
-        ) {
-          // Handle date conversion for dob field
-          if (key === "dob" && value) {
-            const parts = value.split("-");
-            if (parts.length === 3) {
-              const [day, month, year] = parts;
-              formData.append(key, `${year}-${month}-${day}`);
-            } else {
-              formData.append(key, value);
-            }
-          } else {
-            formData.append(key, value);
-          }
-        }
-      });
-
-      const fileUpdates = {
-        adhaarCardFile: "adhaarcard_file",
-        panCardFile: "pancard_file",
-        gstFile: "gst_file",
-        businessRegistrationFile: "businessRegistrationFile",
-        cancelledChequeFile: "cancelledChequeFile",
-        shop_logo: "shop_logo",
-        shop_banner: "shop_banner",
-        userAvatar: "avatar",
-      };
-
-      for (const [frontendKey, backendKey] of Object.entries(fileUpdates)) {
-        const fileData = userData[frontendKey];
-
-        if (fileData && fileData.toString().includes("data:")) {
-          const base64Response = await fetch(fileData);
-          const blob = await base64Response.blob();
-          const mimeType =
-            base64Response.headers.get("content-type") || blob.type;
-          const extension = mimeType.split("/")[1];
-          const file = new File([blob], `${backendKey}.${extension}`, {
-            type: mimeType,
-          });
-          formData.append(frontendKey, file);
-        }
-      }
-
-      // Add KYC fields
-      if (userData.kyc_dob) {
-        // Convert DD-MM-YYYY to YYYY-MM-DD for backend
-        const parts = userData.kyc_dob.split("-");
-        if (parts.length === 3) {
-          const [day, month, year] = parts;
-          formData.append("kyc_dob", `${year}-${month}-${day}`);
-        } else {
-          formData.append("kyc_dob", userData.kyc_dob);
-        }
-      }
-
-      const response = await updateVendor(user.id, formData);
-
-      if (response?.status === 1) {
-        await fetchUserDetails(user.id);
-        setIsEditing(false);
-        notifyOnSuccess("Profile updated successfully");
-      } else {
-        notifyOnFail(response?.message || "Update failed");
-      }
-    } catch (error) {
-      console.error("Error updating profile:", error);
-      notifyOnFail("Failed to update profile");
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleDeactivation = async () => {
@@ -576,11 +698,44 @@ const Profile = () => {
   };
 
   // ---- field renderers ----
-  const renderField = (label, name, type = "text", masked = false) => {
+  const renderField = (label, name, type = "text", masked = false, customOnChange) => {
     const value = userData[name] || "";
     const locked = name === "email" || name === "phone";
 
-    if (!isEditing || locked) {
+    // Map fields to their sections
+    const fieldSectionMap = {
+      firstName: 'personal',
+      lastName: 'personal',
+      dob: 'personal',
+      vendor_address: 'personal',
+      vendor_address_line1: 'personal',
+      vendor_address_line2: 'personal',
+      vendor_landmark: 'personal',
+      vendor_google_coordinates: 'personal',
+      vendor_city: 'personal',
+      vendor_state: 'personal',
+      vendor_country: 'personal',
+      vendor_zipCode: 'personal',
+      shop_name: 'shop',
+      brand_name: 'shop',
+      shop_address: 'shop',
+      shop_address_line1: 'shop',
+      shop_address_line2: 'shop',
+      shop_landmark: 'shop',
+      shop_google_coordinates: 'shop',
+      shop_city: 'shop',
+      shop_state: 'shop',
+      shop_country: 'shop',
+      shop_zipCode: 'shop',
+      kyc_full_name: 'kyc',
+      kyc_dob: 'kyc',
+      kyc_address: 'kyc',
+    };
+
+    const fieldSection = fieldSectionMap[name];
+    const isEditable = editingSection === fieldSection && !locked;
+
+    if (!isEditable) {
       return (
         <div className="flex flex-col">
           <label className={fieldLabel}>{label}</label>
@@ -600,7 +755,7 @@ const Profile = () => {
               ? (userData[name] || "").split("-").reverse().join("-")
               : value
           }
-          onChange={handleChange}
+          onChange={customOnChange || handleChange}
         />
       </div>
     );
@@ -608,7 +763,7 @@ const Profile = () => {
 
   const renderFullNameField = () => {
     const fullName = `${userData.firstName} ${userData.lastName}`.trim();
-    if (!isEditing) {
+    if (!editingSection) {
       return (
         <div className="flex flex-col">
           <label className={fieldLabel}>Full Name</label>
@@ -654,16 +809,16 @@ const Profile = () => {
     
     return (
       <tr key={row.key} className="border-b border-gray-100 last:border-0">
-        <td className="py-3.5 px-4 text-sm font-medium text-gray-800">
+        <td className="py-2 px-4 text-sm font-medium text-gray-800">
           {row.label}
         </td>
-        <td className="py-3.5 px-4 text-sm text-gray-500">
+        <td className="py-2 px-4 text-sm text-gray-500">
           {displayDate}
         </td>
-        <td className="py-3.5 px-4 text-sm text-gray-500">
+        <td className="py-2 px-4 text-sm text-gray-500">
           {getFileNameFromValue(value)}
         </td>
-        <td className="py-3.5 px-4 text-sm text-right whitespace-nowrap">
+        <td className="py-2 px-4 text-sm text-right whitespace-nowrap">
           {value && (
             <button
               type="button"
@@ -673,7 +828,7 @@ const Profile = () => {
               View
             </button>
           )}
-          {isEditing && (
+          {editingSection === 'documents' && (
             <>
               {value && <span className="text-gray-300 mx-2">|</span>}
               <label
@@ -708,7 +863,7 @@ const Profile = () => {
     <div className="min-h-screen bg-[#fa8b4b]">
       {/* Top bar */}
 <div className="bg-white border-b border-gray-200">
-  <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between gap-4">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
     <div>
       <h1 className="text-lg font-semibold text-gray-900">Seller Profile</h1>
       <p className="text-xs text-gray-500 mt-0.5">
@@ -728,9 +883,9 @@ const Profile = () => {
     </div>
   </div>
 </div>
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4">
         {/* Page header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
           {/* <div className="flex items-center gap-4">
             <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow">
               <img
@@ -738,7 +893,7 @@ const Profile = () => {
                 alt="Profile"
                 className="object-cover w-full h-full"
               />
-              {isEditing && (
+              {editingSection === 'personal' && (
                 <label
                   htmlFor="upload-avatar"
                   className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 cursor-pointer transition-opacity"
@@ -765,7 +920,7 @@ const Profile = () => {
             </div>
           </div> */}
 <div></div>
-          {!isEditing && (
+          {false && (
             <button
               onClick={() => setIsEditing(true)}
               className="px-4 py-2 text-blue-600 bg-white border border-blue-100 rounded-lg hover:bg-blue-50 flex items-center gap-2 transition-colors text-sm font-medium shadow-sm"
@@ -780,13 +935,19 @@ const Profile = () => {
         <Card
           title="Personal Details"
           subtitle="Basic identity and contact information for the seller account"
+          section="personal"
+          isSectionEditing={editingSection === 'personal'}
+          savingSection={savingSection}
+          onEdit={() => startEditing('personal')}
+          onSave={() => saveSection('personal')}
+          onCancel={cancelEditing}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {renderFullNameField()}
             {renderField("Phone Number", "phone", "tel")}
             {renderField("Email ID", "email", "email")}
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {renderReadOnlyField("PAN Number", userData.pan_number)}
             {renderReadOnlyField("Aadhaar Number", maskSensitive(userData.adhaar_number))}
             {renderField("Date of Birth (DOB)", "dob", "date")}
@@ -797,15 +958,21 @@ const Profile = () => {
         <Card
           title="Documents"
           subtitle="Documents uploaded during registration"
+          section="documents"
+          isSectionEditing={editingSection === 'documents'}
+          savingSection={savingSection}
+          onEdit={() => startEditing('documents')}
+          onSave={() => saveSection('documents')}
+          onCancel={cancelEditing}
         >
           <div className="overflow-x-auto -mx-2">
             <table className="w-full min-w-[560px]">
               <thead>
                 <tr className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide bg-gray-50">
-                  <th className="py-2.5 px-4">Document Type</th>
-                  <th className="py-2.5 px-4">Upload Date</th>
-                  <th className="py-2.5 px-4">File Name</th>
-                  <th className="py-2.5 px-4 text-right">Action</th>
+                  <th className="py-2 px-4">Document Type</th>
+                  <th className="py-2 px-4">Upload Date</th>
+                  <th className="py-2 px-4">File Name</th>
+                  <th className="py-2 px-4 text-right">Action</th>
                 </tr>
               </thead>
               <tbody>{DOCUMENT_ROWS.map(renderDocumentRow)}</tbody>
@@ -817,26 +984,77 @@ const Profile = () => {
         <Card
           title="Shop Information"
           subtitle="Update public-facing storefront settings and inventory distribution parameters"
+          section="shop"
+          isSectionEditing={editingSection === 'shop'}
+          savingSection={savingSection}
+          onEdit={() => startEditing('shop')}
+          onSave={() => saveSection('shop')}
+          onCancel={cancelEditing}
         >
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-4">
               {renderField("Shop Name", "shop_name")}
+              {renderField("Brand Name", "brand_name")}
               <div>
-                {renderField("Pickup Address", "shop_address")}
+                <label className={fieldLabel}>Address Line 1</label>
+                {editingSection === 'shop' ? (
+                  <input
+                    className={fieldInput}
+                    type="text"
+                    name="shop_address_line1"
+                    value={(userData.shop_address || "").split("\n")[0] || ""}
+                    onChange={(e) => handleAddressLineChange(e, 0, true)}
+                  />
+                ) : (
+                  <p className={fieldView}>{(userData.shop_address || "").split("\n")[0] || "-"}</p>
+                )}
                 <p className="text-xs text-gray-400 mt-1">
-                  This is the pickup address for orders. Courier agents will
-                  dispatch vehicles here.
+                  Street address, building name, or landmark
                 </p>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+              <div>
+                <label className={fieldLabel}>Address Line 2</label>
+                {editingSection === 'shop' ? (
+                  <input
+                    className={fieldInput}
+                    type="text"
+                    name="shop_address_line2"
+                    value={(userData.shop_address || "").split("\n")[1] || ""}
+                    onChange={(e) => handleAddressLineChange(e, 1, true)}
+                  />
+                ) : (
+                  <p className={fieldView}>{(userData.shop_address || "").split("\n")[1] || "-"}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                {renderField("Landmark", "shop_landmark")}
+                {renderField("Google Coordinates", "shop_google_coordinates", "text", false, (e) => handleGoogleCoordinatesChange(e, true))}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className={fieldLabel}>ZIP Code</label>
+                  {editingSection === 'shop' ? (
+                    <input
+                      className={fieldInput}
+                      type="text"
+                      name="shop_zipCode"
+                      value={userData.shop_zipCode}
+                      onChange={(e) => handleZipCodeChange(e, true)}
+                    />
+                  ) : (
+                    <p className={fieldView}>{userData.shop_zipCode || "-"}</p>
+                  )}
+                </div>
                 {renderField("City", "shop_city")}
                 {renderField("State", "shop_state")}
                 {renderField("Country", "shop_country")}
-                {renderField("ZIP Code", "shop_zipCode")}
               </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Enter ZIP code to auto-fetch city, state, and country
+              </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div>
                 <label className={fieldLabel}>Live Pickup Location</label>
                 <div
@@ -845,14 +1063,14 @@ const Profile = () => {
                     backgroundImage:
                       "repeating-linear-gradient(0deg, #eef1f4 0 1px, transparent 1px 22px), repeating-linear-gradient(90deg, #eef1f4 0 1px, transparent 1px 22px)",
                   }}
-                  onClick={() => isEditing && setShowLocationModal(true)}
+                  onClick={() => editingSection === 'shop' && setShowLocationModal(true)}
                 >
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
                     <MapPin className="w-5 h-5 text-red-500" />
                     <span className="text-[11px] font-medium text-gray-600">
                       {userData.shop_latitude
                         ? "Pinned Live Location"
-                        : isEditing
+                        : editingSection === 'shop'
                         ? "Click to choose location"
                         : "No location set"}
                     </span>
@@ -863,76 +1081,43 @@ const Profile = () => {
                     )}
                   </div>
                 </div>
-                {isEditing && (
+                {editingSection === 'shop' && (
                   <p className="mt-2 text-xs text-blue-600 font-medium">
                     Edit profile to choose location
                   </p>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4 items-start">
-                <div>
-                  <label className={fieldLabel}>Upload Logo</label>
-                  <label
-                    htmlFor="upload-shop-logo"
-                    className={`h-20 w-full rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 text-blue-500 border-blue-200 bg-blue-50/50 ${
-                      isEditing ? "cursor-pointer hover:bg-blue-50" : ""
-                    } overflow-hidden`}
-                  >
-                    {userData.shop_logo ? (
-                      <img
-                        src={userData.shop_logo}
-                        alt="Shop logo"
-                        className="h-full w-full object-contain"
-                      />
-                    ) : (
-                      <>
-                        <ImagePlus className="w-5 h-5" />
-                        <span className="text-[11px] font-medium">
-                          Upload Logo
-                        </span>
-                      </>
-                    )}
-                  </label>
-                  <input
-                    id="upload-shop-logo"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={!isEditing}
-                    onChange={handleImageFieldChange("shop_logo")}
-                  />
-                </div>
-                {/* {renderField("Brand Name", "brand_name")} */}
-              </div>
-
               <div>
-                <label className={fieldLabel}>Shop Banner</label>
+                <label className={fieldLabel}>Upload Logo</label>
                 <label
-                  htmlFor="upload-shop-banner"
-                  className={`h-16 w-full rounded-lg border-2 border-dashed flex items-center justify-center gap-2 text-gray-500 border-gray-200 ${
-                    isEditing ? "cursor-pointer hover:bg-gray-50" : ""
+                  htmlFor="upload-shop-logo"
+                  className={`h-20 w-full rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 text-blue-500 border-blue-200 bg-blue-50/50 ${
+                    editingSection === 'shop' ? "cursor-pointer hover:bg-blue-50" : ""
                   } overflow-hidden`}
                 >
-                  {userData.shop_banner ? (
+                  {userData.shop_logo ? (
                     <img
-                      src={userData.shop_banner}
-                      alt="Shop banner"
-                      className="h-full w-full object-cover"
+                      src={userData.shop_logo}
+                      alt="Shop logo"
+                      className="h-full w-full object-contain"
                     />
                   ) : (
-                    <span className="text-[11px] font-medium">
-                      Upload Banner
-                    </span>
+                    <>
+                      <ImagePlus className="w-5 h-5" />
+                      <span className="text-[11px] font-medium">
+                        Upload Logo
+                      </span>
+                    </>
                   )}
                 </label>
                 <input
-                  id="upload-shop-banner"
+                  id="upload-shop-logo"
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  disabled={!isEditing}
-                  onChange={handleImageFieldChange("shop_banner")}
+                  disabled={editingSection !== 'shop'}
+                  onChange={handleImageFieldChange("shop_logo")}
                 />
               </div>
             </div>
@@ -943,8 +1128,14 @@ const Profile = () => {
         <Card
           title="Main Seller KYC Details"
           subtitle="Primary KYC verification details for the main seller"
+          section="kyc"
+          isSectionEditing={editingSection === 'kyc'}
+          savingSection={savingSection}
+          onEdit={() => startEditing('kyc')}
+          onSave={() => saveSection('kyc')}
+          onCancel={cancelEditing}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
             {renderReadOnlyField("PAN Number", userData.kyc_pan_number)}
             {renderReadOnlyField("Aadhaar Number", maskSensitive(userData.kyc_adhaar_number))}
             {renderField("Full Name (as per KYC)", "kyc_full_name")}
@@ -1015,34 +1206,6 @@ const Profile = () => {
             )}
           </div>
         </section>
-
-        {/* Bottom action bar */}
-        {isEditing && (
-          <div className="flex justify-end gap-4 pb-4">
-            <button
-              onClick={() => {
-                setIsEditing(false);
-                setUserData(originalUserData);
-                fetchUserDetails(user.id);
-              }}
-              className="px-5 py-2.5 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 transition-colors text-sm font-medium"
-              disabled={isLoading}
-            >
-              <X className="w-4 h-4" />
-              <span>Discard Changes</span>
-            </button>
-            <button
-              onClick={handleProfileUpdate}
-              className="px-5 py-2.5 text-white bg-blue-600 rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50 transition-colors text-sm font-medium"
-              disabled={isLoading}
-            >
-              {isLoading && (
-                <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>
-              )}
-              <span>{isLoading ? "Processing..." : "Save Changes"}</span>
-            </button>
-          </div>
-        )}
 
         {/* Document Viewer Modal */}
         {viewerModal.isOpen && (
