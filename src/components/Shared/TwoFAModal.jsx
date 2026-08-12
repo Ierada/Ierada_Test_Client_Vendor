@@ -97,6 +97,7 @@ const TwoFAModal = ({ isOpen, onClose, formData, twoFactorType, onSuccess }) => 
           if (res.data) {
             localStorage.setItem("user", JSON.stringify(res.data));
           }
+          // Prefer parent onSuccess for password-reset / KYC routing.
           window.location.replace("/dashboard");
         } else {
           const message = res.message || "Invalid 2FA code";

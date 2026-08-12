@@ -64,13 +64,35 @@ const goToVendorDashboard = (token, userData = null) => {
   window.location.replace("/dashboard");
 };
 
+/** First-login: force password change on website before KYC / dashboard. */
+const redirectIfPasswordResetNeeded = (token, responseData) => {
+  if (!responseData || responseData.isPasswordReset !== false) {
+    return false;
+  }
+  if (!websiteBase) {
+    toast.error(
+      "Website URL is not configured. Set VITE_BASE_WEBSITE_URL.",
+    );
+    return false;
+  }
+  setUserCookie(token, responseData, "vendor");
+  if (responseData) {
+    localStorage.setItem("user", JSON.stringify(responseData));
+  }
+  window.location.assign(
+    `${websiteBase}/vendor/reset-password?token=${encodeURIComponent(token)}`,
+  );
+  return true;
+};
+
 const redirectIfKycIncomplete = (token, responseData) => {
   if (!responseData || responseData.isKycCompleted || !responseData.kycSteps) {
     return false;
   }
 
+  // Only required KYC steps (Aadhaar is optional)
   const incompleteStep = Object.entries(responseData.kycSteps).find(
-    ([, step]) => !step?.completed,
+    ([, step]) => step?.required === true && !step?.completed,
   );
 
   if (!incompleteStep) return false;
@@ -81,6 +103,13 @@ const redirectIfKycIncomplete = (token, responseData) => {
 
   window.location.href = redirectUrl;
   return true;
+};
+
+/** Shared post-login routing: password reset → KYC → dashboard */
+const continueAfterVendorLogin = (token, responseData) => {
+  if (redirectIfPasswordResetNeeded(token, responseData)) return;
+  if (redirectIfKycIncomplete(token, responseData)) return;
+  goToVendorDashboard(token, responseData);
 };
 
 // Define validation schemas
@@ -143,9 +172,7 @@ export default function SellerLoginPage() {
       mobileLoginCompletedRef.current = true;
       toast.success("Login successful!");
 
-      if (redirectIfKycIncomplete(token, responseData)) return;
-
-      goToVendorDashboard(token, responseData);
+      continueAfterVendorLogin(token, responseData);
     },
     [mobileOtp.token],
   );
@@ -193,9 +220,7 @@ export default function SellerLoginPage() {
 
         toast.success("Welcome back! Login successful.");
 
-        if (redirectIfKycIncomplete(response.token, response.data)) return;
-
-        goToVendorDashboard(response.token, response.data);
+        continueAfterVendorLogin(response.token, response.data);
       } else if (response?.status === 2) {
         setEmail(emailForm.email);
         setPassword(emailForm.password);
@@ -497,8 +522,7 @@ export default function SellerLoginPage() {
         formData={{ email, password }}
         twoFactorType={twoFactorType}
         onSuccess={(token, data) => {
-          if (redirectIfKycIncomplete(token, data)) return;
-          goToVendorDashboard(token, data);
+          continueAfterVendorLogin(token, data);
         }}
       />
     </SellerFormContainer>

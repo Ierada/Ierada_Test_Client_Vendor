@@ -307,8 +307,10 @@ export const vendorSendResetOTP = async (mobile) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
-    return { status: 0, message: "Error reaching the server" };
+    const message =
+      error.response?.data?.message || "Error reaching the server";
+    notifyOnFail(message);
+    return { status: 0, message };
   }
 };
 
@@ -320,8 +322,10 @@ export const vendorVerifyResetOTP = async (mobile, otp) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
-    return { status: 0, message: "Error reaching the server" };
+    const message =
+      error.response?.data?.message || "Error reaching the server";
+    notifyOnFail(message);
+    return { status: 0, message };
   }
 };
 
@@ -338,8 +342,10 @@ export const vendorResetPassword = async (
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
-    return { status: 0, message: "Error reaching the server" };
+    const message =
+      error.response?.data?.message || "Error reaching the server";
+    notifyOnFail(message);
+    return { status: 0, message };
   }
 };
 
@@ -350,7 +356,9 @@ export const vendorResendResetOTP = async (mobile) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
-    return { status: 0, message: "Error reaching the server" };
+    const message =
+      error.response?.data?.message || "Error reaching the server";
+    notifyOnFail(message);
+    return { status: 0, message };
   }
 };

@@ -102,7 +102,8 @@ export const addProduct = async (productData) => {
     return res.data;
   } catch (error) {
     notifyOnFail(
-      "There was an error adding the product. Please try again later.",
+      error.response?.data?.message ||
+        "There was an error adding the product. Please try again later.",
     );
     return error.response || error;
   }
