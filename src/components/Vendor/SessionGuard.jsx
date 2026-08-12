@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
-import { clearUserSession, getUserToken } from "../../utils/userIdentifier";
+import { endVendorSessionAndRedirect, getUserToken } from "../../utils/userIdentifier";
 import { startIdleWatcher } from "../../utils/idleTimeout";
+import { markAuthSessionEnded } from "../../utils/authSession";
 
 const SessionGuard = () => {
-  const navigate = useNavigate();
   const handledRef = useRef(false);
 
   useEffect(() => {
@@ -17,8 +16,7 @@ const SessionGuard = () => {
         if (handledRef.current) return;
         handledRef.current = true;
 
-        clearUserSession("vendor");
-
+        markAuthSessionEnded();
         toast.info("You were logged out due to inactivity.", {
           toastId: "session-idle",
           autoClose: 4000,
@@ -26,13 +24,13 @@ const SessionGuard = () => {
 
         setTimeout(() => {
           handledRef.current = false;
-          navigate("/login", { replace: true });
+          endVendorSessionAndRedirect({ redirect: true, replace: true });
         }, 1500);
       },
     });
 
     return stop;
-  }, [navigate]);
+  }, []);
 
   return null;
 };

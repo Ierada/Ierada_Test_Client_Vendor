@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../../../context/AppContext";
 import LogoutModal from "../LogoutModal";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -8,11 +7,12 @@ import BrandHeader from "./BrandHeader";
 import SearchBar from "./SearchBar";
 import MenuItem from "./MenuItem";
 import UserProfile from "./UserProfile";
+import { endVendorSessionAndRedirect } from "../../../utils/userIdentifier";
+import { markAuthSessionEnded } from "../../../utils/authSession";
 
 const SCROLL_POSITION_KEY = "vendorSidebarScroll";
 
 const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
-  const navigate = useNavigate();
   const { user } = useAppContext();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const sidebarRef = useRef(null);
@@ -39,15 +39,12 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
   }, [setSidebarOpen]);
 
   const handleLogoutConfirm = useCallback(() => {
-    localStorage.clear();
-    document.cookie.split(";").forEach((c) => {
-      const name = c.split("=")[0].trim();
-      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
-    });
     setSidebarOpen(false);
     setShowLogoutModal(false);
-    window.location.href = "/login";
-  }, [navigate, setSidebarOpen]);
+    // Mark first so in-flight API catch() blocks do not toast "reaching server"
+    markAuthSessionEnded();
+    endVendorSessionAndRedirect({ redirect: true, replace: true });
+  }, [setSidebarOpen]);
 
   const toggleSubMenu = useCallback((name) => {
     setOpenSubMenus((prev) => ({ ...prev, [name]: !prev[name] }));

@@ -1,4 +1,5 @@
 import { toast } from "react-toastify";
+import { wasAuthSessionEndedRecently } from "../authSession";
 
 // Custom toast styling configuration
 const toastConfig = {
@@ -30,7 +31,17 @@ export const notifyOnSuccess = (message) => {
 
 // Error notification with custom styling
 export const notifyOnFail = (message) => {
-  toast.error(message, {
+  const text = String(message || "");
+  // After logout / password-change invalidation, many services still toast this
+  // generic string for 401s — suppress so ops does not see "reaching server".
+  if (
+    wasAuthSessionEndedRecently() &&
+    /reaching the server/i.test(text)
+  ) {
+    return;
+  }
+
+  toast.error(text, {
     ...toastConfig,
     style: {
       background: "#feecf0",

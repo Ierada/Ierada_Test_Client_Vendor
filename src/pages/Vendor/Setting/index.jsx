@@ -10,6 +10,10 @@ import { MdToggleOn } from "react-icons/md";
 import { changePassword } from "../../../services/api.auth";
 import { FiCheckCircle, FiCircle } from "react-icons/fi";
 import { useAppContext } from "../../../context/AppContext";
+import { endVendorSessionAndRedirect } from "../../../utils/userIdentifier";
+import { markAuthSessionEnded } from "../../../utils/authSession";
+import { notifyOnFail } from "../../../utils/notification/toast";
+import { toast } from "react-toastify";
 // import { notifyOnSuccess, notifyOnFail } from '../utils/notification/toast';
 
 const Setting = () => {
@@ -109,16 +113,25 @@ const Setting = () => {
     }
 
     try {
-      // Call the changePassword function
       const response = await changePassword(user.id, formData);
 
-      if (response.status === 1) {
+      if (response?.status === 1) {
         setFormData({ Password: "", newPassword: "", confirmPassword: "" });
-      } else {
-        // alert(response.message || "Failed to update password.");
+        // Old JWT is invalidated server-side via password_changed_at — force re-login
+        // so dashboard calls do not spam "Error reaching the server".
+        markAuthSessionEnded();
+        toast.info(
+          "Please login again with your new password.",
+          { toastId: "password-changed-relogin", autoClose: 4000 },
+        );
+        setTimeout(() => {
+          endVendorSessionAndRedirect({ redirect: true, replace: true });
+        }, 800);
+      } else if (response?.message) {
+        notifyOnFail(response.message);
       }
     } catch (err) {
-      // alert("An error occurred. Please try again.");
+      // changePassword already toasts API errors
     }
   };
 

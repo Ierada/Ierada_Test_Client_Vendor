@@ -100,9 +100,32 @@ export const setUserCookie = (token, user, role) => {
 export const clearUserSession = (role = "vendor") => {
   Cookies.remove(getTokenKey(role), { path: "/" });
   localStorage.removeItem(getUserKey(role));
+  // Legacy / handoff key used by AppContext + protected routes
+  localStorage.removeItem("user");
   clearActivityMarker();
 
   if (role === "customer") {
     localStorage.removeItem(getGuestKey());
+  }
+};
+
+const PUBLIC_AUTH_PATHS = ["/login", "/forgot-password", "/auth/handoff"];
+
+export const isPublicAuthPath = (pathname = window.location.pathname) =>
+  PUBLIC_AUTH_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+
+/** Clears vendor session and hard-navigates to login (avoids stale React state). */
+export const endVendorSessionAndRedirect = ({
+  redirect = true,
+  replace = true,
+} = {}) => {
+  clearUserSession("vendor");
+  if (!redirect || isPublicAuthPath()) return;
+  if (replace) {
+    window.location.replace("/login");
+  } else {
+    window.location.href = "/login";
   }
 };
