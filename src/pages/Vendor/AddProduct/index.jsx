@@ -141,6 +141,7 @@ const AddEditProduct = () => {
     gst: 0,
     shipping_charges: 0,
     visibility: "Hidden",
+    listing_type: "single",
     category_id: "",
     sub_category_id: "",
     inner_sub_category_id: "",
@@ -416,6 +417,7 @@ const AddEditProduct = () => {
         specifications: parsedSpecs,
         whats_in_the_box: parsedWhatsInTheBox,
         category_id: p.category_id || "",
+        listing_type: p.listing_type || "single",
       };
 
       setTimeout(() => {
@@ -1872,6 +1874,21 @@ const AddEditProduct = () => {
             <input type="hidden" name="type" value={formData.type} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
+                  Type of Listing <span className="text-red-600">*</span>
+                </label>
+                <select
+                  name="listing_type"
+                  value={formData.listing_type}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm"
+                >
+                  <option value="single">Single</option>
+                  <option value="variation">Variation</option>
+                  <option value="combo">Combo</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
                   Category <span className="text-red-600">*</span>
