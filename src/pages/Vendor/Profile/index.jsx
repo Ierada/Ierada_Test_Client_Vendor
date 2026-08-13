@@ -55,6 +55,8 @@ const INITIAL_STATE = {
   shop_zipCode: "",
   shop_latitude: "",
   shop_longitude: "",
+  authorizationLetterFile: "",
+  authorizationLetterFileUploadedAt: "",
   // Main Seller KYC (separate from the vendor's own personal details above)
   kyc_pan_number: "",
   kyc_adhaar_number: "",
@@ -253,6 +255,7 @@ const Profile = () => {
               "gstFile",
               "businessRegistrationFile",
               "cancelledChequeFile",
+              "authorizationLetterFile",
               "shop_logo",
               "shop_banner",
               "userAvatar",
@@ -288,7 +291,7 @@ const Profile = () => {
       const sectionFileFields = {
         personal: ["userAvatar"],
         documents: ["adhaarCardFile", "panCardFile", "gstFile", "businessRegistrationFile", "cancelledChequeFile"],
-        shop: ["shop_logo"],
+        shop: ["shop_logo", "authorizationLetterFile"],
         kyc: []
       };
 
@@ -298,6 +301,7 @@ const Profile = () => {
         gstFile: "gst_file",
         businessRegistrationFile: "business_reg_file",
         cancelledChequeFile: "bank_file",
+        authorizationLetterFile: "authorization_letter",
         shop_logo: "shop_logo",
         userAvatar: "avatar",
       };
@@ -545,6 +549,10 @@ const Profile = () => {
           vendorData?.data?.vendor?.documents?.cancelled_cheque || "",
         cancelledChequeFileUploadedAt:
           vendorData?.data?.vendor?.documents?.cancelled_cheque_uploaded_at || "",
+        authorizationLetterFile:
+          vendorData?.data?.vendor?.documents?.authorization_letter || "",
+        authorizationLetterFileUploadedAt:
+          vendorData?.data?.vendor?.documents?.authorization_letter_uploaded_at || "",
         shop_logo: vendorData?.data?.vendor?.shop_logo || "",
         shop_address: vendorData?.data?.vendor?.shop_address || "",
         shop_landmark: vendorData?.data?.vendor?.shop_landmark || "",
@@ -828,23 +836,22 @@ const Profile = () => {
               View
             </button>
           )}
-          {editingSection === 'documents' && (
-            <>
-              {value && <span className="text-gray-300 mx-2">|</span>}
-              <label
-                htmlFor={`upload-${row.key}`}
-                className="text-blue-600 hover:underline font-medium cursor-pointer"
-              >
-                Upload
-              </label>
-              <input
-                id={`upload-${row.key}`}
-                type="file"
-                accept="image/*,.pdf"
-                className="hidden"
-                onChange={handleDocumentFile(row.key)}
-              />
-            </>
+          {!value && editingSection === 'documents' && (
+            <label
+              htmlFor={`upload-${row.key}`}
+              className="text-blue-600 hover:underline font-medium cursor-pointer"
+            >
+              Upload
+            </label>
+          )}
+          {!value && editingSection === 'documents' && (
+            <input
+              id={`upload-${row.key}`}
+              type="file"
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={handleDocumentFile(row.key)}
+            />
           )}
         </td>
       </tr>
@@ -1028,7 +1035,7 @@ const Profile = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 {renderField("Landmark", "shop_landmark")}
-                {renderField("Google Coordinates", "shop_google_coordinates", "text", false, (e) => handleGoogleCoordinatesChange(e, true))}
+                {renderReadOnlyField("Google Coordinates", userData.shop_google_coordinates)}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
@@ -1119,6 +1126,54 @@ const Profile = () => {
                   disabled={editingSection !== 'shop'}
                   onChange={handleImageFieldChange("shop_logo")}
                 />
+              </div>
+
+              <div>
+                <label className={fieldLabel}>Authorization Letter</label>
+                <label
+                  htmlFor="upload-authorization-letter"
+                  className={`h-20 w-full rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-1 text-blue-500 border-blue-200 bg-blue-50/50 ${
+                    editingSection === 'shop' ? "cursor-pointer hover:bg-blue-50" : ""
+                  } overflow-hidden`}
+                >
+                  {userData.authorizationLetterFile ? (
+                    <div className="flex flex-col items-center gap-1">
+                      <Eye className="w-5 h-5" />
+                      <span className="text-[11px] font-medium">
+                        View Document
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <ImagePlus className="w-5 h-5" />
+                      <span className="text-[11px] font-medium">
+                        Upload Document
+                      </span>
+                    </>
+                  )}
+                </label>
+                <input
+                  id="upload-authorization-letter"
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  disabled={editingSection !== 'shop'}
+                  onChange={handleDocumentFile("authorizationLetterFile")}
+                />
+                {userData.authorizationLetterFile && (
+                  <button
+                    type="button"
+                    onClick={() => openDocumentViewer(userData.authorizationLetterFile, "Authorization Letter")}
+                    className="text-blue-600 hover:underline font-medium text-xs mt-1"
+                  >
+                    View Document
+                  </button>
+                )}
+                {userData.authorizationLetterFileUploadedAt && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    Uploaded: {formatUploadDateTime(userData.authorizationLetterFileUploadedAt)}
+                  </p>
+                )}
               </div>
             </div>
           </div>
