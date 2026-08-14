@@ -38,6 +38,7 @@ import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
 import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
+import Payments from "../pages/Vendor/Payments/index.jsx";
 import {
   setUserCookie,
   clearUserSession,
@@ -180,6 +181,7 @@ const VendorRoutes = () => {
         { path: "/chat", element: <ChatLayout /> },
         { path: "/influencer", element: <ManageInfluencer /> },
         { path: "/profile", element: <Profile /> },
+        { path: "/payments", element: <Payments /> },
         { path: "/trackorders", element: <TrackCustomerOrders /> },
         { path: "/influencer/campaign/create", element: <CreateCampaign /> },
         { path: "/subcription", element: <Subcriptions /> },
