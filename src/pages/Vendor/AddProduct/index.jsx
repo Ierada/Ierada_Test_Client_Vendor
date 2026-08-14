@@ -935,14 +935,14 @@ const AddEditProduct = () => {
 
   // ── Specifications ────────────────────────────────────────────────────────
   const handleSpecificationChange = (index, field, value) => {
-    if (specifications.length > 7 && field === "feature") return;
+    if (specifications.length > 10 && field === "feature") return;
     const newSpecifications = [...specifications];
     newSpecifications[index][field] = value;
     setSpecifications(newSpecifications);
   };
 
   const addSpecification = () => {
-    if (specifications.length >= 7) return;
+    if (specifications.length >= 10) return;
     setSpecifications([...specifications, { feature: "", specification: "" }]);
     setFormData({
       ...formData,
@@ -960,7 +960,7 @@ const AddEditProduct = () => {
 
   // ── What's in the Box ─────────────────────────────────────────────────────
   const handleWhatsInTheBoxChange = (index, field, value) => {
-    if (whatsInTheBox.length > 4 && field === "title") return;
+    if (whatsInTheBox.length > 10 && field === "title") return;
     const newWhatsInTheBox = [...whatsInTheBox];
     newWhatsInTheBox[index][field] = value;
     setWhatsInTheBox(newWhatsInTheBox);
@@ -968,7 +968,7 @@ const AddEditProduct = () => {
   };
 
   const addWhatsInTheBox = () => {
-    if (whatsInTheBox.length >= 4) return;
+    if (whatsInTheBox.length >= 10) return;
     const newItems = [...whatsInTheBox, { title: "", details: "" }];
     setWhatsInTheBox(newItems);
     setFormData((prev) => ({ ...prev, whats_in_the_box: newItems }));
@@ -1127,8 +1127,22 @@ const AddEditProduct = () => {
           : val,
       );
     });
-    formDataToSend.append("specifications", JSON.stringify(specifications));
-    formDataToSend.append("whats_in_the_box", JSON.stringify(whatsInTheBox));
+    formDataToSend.append(
+      "specifications",
+      JSON.stringify(
+        specifications.filter(
+          (s) => s?.feature?.trim() || s?.specification?.trim(),
+        ),
+      ),
+    );
+    formDataToSend.append(
+      "whats_in_the_box",
+      JSON.stringify(
+        whatsInTheBox.filter(
+          (item) => item?.title?.trim() || item?.details?.trim(),
+        ),
+      ),
+    );
 
     if (deletedMediaIds.length > 0) {
       formDataToSend.append("delete_media", JSON.stringify(deletedMediaIds));
@@ -2144,12 +2158,12 @@ const AddEditProduct = () => {
                 )}
               </div>
             ))}
-            {whatsInTheBox.length < 4 && (
+            {whatsInTheBox.length < 10 && (
               <button
                 onClick={addWhatsInTheBox}
                 className="flex items-center gap-2 text-primary-100 hover:text-blue-700"
               >
-                <Plus size={20} /> Add Item (Max 4)
+                <Plus size={20} /> Add Item (Max 10)
               </button>
             )}
           </div>
@@ -2627,13 +2641,13 @@ const AddEditProduct = () => {
             ))}
             <button
               onClick={addSpecification}
-              className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 ${specifications.length >= 7
+              className={`flex items-center gap-2 text-primary-100 hover:text-blue-700 ${specifications.length >= 10
                   ? "opacity-50 cursor-not-allowed"
                   : ""
                 }`}
-              disabled={specifications.length >= 7}
+              disabled={specifications.length >= 10}
             >
-              <Plus size={20} /> Add Specification
+              <Plus size={20} /> Add Specification (Max 10)
             </button>
           </div>
         </div>
