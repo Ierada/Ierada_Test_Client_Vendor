@@ -18,7 +18,7 @@ export const MOCK_RTO = [
 ];
 
 export const TABLE_HEADERS = {
-  returns: ["RETURN ID", "ORDER", "PRODUCT", "REASON", "STAGE", "STATUS", "AMOUNT", "ACTION"],
+  returns: ["RETURN ID", "ORDER", "PRODUCT", "REASON", "AWB", "STAGE", "STATUS", "AMOUNT", "ACTION"],
   rto: ["RTO ID", "ORDER", "PRODUCT", "COURIER", "REASON", "STATUS", "AMOUNT", "ACTION"],
   ndr: ["NDR ID", "ORDER", "PRODUCT", "COURIER", "ATTEMPT #", "REASON", "NEXT ATTEMPT", "STATUS", "ACTION"]
 };

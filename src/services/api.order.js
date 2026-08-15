@@ -164,9 +164,9 @@ export const createReturnOrReplacement = async (
     }
 
     const queryParams = [];
-    if (returnDetails.replacement)
+    if (returnDetails?.replacement)
       queryParams.push(`replacement=${returnDetails.replacement}`);
-    if (returnDetails.variation_id)
+    if (returnDetails?.variation_id)
       queryParams.push(`variation_id=${returnDetails.variation_id}`);
 
     const queryString = queryParams.length ? `?${queryParams.join("&")}` : "";
@@ -180,11 +180,13 @@ export const createReturnOrReplacement = async (
       return res.data;
     } else {
       notifyOnFail(res.data.message);
+      return res.data;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
-    console.log(error);
-    // return error.response || error;
+    notifyOnFail(
+      error?.response?.data?.message || "Error reaching the server",
+    );
+    return error?.response?.data;
   }
 };
 

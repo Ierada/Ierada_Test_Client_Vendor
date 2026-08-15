@@ -2,7 +2,7 @@ import React from "react";
 import ReturnsTableRow from "./ReturnsTableRow";
 import { TABLE_HEADERS } from "./constants";
 
-const ReturnsTable = ({ activeTab, data, onAction }) => {
+const ReturnsTable = ({ activeTab, data, onAction, busyId }) => {
   const headers = TABLE_HEADERS[activeTab] || [];
 
   return (
@@ -14,8 +14,14 @@ const ReturnsTable = ({ activeTab, data, onAction }) => {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 text-gray-900 font-medium">
-          {data.map((row, idx) => (
-            <ReturnsTableRow key={idx} activeTab={activeTab} row={row} onAction={onAction} />
+            {data.map((row, idx) => (
+            <ReturnsTableRow
+              key={row.orderDbId || row.id || idx}
+              activeTab={activeTab}
+              row={row}
+              onAction={onAction}
+              busy={busyId && row.orderDbId === busyId}
+            />
           ))}
         </tbody>
       </table>

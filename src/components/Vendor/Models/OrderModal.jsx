@@ -20,6 +20,7 @@ import {
   formatDate,
   formatTime,
 } from "../../../utils/date&Time/dateAndTimeFormatter";
+import { courierLabel } from "../../../utils/courierLabels";
 import {
   initiateShipping,
   manifestOrder,
@@ -647,7 +648,7 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                         pc(order.shipping_provider).text
                       }`}
                     >
-                      {order.shipping_provider}
+                      {courierLabel(order.shipping_provider)}
                     </span>
                   </div>
                 </div>
@@ -678,6 +679,29 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                         className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
                       >
                         Track <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
+              {order.return_awb && (
+                <div className="col-span-2 p-3 rounded-xl border bg-purple-50 border-purple-200">
+                  <p className="text-xs text-purple-500 mb-1">
+                    Return AWB ({courierLabel(order.return_shipping_provider || "shadowfax")})
+                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-mono font-semibold text-purple-800">
+                      {order.return_awb}
+                    </span>
+                    <CopyBtn text={order.return_awb} />
+                    {order.return_tracking_url && (
+                      <a
+                        href={order.return_tracking_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-purple-600 hover:underline"
+                      >
+                        Track return <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
                   </div>
@@ -794,7 +818,7 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                                 pc(rate.provider).text
                               }`}
                             >
-                              {rate.provider}
+                              {courierLabel(rate.provider)}
                             </span>
                           </div>
                           <div className="text-right">

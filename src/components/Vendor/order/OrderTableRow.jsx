@@ -187,7 +187,8 @@ const OrderTableRow = ({
       <td className="px-6 py-4 whitespace-nowrap">
         <CourierCell 
           name={order.courier_name} 
-          trackingId={order.tracking_id} 
+          trackingId={order.tracking_id}
+          returnAwb={order.return_awb}
           onShowTracking={setTrackingAwb}
         />
       </td>

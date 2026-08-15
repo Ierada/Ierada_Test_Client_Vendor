@@ -1,7 +1,7 @@
 import React from "react";
 import { getStageDots, getStatusBadge } from "./helpers";
 
-const ReturnsTableRow = ({ activeTab, row, onAction }) => {
+const ReturnsTableRow = ({ activeTab, row, onAction, busy }) => {
   return (
     <tr className="hover:bg-gray-50/50 transition-colors">
       <td className="p-4 font-bold text-gray-950">{row.id}</td>
@@ -10,6 +10,9 @@ const ReturnsTableRow = ({ activeTab, row, onAction }) => {
       {activeTab === "returns" && (
         <>
           <td className="p-4 text-gray-500">{row.reason}</td>
+          <td className="p-4 font-mono text-[11px] text-purple-700">
+            {row.returnAwb || "—"}
+          </td>
           <td className="p-4">{getStageDots(row.stage)}</td>
           <td className="p-4">{getStatusBadge(row.status)}</td>
           <td className="p-4 font-bold">₹{row.price?.toLocaleString("en-IN")}</td>
@@ -35,11 +38,21 @@ const ReturnsTableRow = ({ activeTab, row, onAction }) => {
       <td className="p-4">
         <div className="flex gap-2">
           <button
+            disabled={busy}
             onClick={() => onAction(row.action, row)}
-            className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold rounded-lg shadow-sm text-[10px]"
+            className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-bold rounded-lg shadow-sm text-[10px] disabled:opacity-50"
           >
-            {row.action === "Reschedule/RTO" ? "Reschedule" : (row.action || "View")}
+            {busy ? "…" : row.action === "Reschedule/RTO" ? "Reschedule" : row.action || "View"}
           </button>
+          {row.rawStatus === "return pending" && (
+            <button
+              disabled={busy}
+              onClick={() => onAction("Reject", row)}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-[#B42318] border border-red-200 font-bold rounded-lg shadow-sm text-[10px] disabled:opacity-50"
+            >
+              Reject
+            </button>
+          )}
           {row.action === "Reschedule/RTO" && (
             <button
               onClick={() => onAction("RTO", row)}
