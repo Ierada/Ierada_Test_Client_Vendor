@@ -8,7 +8,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { getPaymentsDashboardData, getOrderPaymentDetails } from "../../../services/api.paymentsDashboard";
+import { getPaymentsDashboardData, getOrderPaymentDetails } from "../../../../services/api.paymentsDashboard";
 import {
   Search,
   Bell,

@@ -15,6 +15,11 @@ import {
   Bell,
   FolderMinus,
   MessageCircleMore,
+  Wallet,
+  FileText,
+  CreditCard,
+  ScrollText,
+  Percent,
 } from "lucide-react";
 import { BsHandbag } from "react-icons/bs";
 
@@ -44,7 +49,35 @@ export const vendorMenuConfig = {
     },
     { text: "Products", icon: ShoppingCart, path: "/product" },
     { text: "Bulk Upload", icon: FolderMinus, path: "/bulk-upload" },
-    { text: "Payment Dashboard", icon: FolderMinus, path: "/payments" },
+    {
+      text: "Payments",
+      icon: Wallet,
+      path: "/payments",
+      subItems: [
+        { text: "Overview", icon: LayoutDashboard, path: "/payments" },
+        {
+          text: "Settlements",
+          icon: ScrollText,
+          path: "/payments/settlements",
+        },
+        {
+          text: "Transactions",
+          icon: CreditCard,
+          path: "/payments/transactions",
+          badgeColor: "bg-[#FF6012]",
+        },
+        {
+          text: "Payment Advice",
+          icon: FileText,
+          path: "/payments/payment-advice",
+        },
+        {
+          text: "GST & Tax Center",
+          icon: Percent,
+          path: "/payments/gst-center",
+        },
+      ],
+    },
     { text: "Invoice/Bill", icon: MessageCircleMore, path: "/invoice" },
     { text: "Profile", icon: Building2, path: "/profile" },
     { text: "Settings", icon: Settings, path: "/settings" },

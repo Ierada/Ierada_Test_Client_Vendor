@@ -38,7 +38,11 @@ import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
 import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
-import Payments from "../pages/Vendor/Payments/index.jsx";
+import PaymentOverview from "../pages/Vendor/Payments/payment-overview/index.jsx";
+import Settlements from "../pages/Vendor/Payments/settlements/index.jsx";
+import Transactions from "../pages/Vendor/Payments/transactions/index.jsx";
+import PaymentAdvice from "../pages/Vendor/Payments/payment-advice/index.jsx";
+import GstTaxCenter from "../pages/Vendor/Payments/gst-center/index.jsx";
 import {
   setUserCookie,
   clearUserSession,
@@ -181,7 +185,11 @@ const VendorRoutes = () => {
         { path: "/chat", element: <ChatLayout /> },
         { path: "/influencer", element: <ManageInfluencer /> },
         { path: "/profile", element: <Profile /> },
-        { path: "/payments", element: <Payments /> },
+        { path: "/payments", element: <PaymentOverview /> },
+        { path: "/payments/settlements", element: <Settlements /> },
+        { path: "/payments/transactions", element: <Transactions /> },
+        { path: "/payments/payment-advice", element: <PaymentAdvice /> },
+        { path: "/payments/gst-center", element: <GstTaxCenter /> },
         { path: "/trackorders", element: <TrackCustomerOrders /> },
         { path: "/influencer/campaign/create", element: <CreateCampaign /> },
         { path: "/subcription", element: <Subcriptions /> },
