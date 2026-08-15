@@ -21,7 +21,7 @@ import {
   downloadShippingLabel,
   manifestOrder,
 } from "../../../services/api.shipping";
-import { downloadLabelPdf } from "../../../pages/Vendor/Order/utils/labelPdf";
+import { saveShippingLabel, orderMetaFromOrder } from "../../../pages/Vendor/Order/utils/labelPdf";
 import {
   notifyOnFail,
   notifyOnSuccess,
@@ -143,38 +143,8 @@ const OrderActions = ({
         return;
       }
 
-      // Use the shippingLabelUrl from the API response
-      const shippingLabelUrl = res.data?.shippingLabelUrl;
-      
-      if (shippingLabelUrl) {
-        // Open the PDF in a new tab
-        window.open(shippingLabelUrl, "_blank", "noopener,noreferrer");
-        notifyOnSuccess("Shipping label downloaded");
-      } else {
-        // Fallback to client-side PDF generation if URL is not available
-        const customerName = `${order.Address?.first_name || ""} ${
-          order.Address?.last_name || ""
-        }`.trim();
-        const customerAddress = [
-          order.Address?.street_address,
-          order.Address?.city,
-          order.Address?.state,
-          order.Address?.zip,
-        ]
-          .filter(Boolean)
-          .join(", ");
-
-        downloadLabelPdf(res.data, {
-          orderNumber: order.order_number,
-          awb: order.provider_shipment_id || order.tracking_id,
-          customerName,
-          customerPhone: order.Address?.phone,
-          customerAddress,
-          productName: order.product?.name || order.Product?.name,
-          paymentType: order.payment_type,
-        });
-        notifyOnSuccess("Shipping label downloaded");
-      }
+      saveShippingLabel(res.data, orderMetaFromOrder(order));
+      notifyOnSuccess("Shipping label downloaded");
     } catch (err) {
       notifyOnFail(err?.response?.data?.message || "Error downloading label");
     } finally {

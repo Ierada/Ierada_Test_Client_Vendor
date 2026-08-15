@@ -10,6 +10,7 @@ import { useClickOutside } from "../../../hooks/useClickOutside";
 import { useFormatDate } from "../../../hooks/useFormatDate";
 import { useOrderActions } from "../../../hooks/useOrderActions";
 import { downloadShippingLabel, downloadManifest } from "../../../services/api.order";
+import { saveShippingLabel, orderMetaFromOrder } from "../../../pages/Vendor/Order/utils/labelPdf";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import TrackingModal from "./TrackingModal";
 import OrderDetailModal from "../Models/OrderDetailModal";
@@ -101,18 +102,8 @@ const OrderTableRow = ({
     try {
       const result = await downloadShippingLabel(order.id);
       if (result.status === 1) {
-        // Use the shippingLabelUrl from the API response
-        const shippingLabelUrl = result.data?.shippingLabelUrl;
-        
-        if (shippingLabelUrl) {
-          // Open the PDF in a new tab
-          window.open(shippingLabelUrl, "_blank", "noopener,noreferrer");
-          notifyOnSuccess("Shipping label downloaded");
-        } else {
-          // Fallback: show success message if URL is not available
-          console.log("Label data:", result.data);
-          notifyOnSuccess("Label data fetched successfully");
-        }
+        saveShippingLabel(result.data, orderMetaFromOrder(order));
+        notifyOnSuccess("Shipping label downloaded");
       }
     } catch (error) {
       console.error("Download label error:", error);

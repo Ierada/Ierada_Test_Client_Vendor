@@ -328,7 +328,7 @@ export const downloadShippingLabel = async (orderId) => {
       message.includes("503")
     ) {
       message =
-        "Innofulfill service is temporarily unavailable. Please try again in a few minutes.";
+        "Courier label service is temporarily unavailable. Please try again in a few minutes.";
     }
 
     console.error("api.order downloadShippingLabel error:", error);

@@ -146,3 +146,62 @@ export const downloadLabelPdf = (labelPayload, orderMeta = {}) => {
   const filename = `shipping-label-${orderMeta.orderNumber || awb}.pdf`;
   doc.save(filename);
 };
+
+const orderMetaFromOrder = (order = {}) => {
+  const addr = order.Address || {};
+  return {
+    orderNumber: order.order_number,
+    awb: order.provider_shipment_id || order.tracking_id,
+    customerName: `${addr.first_name || ""} ${addr.last_name || ""}`.trim(),
+    customerPhone: addr.phone,
+    customerAddress: [
+      addr.street_address,
+      addr.city,
+      addr.state,
+      addr.zip,
+    ]
+      .filter(Boolean)
+      .join(", "),
+    productName: order.product?.name || order.Product?.name,
+    paymentType: order.payment_type,
+  };
+};
+
+const downloadBase64Pdf = (base64, filename) => {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+};
+
+/**
+ * Save courier PDF URL, server-generated AWB PDF, or client-side fallback.
+ */
+export const saveShippingLabel = (apiData, orderMeta = {}) => {
+  const url = apiData?.shippingLabelUrl;
+  if (url && !String(url).startsWith("data:")) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return "url";
+  }
+
+  const b64 = apiData?.shippingLabelPdfBase64;
+  const awb = apiData?.awbNumber || orderMeta.awb || "awb";
+  const filename = `shipping-label-${orderMeta.orderNumber || awb}.pdf`;
+  if (b64) {
+    downloadBase64Pdf(b64, filename);
+    return "pdf";
+  }
+
+  downloadLabelPdf(apiData, orderMeta);
+  return "generated";
+};
+
+export { orderMetaFromOrder };
