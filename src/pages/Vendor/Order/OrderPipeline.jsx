@@ -182,10 +182,15 @@ const OrderPipeline = () => {
   // ── Fetch all vendor orders ────────────────────────────────────────────────
   const fetchOrders = useCallback(
     async (silent = false) => {
+      if (!user?.id) {
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
-        const res = await getOrdersByVendorId(user?.id);
+        const res = await getOrdersByVendorId(user.id);
         const orderList = res?.data?.orders || [];
         setOrders(orderList);
 

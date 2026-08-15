@@ -157,6 +157,8 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
   const [warehouseSource, setWarehouseSource] = useState(null);
   const [loadingRates, setLoadingRates] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(null);
+  const [requiredProvider, setRequiredProvider] = useState(null);
+  const [requiredReason, setRequiredReason] = useState(null);
   const [initiating, setInitiating] = useState(false);
   const [manifesting, setManifesting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -258,6 +260,11 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
       setZone(res?.data?.zone);
       setWeightKg(res?.data?.weightKg);
       setWarehouseSource(res?.data?.warehouseSource || null);
+      setRequiredProvider(res?.data?.requiredProvider || null);
+      setRequiredReason(res?.data?.requiredReason || null);
+      if (res?.data?.requiredProvider) {
+        setSelectedProvider(res.data.requiredProvider);
+      }
     } catch {
       setErr("Failed to load shipping rates");
     } finally {
@@ -771,6 +778,11 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                     </p>
                   ) : (
                     <>
+                      {requiredReason && (
+                        <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-lg p-2">
+                          {requiredReason}
+                        </p>
+                      )}
                       {zone && weightKg && (
                         <p className="text-xs text-gray-400">
                           Zone:{" "}
@@ -787,27 +799,45 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                           )}
                         </p>
                       )}
-                      {rates.map((rate, i) => (
+                      {rates.map((rate, i) => {
+                        const lockedOut =
+                          requiredProvider &&
+                          rate.provider !== requiredProvider;
+                        const isRequired =
+                          requiredProvider &&
+                          rate.provider === requiredProvider;
+                        return (
                         <button
                           key={rate.provider}
                           type="button"
+                          disabled={lockedOut}
                           onClick={() =>
-                            setSelectedProvider((p) =>
-                              p === rate.provider ? null : rate.provider,
-                            )
+                            lockedOut
+                              ? null
+                              : setSelectedProvider((p) =>
+                                  p === rate.provider
+                                    ? requiredProvider || null
+                                    : rate.provider,
+                                )
                           }
                           className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all ${
-                            selectedProvider === rate.provider
+                            lockedOut
+                              ? "border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed"
+                              : selectedProvider === rate.provider || isRequired
                               ? "border-[#0164CE] bg-blue-50"
                               : "border-gray-200 bg-white hover:border-gray-300"
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            {i === 0 && (
+                            {isRequired ? (
+                              <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2 py-0.5 rounded-full">
+                                REQUIRED
+                              </span>
+                            ) : i === 0 ? (
                               <span className="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                                 CHEAPEST
                               </span>
-                            )}
+                            ) : null}
                             <span
                               className={`w-2 h-2 rounded-full ${
                                 pc(rate.provider).dot
@@ -830,12 +860,15 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
                             </p>
                           </div>
                         </button>
-                      ))}
+                        );
+                      })}
                       <p className="text-xs text-gray-400">
-                        {selectedProvider
-                          ? `Using ${selectedProvider} (manual). Click again to deselect.`
+                        {requiredProvider
+                          ? `Returnable / open-box: booking ${courierLabel(requiredProvider)}`
+                          : selectedProvider
+                          ? `Using ${courierLabel(selectedProvider)} (manual). Click again to deselect.`
                           : rates[0]
-                          ? `Auto: ${rates[0].provider} @ ${fmt(
+                          ? `Auto: ${courierLabel(rates[0].provider)} @ ${fmt(
                               rates[0].total,
                             )}`
                           : ""}

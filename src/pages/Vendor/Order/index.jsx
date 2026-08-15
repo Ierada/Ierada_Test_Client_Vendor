@@ -48,9 +48,10 @@ const Order = () => {
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   const fetchOrders = async () => {
+    if (!user?.id) return;
     try {
       setIsLoading(true);
-      const res = await getOrdersByVendorId(user?.id);
+      const res = await getOrdersByVendorId(user.id);
       setOrders(res?.data?.orders || []);
     } catch (e) {
       console.error("Error fetching orders:", e);
@@ -61,7 +62,7 @@ const Order = () => {
 
   useEffect(() => {
     fetchOrders();
-  }, []);
+  }, [user?.id]);
 
   // ── Filtering ──────────────────────────────────────────────────────────────
   const filteredOrders = useMemo(() => {
