@@ -49,7 +49,7 @@ export default function LoginDevices() {
                   ) : null}
                 </div>
                 <div className="text-xs text-gray-500">
-                  {r.location || "Unknown location"} · {r.ip || "—"}
+                  {r.city || r.location || "Unknown city"}
                 </div>
                 <div className="text-[11px] text-gray-400">
                   Last seen {r.last_seen_at ? new Date(r.last_seen_at).toLocaleString() : "—"}

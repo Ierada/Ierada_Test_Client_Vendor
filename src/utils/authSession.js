@@ -26,9 +26,20 @@ export const AUTH_SESSION_CODES = new Set([
   "TOKEN_INVALID",
   "PASSWORD_CHANGED",
   "USER_NOT_FOUND",
+  "ACCESS_CHANGED",
+  "DEVICE_REVOKED",
 ]);
 
 export const isAuthSessionError = (error) => {
-  const code = error?.response?.data?.code;
-  return error?.response?.status === 401 && AUTH_SESSION_CODES.has(code);
+  const status = error?.response?.status;
+  const data = error?.response?.data || {};
+  const code = data?.code;
+  if (AUTH_SESSION_CODES.has(code)) {
+    return status === 401 || status === 403 || data?.status === 0;
+  }
+  const msg = String(data?.message || "");
+  return (
+    status === 401 &&
+    /signed out|device was revoked|please login again/i.test(msg)
+  );
 };

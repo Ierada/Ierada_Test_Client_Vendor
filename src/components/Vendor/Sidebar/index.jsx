@@ -9,6 +9,7 @@ import MenuItem from "./MenuItem";
 import UserProfile from "./UserProfile";
 import { endVendorSessionAndRedirect } from "../../../utils/userIdentifier";
 import { markAuthSessionEnded } from "../../../utils/authSession";
+import { logoutThisDevice } from "../../../services/api.auth";
 
 const SCROLL_POSITION_KEY = "vendorSidebarScroll";
 
@@ -41,9 +42,10 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
   const handleLogoutConfirm = useCallback(() => {
     setSidebarOpen(false);
     setShowLogoutModal(false);
-    // Mark first so in-flight API catch() blocks do not toast "reaching server"
     markAuthSessionEnded();
-    endVendorSessionAndRedirect({ redirect: true, replace: true });
+    logoutThisDevice().finally(() => {
+      endVendorSessionAndRedirect({ redirect: true, replace: true });
+    });
   }, [setSidebarOpen]);
 
   const toggleSubMenu = useCallback((name) => {

@@ -363,6 +363,15 @@ export const vendorResendResetOTP = async (mobile) => {
   }
 };
 
+export const logoutThisDevice = async () => {
+  try {
+    await apiClient.post("/auth/devices/logout-this");
+    return { status: 1 };
+  } catch {
+    return { status: 1 };
+  }
+};
+
 export const getLoginDevices = async () => {
   try {
     const res = await apiClient.get("/auth/devices");

@@ -32,12 +32,8 @@ export const notifyOnSuccess = (message) => {
 // Error notification with custom styling
 export const notifyOnFail = (message) => {
   const text = String(message || "");
-  // After logout / password-change invalidation, many services still toast this
-  // generic string for 401s — suppress so ops does not see "reaching server".
-  if (
-    wasAuthSessionEndedRecently() &&
-    /reaching the server/i.test(text)
-  ) {
+  // After DEVICE_REVOKED / password-change, leftover catch() blocks must stay silent.
+  if (wasAuthSessionEndedRecently()) {
     return;
   }
 
