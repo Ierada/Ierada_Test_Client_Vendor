@@ -9,6 +9,7 @@ import {
 } from "../../../services/api.vendor";
 import { Edit, X, Eye, MapPin, ImagePlus, ChevronDown } from "lucide-react";
 import LocationMapModal from "../../../components/Vendor/Models/LocationMapModal";
+import LoginDevices from "../../../components/Vendor/LoginDevices";
 import DefaultImg from "/assets/user/person-circle.png";
 import {
   notifyOnFail,
@@ -1434,6 +1435,8 @@ const Profile = () => {
             </div>
           </div>
         )}
+
+        <LoginDevices />
 
         {/* Location Map Modal */}
         <LocationMapModal

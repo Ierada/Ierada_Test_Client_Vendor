@@ -362,3 +362,36 @@ export const vendorResendResetOTP = async (mobile) => {
     return { status: 0, message };
   }
 };
+
+export const getLoginDevices = async () => {
+  try {
+    const res = await apiClient.get("/auth/devices");
+    return res.data;
+  } catch (error) {
+    return { status: 0, data: [], message: error.response?.data?.message || "Could not load devices" };
+  }
+};
+
+export const revokeLoginDevice = async (id) => {
+  try {
+    const res = await apiClient.post(`/auth/devices/${id}/revoke`);
+    if (res.data.status === 1) notifyOnSuccess(res.data.message);
+    else notifyOnFail(res.data.message);
+    return res.data;
+  } catch (error) {
+    notifyOnFail(error.response?.data?.message || "Could not sign out device");
+    return { status: 0 };
+  }
+};
+
+export const revokeOtherLoginDevices = async () => {
+  try {
+    const res = await apiClient.post("/auth/devices/revoke-others");
+    if (res.data.status === 1) notifyOnSuccess(res.data.message);
+    else notifyOnFail(res.data.message);
+    return res.data;
+  } catch (error) {
+    notifyOnFail(error.response?.data?.message || "Could not sign out devices");
+    return { status: 0 };
+  }
+};
