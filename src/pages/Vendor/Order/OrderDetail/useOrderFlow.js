@@ -24,9 +24,8 @@ const TERMINAL_STATUSES = new Set([
 const statusToInitialStep = (status) => {
   const s = (status || "").toLowerCase().replace(/[\s_]+/g, "");
   if (["placed", "pending"].includes(s)) return 1;
-  if (s === "accepted") return 2;
-  if (["packed", "shipped", "intransit", "outfordelivery"].includes(s))
-    return 3;
+  if (s === "accepted" || s === "packed") return 2;
+  if (["shipped", "intransit", "outfordelivery"].includes(s)) return 3;
   return 1;
 };
 
@@ -47,12 +46,11 @@ const getNextLabel = (step, status) => {
     if (isTerminalStatus(status)) return null;
     return "Next";
   }
-  if (step === 2) return "Next";
-  if (step === 3) {
-    if (isShippedStatus(status)) return null;
+  if (step === 2) {
+    if (isShippedStatus(status)) return "View Invoice";
     return "Mark as Shipped";
   }
-  return "Next";
+  return null;
 };
 
 export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
@@ -61,16 +59,16 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
   const [loading, setLoading] = useState(true);
   const [actLoading, setActLoading] = useState(false);
 
-  const fetchOrder = useCallback(async () => {
+  const fetchOrder = useCallback(async ({ silent = false, keepStep = false } = {}) => {
     if (!orderId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const res = await getOrderByOrderId(orderId);
       if (res?.status === 1) {
         setData(res.data);
-        setStep(() =>
-          forceStep1 ? 1 : statusToInitialStep(res.data?.orderStatus),
-        );
+        if (!keepStep) {
+          setStep(statusToInitialStep(res.data?.orderStatus));
+        }
       } else {
         notifyOnFail("Failed to load order details");
       }
@@ -78,9 +76,9 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
       console.error("useOrderFlow fetchOrder error:", err);
       notifyOnFail("Error loading order");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [orderId, forceStep1]);
+  }, [orderId]);
 
   useEffect(() => {
     fetchOrder();
@@ -88,12 +86,12 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
 
   const currentStatus = data?.orderStatus || "";
   const terminal = isTerminalStatus(currentStatus);
-  const canGoNext = !terminal;
+  const nextLabel = getNextLabel(step, currentStatus);
+  const canGoNext = !terminal && !!nextLabel;
   const canGoBack = step > 1;
   const canCancel = ["placed", "accepted"].includes(
     currentStatus.toLowerCase(),
   );
-  const nextLabel = getNextLabel(step, currentStatus);
 
   const handleNext = useCallback(async () => {
     if (!canGoNext) return;
@@ -124,13 +122,8 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     }
 
     if (step === 2) {
-      setStep(3);
-      return;
-    }
-
-    if (step === 3) {
       if (isShippedStatus(currentStatus)) {
-        notifyOnSuccess("Order is already shipped.");
+        setStep(3);
         return;
       }
 
@@ -149,8 +142,8 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
           });
           if (res?.status === 1) {
             notifyOnSuccess("Order marked as shipped!");
-            await fetchOrder();
-            if (onClose) onClose();
+            await fetchOrder({ silent: true, keepStep: true });
+            setStep(3);
           } else {
             notifyOnFail(res?.message || "Failed to mark as shipped");
           }
@@ -161,8 +154,8 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
           const shipRes = await initiateShipping(orderId);
           if (shipRes?.status === 1) {
             notifyOnSuccess("Order booked and marked as shipped!");
-            await fetchOrder();
-            if (onClose) onClose();
+            await fetchOrder({ silent: true, keepStep: true });
+            setStep(3);
           } else {
             notifyOnFail(
               shipRes?.message || "Failed to book order with shipping provider",
@@ -176,8 +169,8 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
         });
         if (res?.status === 1) {
           notifyOnSuccess("Order marked as shipped!");
-          await fetchOrder();
-          if (onClose) onClose();
+          await fetchOrder({ silent: true, keepStep: true });
+          setStep(3);
         } else {
           notifyOnFail(res?.message || "Failed to mark as shipped");
         }
@@ -194,8 +187,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     orderId,
     fetchOrder,
     data,
-    forceStep1,
-    onClose,
   ]);
 
   const handleBack = useCallback(() => {

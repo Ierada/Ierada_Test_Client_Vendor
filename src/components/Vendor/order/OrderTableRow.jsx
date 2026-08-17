@@ -394,14 +394,6 @@ const OrderTableRow = ({
                 </button>
                 <button
                   onClick={() => {
-                    alert("Printing Invoice...");
-                  }}
-                  className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-3 rounded-lg text-center transition-colors"
-                >
-                  Print Invoice
-                </button>
-                <button
-                  onClick={() => {
                     setShowAcceptModal(false);
                     setShowRejectModal(true);
                   }}

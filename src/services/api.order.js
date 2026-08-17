@@ -428,7 +428,7 @@ export const downloadTaxInvoicesForOrder = async (orderId) => {
   if (!list.length) {
     return {
       status: 0,
-      message: "Invoice is available after the order is shipped",
+      message: "Could not find invoices for this order",
     };
   }
   for (const inv of list) {

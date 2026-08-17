@@ -6,6 +6,8 @@ import {
   Package,
   Truck,
   Loader2,
+  Printer,
+  CheckCircle2,
 } from "lucide-react";
 import {
   downloadTaxInvoicesForOrder,
@@ -49,32 +51,39 @@ const Row = ({ label, value, bold, green }) => (
 // ═══════════════════════════════════════════════════════════════════════════════
 // STEP 2 — Invoice
 // ═══════════════════════════════════════════════════════════════════════════════
+const invoiceReadyStatus = (status) =>
+  !["", "cancelled", "rejected"].includes(String(status || "").toLowerCase());
+
 export const InvoiceStep = ({ orderData }) => {
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState([]);
   const orderId = orderData?.rowId;
+  const ready = invoiceReadyStatus(orderData?.status);
 
   const loadInvoices = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId || !ready) {
+      setInvoices([]);
+      return;
+    }
     try {
       const list = await getTaxInvoicesForOrder(orderId);
       setInvoices(list);
     } catch {
       setInvoices([]);
     }
-  }, [orderId]);
+  }, [orderId, ready]);
 
   useEffect(() => {
     loadInvoices();
   }, [loadInvoices]);
 
   const handleDownloadGenerated = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId || !ready) return;
     setLoading(true);
     try {
       const res = await downloadTaxInvoicesForOrder(orderId);
       if (res.status !== 1) {
-        alert(res.message || "Invoice is available after the order is shipped");
+        alert(res.message || "Could not download invoice");
         return;
       }
       setInvoices(res.data || []);
@@ -84,7 +93,7 @@ export const InvoiceStep = ({ orderData }) => {
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, ready]);
 
   if (!orderData) return null;
 
@@ -92,33 +101,41 @@ export const InvoiceStep = ({ orderData }) => {
     <StepShell
       icon={FileText}
       title="Tax invoices"
-      subtitle="Product and logistic PDFs are generated when the order is shipped. Returns do not get invoices."
+      subtitle="Product and logistic tax invoices for this order."
     >
-      <div className="flex flex-wrap gap-3 mb-5">
-        <button
-          onClick={handleDownloadGenerated}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-[#0164CE] text-white rounded-lg hover:bg-blue-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-          <span>{loading ? "Downloading..." : "Download invoices"}</span>
-        </button>
-      </div>
-      <div className="text-sm text-gray-600 space-y-1">
-        {invoices.length ? (
-          invoices.map((inv) => (
-            <p key={inv.id}>
-              {inv.kind}: {inv.invoice_number}
-            </p>
-          ))
-        ) : (
-          <p>No tax invoice yet. Ship the order first.</p>
-        )}
-      </div>
+      {ready ? (
+        <>
+          <div className="flex flex-wrap gap-3 mb-5">
+            <button
+              onClick={handleDownloadGenerated}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-[#0164CE] text-white rounded-lg hover:bg-blue-700 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{loading ? "Downloading..." : "Download invoices"}</span>
+            </button>
+          </div>
+          <div className="text-sm text-gray-600 space-y-1">
+            {invoices.length ? (
+              invoices.map((inv) => (
+                <p key={inv.id}>
+                  {inv.kind}: {inv.invoice_number}
+                </p>
+              ))
+            ) : (
+              <p>Generating invoices… if this stays empty, try download again.</p>
+            )}
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-gray-600">
+          Invoice download opens after you mark this order as shipped.
+        </p>
+      )}
     </StepShell>
   );
 };
@@ -431,7 +448,7 @@ export const MarkShippedStep = ({ orderData }) => {
         {[
           "Product is correctly packed and sealed",
           "Order details have been verified with the customer",
-          "Invoice and shipping label will be provided once order is marked as shipped",
+          "Tax invoices will be ready on the next screen after you mark as shipped",
         ].map((item, i) => (
           <div
             key={i}

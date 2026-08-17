@@ -460,18 +460,6 @@ const OrderActions = ({
               </button>
               <button
                 onClick={() => {
-                  const doc = window.jsPDF ? new window.jsPDF() : null;
-                  if (doc) {
-                    doc.text(`Invoice - ${order.order_number}`, 20, 20);
-                    doc.save(`invoice-${order.order_number}.pdf`);
-                  } else alert("Printing Invoice…");
-                }}
-                className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 py-2.5 px-3 rounded-lg text-center transition-colors"
-              >
-                Print Invoice
-              </button>
-              <button
-                onClick={() => {
                   setShowAcceptModal(false);
                   setShowRejectModal(true);
                 }}

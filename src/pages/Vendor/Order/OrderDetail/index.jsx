@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useMemo, useCallback } from "react";
+import { useParams } from "react-router-dom";
 
 import { PageHeader, OrderStepper, FooterNav } from "./OrderFlowChrome";
 import OrderDetailsStep from "./OrderDetailsStep";
@@ -11,11 +11,8 @@ import { downloadTaxInvoicesForOrder } from "../../../../services/api.order";
 // ─── Main Component ────────────────────────────────────────────────────────────
 const OrderDetail = ({ orderId: propOrderId, onClose }) => {
   const { id: paramId } = useParams();
-  const navigate = useNavigate();
   const id = propOrderId || paramId;
   const isModal = !!propOrderId;
-  const [invoiceLoading, setInvoiceLoading] = useState(false);
-
   const {
     step,
     data,
@@ -188,23 +185,21 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     };
   }, [data, discount]);
 
+  const invoiceReady = !["", "cancelled", "rejected"].includes(
+    String(orderData?.status || "").toLowerCase(),
+  );
+
   const handleInvoiceDownload = useCallback(async () => {
-    if (!orderData?.rowId) {
-      flowNext();
-      return;
-    }
-    setInvoiceLoading(true);
+    if (!orderData?.rowId || !invoiceReady) return;
     try {
       const res = await downloadTaxInvoicesForOrder(orderData.rowId);
       if (res.status !== 1) {
-        flowNext();
+        console.error(res.message || "Could not download invoice");
       }
     } catch (error) {
       console.error("Error downloading invoice PDF:", error);
-    } finally {
-      setInvoiceLoading(false);
     }
-  }, [orderData, flowNext]);
+  }, [orderData, invoiceReady]);
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
@@ -261,7 +256,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         showBack={true}
         onBack={isModal ? onClose : undefined}
         orderData={orderData}
-        onInvoiceClick={handleInvoiceDownload}
+        onInvoiceClick={invoiceReady ? handleInvoiceDownload : undefined}
       />
 
       {/* 3-step stepper — reflects both local step and backend status */}
@@ -274,8 +269,8 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         }`}
       >
         {step === 1 && <OrderDetailsStep orderData={orderData} />}
-        {step === 2 && <InvoiceStep orderData={orderData} />}
-        {step === 3 && <MarkShippedStep orderData={orderData} />}
+        {step === 2 && <MarkShippedStep orderData={orderData} />}
+        {step === 3 && <InvoiceStep orderData={orderData} />}
       </div>
 
       {/* Footer: Back | Cancel Order | Next (hidden for terminal orders) */}

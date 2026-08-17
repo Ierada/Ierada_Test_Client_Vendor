@@ -47,7 +47,7 @@ const statusToCompletedStep = (status) => {
     ].includes(s)
   )
     return 3;
-  if (s === "accepted" || s === "packed") return 2;
+  if (s === "accepted" || s === "packed") return 1;
   return 0;
 };
 
@@ -112,13 +112,15 @@ export const PageHeader = ({
           <Printer className="w-4 h-4" />
           Print
         </button> */}
-        {/* <button
-          onClick={handleInvoice}
-          className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 hover:bg-gray-50 rounded-lg"
-        >
-          <FileText className="w-4 h-4" />
-          Invoice
-        </button> */}
+        {onInvoiceClick && (
+          <button
+            onClick={handleInvoice}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors px-2 py-1 hover:bg-gray-50 rounded-lg"
+          >
+            <FileText className="w-4 h-4" />
+            Invoice
+          </button>
+        )}
       </div>
     </div>
   );
@@ -127,8 +129,8 @@ export const PageHeader = ({
 // ─── Stepper ──────────────────────────────────────────────────────────────────
 const STEPS = [
   { n: 1, label: "Order Details" },
-  { n: 2, label: "Invoice" },
-  { n: 3, label: "Mark Shipped" },
+  { n: 2, label: "Mark Shipped" },
+  { n: 3, label: "Invoice" },
 ];
 
 export const OrderStepper = ({ currentStep, currentStatus }) => {
