@@ -1,18 +1,16 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import jsPDF from "jspdf";
-import "jspdf-autotable";
-import html2canvas from "html2canvas";
 import {
   FileText,
-  Printer,
   Download,
   Package,
-  CheckCircle2,
   Truck,
   Loader2,
-  ExternalLink,
 } from "lucide-react";
-import InvoiceCard from "../../../../components/Vendor/orderDetails/InvoiceCard";
+import {
+  downloadTaxInvoicesForOrder,
+  getTaxInvoicesForOrder,
+} from "../../../../services/api.order";
 
 // ─── Shared section shell ──────────────────────────────────────────────────────
 const StepShell = ({ children, title, subtitle, icon: Icon }) => (
@@ -52,85 +50,50 @@ const Row = ({ label, value, bold, green }) => (
 // STEP 2 — Invoice
 // ═══════════════════════════════════════════════════════════════════════════════
 export const InvoiceStep = ({ orderData }) => {
-  if (!orderData) return null;
-
-  const cardRef = useRef(null);
   const [loading, setLoading] = useState(false);
-  const [invoiceUrl, setInvoiceUrl] = useState(null);
-  const [invoiceDownloaded, setInvoiceDownloaded] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const orderId = orderData?.rowId;
 
-  // ─── 2. Generate PDF from InvoiceCard (beautiful HTML) ──────────────────
+  const loadInvoices = useCallback(async () => {
+    if (!orderId) return;
+    try {
+      const list = await getTaxInvoicesForOrder(orderId);
+      setInvoices(list);
+    } catch {
+      setInvoices([]);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    loadInvoices();
+  }, [loadInvoices]);
+
   const handleDownloadGenerated = useCallback(async () => {
-    const input = cardRef.current;
-    if (!input) return;
+    if (!orderId) return;
     setLoading(true);
     try {
-      const canvas = await html2canvas(input, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: "#ffffff",
-      });
-      const imgData = canvas.toDataURL("image/png");
-
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const imgWidth = pdfWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      let heightLeft = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight;
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight;
+      const res = await downloadTaxInvoicesForOrder(orderId);
+      if (res.status !== 1) {
+        alert(res.message || "Invoice is available after the order is shipped");
+        return;
       }
-      pdf.save(`invoice_${orderData.id}.pdf`);
+      setInvoices(res.data || []);
     } catch (error) {
-      console.error("Error generating invoice PDF:", error);
+      console.error("Error downloading invoice PDF:", error);
+      alert(error?.response?.data?.message || "Failed to download invoice");
     } finally {
       setLoading(false);
     }
-  }, [orderData]);
+  }, [orderId]);
 
-  // ─── 3. Print ─────────────────────────────────────────────────────────────
-  const handlePrint = () => {
-    const printContent = cardRef.current;
-    if (!printContent) return;
-
-    const printWindow = window.open('', '_blank');
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Invoice - ${orderData.id}</title>
-          <style>
-            body { margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            @media print { body { margin: 0; } }
-          </style>
-        </head>
-        <body>
-          ${printContent.innerHTML}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.onload = () => {
-      printWindow.print();
-      printWindow.close();
-    };
-  };
+  if (!orderData) return null;
 
   return (
     <StepShell
       icon={FileText}
-      title="Invoice Preview"
-      subtitle="Review and download the tax invoice for this order"
+      title="Tax invoices"
+      subtitle="Product and logistic PDFs are generated when the order is shipped. Returns do not get invoices."
     >
-      {/* Action Buttons */}
       <div className="flex flex-wrap gap-3 mb-5">
         <button
           onClick={handleDownloadGenerated}
@@ -139,38 +102,22 @@ export const InvoiceStep = ({ orderData }) => {
         >
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
-          ) : invoiceDownloaded ? (
-            <CheckCircle2 className="w-4 h-4" />
           ) : (
             <Download className="w-4 h-4" />
           )}
-          <span>{loading ? 'Downloading...' : invoiceDownloaded ? 'Invoice Downloaded' : 'Download Invoice'}</span>
+          <span>{loading ? "Downloading..." : "Download invoices"}</span>
         </button>
-
-        {invoiceUrl && (
-          <a
-            href={invoiceUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 text-sm font-medium transition-colors"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>View Invoice</span>
-          </a>
-        )}
-
-        {/* <button
-          onClick={handlePrint}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EF] rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 shadow-sm transition-colors"
-        >
-          <Printer className="w-4 h-4" />
-          <span>Print</span>
-        </button> */}
       </div>
-
-      {/* The beautiful invoice card – captured for PDF */}
-      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50">
-        <InvoiceCard ref={cardRef} orderData={orderData} />
+      <div className="text-sm text-gray-600 space-y-1">
+        {invoices.length ? (
+          invoices.map((inv) => (
+            <p key={inv.id}>
+              {inv.kind}: {inv.invoice_number}
+            </p>
+          ))
+        ) : (
+          <p>No tax invoice yet. Ship the order first.</p>
+        )}
       </div>
     </StepShell>
   );

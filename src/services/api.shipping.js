@@ -243,3 +243,28 @@ export const trackOrderById = async (order_id) => {
     return null;
   }
 };
+
+export const getReturnRates = async (orderId) => {
+  try {
+    const res = await apiClient.get(`/shipping/return/rates/${orderId}`);
+    return res.data;
+  } catch (error) {
+    notifyOnFail("Error fetching return couriers");
+    console.log(error);
+  }
+};
+
+export const assignReturnProvider = async (orderId, provider) => {
+  try {
+    const res = await apiClient.post(`/shipping/return/assign/${orderId}`, {
+      provider,
+    });
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message ||
+      error.message ||
+      "Error assigning return courier";
+    return { status: 0, message };
+  }
+};

@@ -45,13 +45,9 @@ const ReturnsTableRow = ({ activeTab, row, onAction, busy }) => {
             {busy ? "…" : row.action === "Reschedule/RTO" ? "Reschedule" : row.action || "View"}
           </button>
           {row.rawStatus === "return pending" && (
-            <button
-              disabled={busy}
-              onClick={() => onAction("Reject", row)}
-              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-[#B42318] border border-red-200 font-bold rounded-lg shadow-sm text-[10px] disabled:opacity-50"
-            >
-              Reject
-            </button>
+            <span className="text-[10px] font-semibold text-gray-400">
+              Admin approval
+            </span>
           )}
           {row.action === "Reschedule/RTO" && (
             <button

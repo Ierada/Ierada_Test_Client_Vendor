@@ -24,7 +24,6 @@ import { courierLabel } from "../../../utils/courierLabels";
 import {
   initiateShipping,
   manifestOrder,
-  cancelShipping,
   getShippingRates,
   getTrackingDetails,
 } from "../../../services/api.shipping";
@@ -161,7 +160,6 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
   const [requiredReason, setRequiredReason] = useState(null);
   const [initiating, setInitiating] = useState(false);
   const [manifesting, setManifesting] = useState(false);
-  const [cancelling, setCancelling] = useState(false);
   const [err, setErr] = useState(null);
   const [ok, setOk] = useState(null);
   const [liveEvents, setLiveEvents] = useState([]);
@@ -365,32 +363,6 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
       setErr(e?.response?.data?.message || e.message);
     } finally {
       setManifesting(false);
-    }
-  };
-
-  const doCancel = async () => {
-    if (
-      !window.confirm(
-        "Cancel shipping? This will cancel on the courier side. You can re-initiate after.",
-      )
-    )
-      return;
-    setCancelling(true);
-    clear();
-    try {
-      const res = await cancelShipping(order.id);
-      if (res?.success || res?.status === 1) {
-        setOk("✅ Shipping cancelled.");
-        notifyOnSuccess("Shipping cancelled successfully!");
-        onOrderUpdate?.();
-        onClose?.();
-      } else {
-        setErr(res?.message || "Cancel failed");
-      }
-    } catch (e) {
-      setErr(e?.response?.data?.message || e.message);
-    } finally {
-      setCancelling(false);
     }
   };
 
@@ -949,23 +921,6 @@ const ShippingPanel = ({ order, onOrderUpdate, onClose }) => {
               </button>
             )}
 
-            {/* Cancel shipping */}
-            {isShipped && !isManifested && !isSelfShipMode && (
-              <button
-                type="button"
-                onClick={doCancel}
-                disabled={cancelling}
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-red-300 text-red-600 text-sm font-semibold rounded-xl hover:bg-red-50 disabled:opacity-50 transition-colors"
-              >
-                {cancelling ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <X className="w-3.5 h-3.5" />
-                )}
-                {cancelling ? "Cancelling…" : "Cancel Shipping"}
-              </button>
-            )}
-
             {/* Manifested lock */}
             {isManifested && (
               <div className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-xl">
@@ -1087,6 +1042,21 @@ const OrderModal = ({ isOpen, onClose, order, onOrderUpdate }) => {
               />
             </div>
           </Section>
+
+          {(order.cancel_reason || order.cancel_notes || order.order_status === "cancelled") && (
+            <div className="border border-red-200 bg-red-50 rounded-xl p-4 text-sm text-red-800">
+              <p className="font-semibold">
+                Order cancelled
+                {order.cancelled_by ? ` by ${order.cancelled_by}` : ""}
+              </p>
+              {order.cancel_reason && (
+                <p className="mt-1">Reason: {order.cancel_reason}</p>
+              )}
+              {order.cancel_notes && (
+                <p className="mt-1">Notes: {order.cancel_notes}</p>
+              )}
+            </div>
+          )}
 
           {/* Shipping Address */}
           <Section title="Shipping Address" defaultOpen={false}>

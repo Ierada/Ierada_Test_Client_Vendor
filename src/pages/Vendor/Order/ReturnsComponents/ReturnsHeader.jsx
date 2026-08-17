@@ -8,7 +8,7 @@ const ReturnsHeader = ({ stats }) => {
         <div>
           <h1 className="text-3xl font-semibold text-gray-950">Returns & RTO Management</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Approve customer returns to book a Shadowfax reverse pickup. Off = no courier booking.
+            Returns wait for Ierada admin approval. You can track pickup after it is booked.
           </p>
         </div>
         <div className="flex items-center gap-2 bg-purple-50 border border-purple-200 text-purple-800 px-3.5 py-2 rounded-lg text-xs font-bold shadow-sm">

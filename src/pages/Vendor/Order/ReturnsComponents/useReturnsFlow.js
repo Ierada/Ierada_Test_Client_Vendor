@@ -21,13 +21,13 @@ const labelForStatus = (status) => {
   const s = (status || "").toLowerCase();
   if (s === "returned") return "Returned to warehouse";
   if (s === "return initiated") return "Pickup booked";
-  if (s === "return pending") return "Awaiting approval";
+  if (s === "return pending") return "Awaiting admin approval";
   return status || "Unknown";
 };
 
 const actionForStatus = (status) => {
   const s = (status || "").toLowerCase();
-  if (s === "return pending") return "Approve";
+  if (s === "return pending") return "View";
   if (s === "return initiated") return "Track";
   return "View";
 };

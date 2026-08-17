@@ -175,11 +175,10 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
                 <FaUserCircle className="w-full h-full text-gray-400 rounded-full" />
               )}
             </div>
-            <div className="flex flex-col">
+            <div className="flex flex-col justify-center">
               <h2 className="font-semibold text-gray-900 text-sm leading-tight">
-                {user?.name || "Selling Partner"}
+                {user?.shopName || user?.shop_name || user?.name || "Selling Partner"}
               </h2>
-              <p className="text-xs text-gray-500 leading-tight">Admin</p>
             </div>
           </div>
 

@@ -401,3 +401,41 @@ export const getTrackingByAwb = async (awb) => {
     return { status: 0, message };
   }
 };
+
+const taxInvoiceKinds = (rows) =>
+  (rows || []).filter((row) => row.kind === "product" || row.kind === "logistic");
+
+const triggerBlobDownload = (blob, filename) => {
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const getTaxInvoicesForOrder = async (orderId) => {
+  const res = await apiClient.get("/tax-invoices", {
+    params: { order_id: orderId },
+  });
+  return taxInvoiceKinds(res.data?.data);
+};
+
+export const downloadTaxInvoicesForOrder = async (orderId) => {
+  const list = await getTaxInvoicesForOrder(orderId);
+  if (!list.length) {
+    return {
+      status: 0,
+      message: "Invoice is available after the order is shipped",
+    };
+  }
+  for (const inv of list) {
+    const file = await apiClient.get(`/tax-invoices/${inv.id}/download`, {
+      responseType: "blob",
+    });
+    triggerBlobDownload(file.data, `${inv.invoice_number}.pdf`);
+  }
+  return { status: 1, data: list };
+};
