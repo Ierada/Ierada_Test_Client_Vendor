@@ -416,6 +416,36 @@ const triggerBlobDownload = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
+// Requests for invoice PDFs use responseType "blob", so an error response body
+// (JSON) also arrives as a Blob instead of parsed JSON. Without this, the real
+// server message (e.g. "Invoice file missing") never reaches the UI and every
+// failure looks like a generic "Failed to download invoice".
+const extractBlobErrorMessage = async (error) => {
+  const data = error?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text();
+      const parsed = JSON.parse(text);
+      if (parsed?.message) return parsed.message;
+    } catch {
+      /* not JSON, fall through */
+    }
+  }
+  return error?.response?.data?.message || null;
+};
+
+const fetchTaxInvoiceBlob = async (invoiceId, actionLabel) => {
+  try {
+    const res = await apiClient.get(`/tax-invoices/${invoiceId}/download`, {
+      responseType: "blob",
+    });
+    return res.data;
+  } catch (error) {
+    const message = await extractBlobErrorMessage(error);
+    throw new Error(message || `Failed to ${actionLabel} invoice`);
+  }
+};
+
 export const getTaxInvoicesForOrder = async (orderId) => {
   const res = await apiClient.get("/tax-invoices", {
     params: { order_id: orderId },
@@ -432,10 +462,20 @@ export const downloadTaxInvoicesForOrder = async (orderId) => {
     };
   }
   for (const inv of list) {
-    const file = await apiClient.get(`/tax-invoices/${inv.id}/download`, {
-      responseType: "blob",
-    });
-    triggerBlobDownload(file.data, `${inv.invoice_number}.pdf`);
+    const blob = await fetchTaxInvoiceBlob(inv.id, "download");
+    triggerBlobDownload(blob, `${inv.invoice_number}.pdf`);
   }
   return { status: 1, data: list };
+};
+
+export const downloadSingleTaxInvoice = async (invoiceId, invoiceNumber) => {
+  const blob = await fetchTaxInvoiceBlob(invoiceId, "download");
+  triggerBlobDownload(blob, `${invoiceNumber || "invoice"}.pdf`);
+};
+
+export const previewTaxInvoice = async (invoiceId) => {
+  const blob = await fetchTaxInvoiceBlob(invoiceId, "preview");
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  setTimeout(() => window.URL.revokeObjectURL(url), 60000);
 };

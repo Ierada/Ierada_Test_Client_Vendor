@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import {
   FileText,
   Download,
+  Eye,
   Package,
   Truck,
   Loader2,
@@ -11,7 +12,9 @@ import {
 } from "lucide-react";
 import {
   downloadTaxInvoicesForOrder,
+  downloadSingleTaxInvoice,
   getTaxInvoicesForOrder,
+  previewTaxInvoice,
 } from "../../../../services/api.order";
 
 // ─── Shared section shell ──────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ const invoiceReadyStatus = (status) =>
 export const InvoiceStep = ({ orderData }) => {
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState([]);
+  const [busyInvoiceId, setBusyInvoiceId] = useState(null);
   const orderId = orderData?.rowId;
   const ready = invoiceReadyStatus(orderData?.status);
 
@@ -93,11 +97,35 @@ export const InvoiceStep = ({ orderData }) => {
       setInvoices(res.data || []);
     } catch (error) {
       console.error("Error downloading invoice PDF:", error);
-      alert(error?.response?.data?.message || "Failed to download invoice");
+      alert(error?.message || "Failed to download invoice");
     } finally {
       setLoading(false);
     }
   }, [orderId, ready]);
+
+  const handlePreview = useCallback(async (invoice) => {
+    setBusyInvoiceId(invoice.id);
+    try {
+      await previewTaxInvoice(invoice.id);
+    } catch (error) {
+      console.error("Error previewing invoice PDF:", error);
+      alert(error?.message || "Failed to preview invoice");
+    } finally {
+      setBusyInvoiceId(null);
+    }
+  }, []);
+
+  const handleDownloadOne = useCallback(async (invoice) => {
+    setBusyInvoiceId(invoice.id);
+    try {
+      await downloadSingleTaxInvoice(invoice.id, invoice.invoice_number);
+    } catch (error) {
+      console.error("Error downloading invoice PDF:", error);
+      alert(error?.message || "Failed to download invoice");
+    } finally {
+      setBusyInvoiceId(null);
+    }
+  }, []);
 
   if (!orderData) return null;
 
@@ -123,13 +151,41 @@ export const InvoiceStep = ({ orderData }) => {
               <span>{loading ? "Downloading..." : "Download invoices"}</span>
             </button>
           </div>
-          <div className="text-sm text-gray-600 space-y-1">
+          <div className="text-sm text-gray-600">
             {invoices.length ? (
-              invoices.map((inv) => (
-                <p key={inv.id}>
-                  {inv.kind}: {inv.invoice_number}
-                </p>
-              ))
+              <div className="divide-y divide-gray-100">
+                {invoices.map((inv) => {
+                  const busy = busyInvoiceId === inv.id;
+                  return (
+                    <div
+                      key={inv.id}
+                      className="flex items-center justify-between gap-3 py-2.5"
+                    >
+                      <p className="capitalize">
+                        {inv.kind}: <span className="font-medium text-gray-800">{inv.invoice_number}</span>
+                      </p>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => handlePreview(inv)}
+                          disabled={busy}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-xs font-medium text-gray-700 disabled:opacity-50"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => handleDownloadOne(inv)}
+                          disabled={busy}
+                          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-xs font-medium text-gray-700 disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <p>Generating invoices… if this stays empty, try download again.</p>
             )}
