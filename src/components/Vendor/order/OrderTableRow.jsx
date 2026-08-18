@@ -102,8 +102,12 @@ const OrderTableRow = ({
     try {
       const result = await downloadShippingLabel(order.id);
       if (result.status === 1) {
-        saveShippingLabel(result.data, orderMetaFromOrder(order));
-        notifyOnSuccess("Shipping label downloaded");
+        const saved = saveShippingLabel(result.data, orderMetaFromOrder(order));
+        if (saved) {
+          notifyOnSuccess("Shipping label downloaded");
+        } else {
+          notifyOnFail("Courier did not return a label. Please try again or reassign a different courier.");
+        }
       }
     } catch (error) {
       console.error("Download label error:", error);

@@ -143,7 +143,11 @@ const OrderActions = ({
         return;
       }
 
-      saveShippingLabel(res.data, orderMetaFromOrder(order));
+      const saved = saveShippingLabel(res.data, orderMetaFromOrder(order));
+      if (!saved) {
+        notifyOnFail("Courier did not return a label. Please try again or reassign a different courier.");
+        return;
+      }
       notifyOnSuccess("Shipping label downloaded");
     } catch (err) {
       notifyOnFail(err?.response?.data?.message || "Error downloading label");

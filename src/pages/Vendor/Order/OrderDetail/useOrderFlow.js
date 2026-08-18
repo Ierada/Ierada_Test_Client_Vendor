@@ -24,6 +24,8 @@ const TERMINAL_STATUSES = new Set([
 const statusToInitialStep = (status) => {
   const s = (status || "").toLowerCase().replace(/[\s_]+/g, "");
   if (["placed", "pending"].includes(s)) return 1;
+  // Right after accept, the vendor should land on the Invoice step — invoices
+  // are visible/downloadable from here on, well before shipping.
   if (s === "accepted" || s === "packed") return 2;
   if (["shipped", "intransit", "outfordelivery"].includes(s)) return 3;
   return 1;
@@ -47,7 +49,12 @@ const getNextLabel = (step, status) => {
     return "Next";
   }
   if (step === 2) {
-    if (isShippedStatus(status)) return "View Invoice";
+    // Invoice step: just advance to shipping, no side effect here.
+    if (isShippedStatus(status) || isTerminalStatus(status)) return null;
+    return "Next";
+  }
+  if (step === 3) {
+    if (isShippedStatus(status) || isTerminalStatus(status)) return null;
     return "Mark as Shipped";
   }
   return null;
@@ -122,10 +129,13 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     }
 
     if (step === 2) {
-      if (isShippedStatus(currentStatus)) {
-        setStep(3);
-        return;
-      }
+      // Invoice step: nothing to submit, just move on to shipping.
+      setStep(3);
+      return;
+    }
+
+    if (step === 3) {
+      if (isShippedStatus(currentStatus)) return;
 
       setActLoading(true);
       try {
@@ -143,7 +153,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
           if (res?.status === 1) {
             notifyOnSuccess("Order marked as shipped!");
             await fetchOrder({ silent: true, keepStep: true });
-            setStep(3);
           } else {
             notifyOnFail(res?.message || "Failed to mark as shipped");
           }
@@ -155,7 +164,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
           if (shipRes?.status === 1) {
             notifyOnSuccess("Order booked and marked as shipped!");
             await fetchOrder({ silent: true, keepStep: true });
-            setStep(3);
           } else {
             notifyOnFail(
               shipRes?.message || "Failed to book order with shipping provider",
@@ -170,7 +178,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
         if (res?.status === 1) {
           notifyOnSuccess("Order marked as shipped!");
           await fetchOrder({ silent: true, keepStep: true });
-          setStep(3);
         } else {
           notifyOnFail(res?.message || "Failed to mark as shipped");
         }

@@ -2,7 +2,7 @@
 export const COURIER_LABELS = {
   innofulfill: "Shri Maruti",
   shadowfax: "Shadowfax",
-  shiprocket: "Shiprocket",
+  shipease: "Shipease",
   self_ship: "Self Ship",
 };
 

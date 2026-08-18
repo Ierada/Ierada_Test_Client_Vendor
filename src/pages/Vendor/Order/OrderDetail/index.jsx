@@ -185,7 +185,10 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     };
   }, [data, discount]);
 
-  const invoiceReady = !["", "cancelled", "rejected"].includes(
+  // Invoice becomes visible right after the order is accepted — well before
+  // shipping — and stays available afterwards. Never before accept, never for
+  // cancelled/rejected orders.
+  const invoiceReady = !["", "placed", "pending", "cancelled", "rejected"].includes(
     String(orderData?.status || "").toLowerCase(),
   );
 
@@ -269,8 +272,8 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
         }`}
       >
         {step === 1 && <OrderDetailsStep orderData={orderData} />}
-        {step === 2 && <MarkShippedStep orderData={orderData} />}
-        {step === 3 && <InvoiceStep orderData={orderData} />}
+        {step === 2 && <InvoiceStep orderData={orderData} />}
+        {step === 3 && <MarkShippedStep orderData={orderData} />}
       </div>
 
       {/* Footer: Back | Cancel Order | Next (hidden for terminal orders) */}

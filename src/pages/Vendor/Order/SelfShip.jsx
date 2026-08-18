@@ -29,7 +29,7 @@ import {
 } from "../../../utils/notification/toast";
 
 // ─── Auto-ship providers (exclude from this page) ─────────────────────────────
-const AUTO_SHIP_PROVIDERS = ["innofulfill", "shadowfax", "shiprocket"];
+const AUTO_SHIP_PROVIDERS = ["innofulfill", "shadowfax", "shipease"];
 
 // ─── Self-ship workflow stages ─────────────────────────────────────────────────
 const WORKFLOW_STAGES = [

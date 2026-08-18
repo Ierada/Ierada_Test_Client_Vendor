@@ -51,8 +51,12 @@ const Row = ({ label, value, bold, green }) => (
 // ═══════════════════════════════════════════════════════════════════════════════
 // STEP 2 — Invoice
 // ═══════════════════════════════════════════════════════════════════════════════
+// Invoice becomes visible right after the order is accepted, well before it
+// ships, and stays available afterwards.
 const invoiceReadyStatus = (status) =>
-  !["", "cancelled", "rejected"].includes(String(status || "").toLowerCase());
+  !["", "placed", "pending", "cancelled", "rejected"].includes(
+    String(status || "").toLowerCase(),
+  );
 
 export const InvoiceStep = ({ orderData }) => {
   const [loading, setLoading] = useState(false);
@@ -133,7 +137,7 @@ export const InvoiceStep = ({ orderData }) => {
         </>
       ) : (
         <p className="text-sm text-gray-600">
-          Invoice download opens after you mark this order as shipped.
+          Invoice download opens once you accept this order.
         </p>
       )}
     </StepShell>
@@ -448,7 +452,7 @@ export const MarkShippedStep = ({ orderData }) => {
         {[
           "Product is correctly packed and sealed",
           "Order details have been verified with the customer",
-          "Tax invoices will be ready on the next screen after you mark as shipped",
+          "Tax invoices are already available on the Invoice tab",
         ].map((item, i) => (
           <div
             key={i}

@@ -6,7 +6,6 @@ import OrderSummaryCards from "../../../components/Vendor/order/OrderSummaryCard
 import OrderTableHeader from "../../../components/Vendor/order/OrderTableHeader";
 import OrderTable from "../../../components/Vendor/order/OrderTable";
 import OrderPagination from "../../../components/Vendor/order/OrderPagination";
-import OrderModal from "../../../components/Vendor/Models/OrderModal";
 import OrderDetailModal from "../../../components/Vendor/Models/OrderDetailModal";
 
 import { useAppContext } from "../../../context/AppContext";
@@ -29,8 +28,6 @@ const Order = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Modals ─────────────────────────────────────────────────────────────────
-  const [modalData, setModalData] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeFlowOrderId, setActiveFlowOrderId] = useState(null);
 
   // ── Filters / search / pagination ──────────────────────────────────────────
@@ -267,18 +264,7 @@ const Order = () => {
         onPageSizeChange={setPageSize}
       />
 
-      {/* 7. Full detail + shipping modal */}
-      <OrderModal
-        isOpen={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setModalData(null);
-        }}
-        order={modalData}
-        onOrderUpdate={fetchOrders}
-      />
-
-      {/* 8. Multi-step accept flow modal */}
+      {/* Multi-step accept flow modal (accept/reject → invoice → ship) */}
       <OrderDetailModal
         isOpen={!!activeFlowOrderId}
         onClose={() => {

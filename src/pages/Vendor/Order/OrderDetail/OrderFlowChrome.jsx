@@ -47,7 +47,8 @@ const statusToCompletedStep = (status) => {
     ].includes(s)
   )
     return 3;
-  if (s === "accepted" || s === "packed") return 1;
+  // Accepted/packed: Details + Invoice steps are both unlocked, shipping isn't done yet.
+  if (s === "accepted" || s === "packed") return 2;
   return 0;
 };
 
@@ -129,8 +130,8 @@ export const PageHeader = ({
 // ─── Stepper ──────────────────────────────────────────────────────────────────
 const STEPS = [
   { n: 1, label: "Order Details" },
-  { n: 2, label: "Mark Shipped" },
-  { n: 3, label: "Invoice" },
+  { n: 2, label: "Invoice" },
+  { n: 3, label: "Mark Shipped" },
 ];
 
 export const OrderStepper = ({ currentStep, currentStatus }) => {

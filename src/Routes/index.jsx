@@ -43,6 +43,7 @@ import Settlements from "../pages/Vendor/Payments/settlements/index.jsx";
 import Transactions from "../pages/Vendor/Payments/transactions/index.jsx";
 import PaymentAdvice from "../pages/Vendor/Payments/payment-advice/index.jsx";
 import GstTaxCenter from "../pages/Vendor/Payments/gst-center/index.jsx";
+import PickupVerification from "../pages/Vendor/PickupVerification/index.jsx";
 import {
   setUserCookie,
   clearUserSession,
@@ -172,6 +173,7 @@ const VendorRoutes = () => {
         { path: "/product/edit/:id", element: <AddEditProduct /> },
         { path: "/bulk-upload", element: <ProductFilesManager /> },
         { path: "/settings", element: <Setting /> },
+        { path: "/pickup-verification", element: <PickupVerification /> },
         { path: "/orders", element: <Order /> },
         { path: "/orders/pipeline", element: <OrderPipeline /> },
         { path: "/orders/self-ship", element: <SelfShip /> },
