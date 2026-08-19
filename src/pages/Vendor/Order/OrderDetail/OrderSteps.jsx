@@ -11,8 +11,9 @@ import {
   downloadTaxInvoicesForOrder,
   downloadSingleTaxInvoice,
   getTaxInvoicesForOrder,
-  previewTaxInvoice,
+  fetchTaxInvoicePreviewBlob,
 } from "../../../../services/api.order";
+import PdfPreviewModal from "../../../../components/Vendor/PdfPreviewModal";
 
 // ─── Shared section shell ──────────────────────────────────────────────────────
 const StepShell = ({ children, title, subtitle, icon: Icon }) => (
@@ -57,6 +58,7 @@ export const InvoiceStep = ({ orderData }) => {
   const [loading, setLoading] = useState(false);
   const [invoices, setInvoices] = useState([]);
   const [busyInvoiceId, setBusyInvoiceId] = useState(null);
+  const [preview, setPreview] = useState({ open: false, url: null, title: "" });
   const orderId = orderData?.rowId;
   const ready = invoiceReadyStatus(orderData?.status);
 
@@ -95,10 +97,23 @@ export const InvoiceStep = ({ orderData }) => {
     }
   }, [orderId, ready]);
 
+  const closePreview = useCallback(() => {
+    setPreview((current) => {
+      if (current.url) window.URL.revokeObjectURL(current.url);
+      return { open: false, url: null, title: "" };
+    });
+  }, []);
+
   const handlePreview = useCallback(async (invoice) => {
     setBusyInvoiceId(invoice.id);
     try {
-      await previewTaxInvoice(invoice.id);
+      const blob = await fetchTaxInvoicePreviewBlob(invoice.id);
+      const url = window.URL.createObjectURL(blob);
+      setPreview({
+        open: true,
+        url,
+        title: `${invoice.kind} invoice · ${invoice.invoice_number}`,
+      });
     } catch (error) {
       console.error("Error previewing invoice PDF:", error);
       alert(error?.message || "Failed to preview invoice");
@@ -188,6 +203,12 @@ export const InvoiceStep = ({ orderData }) => {
           Invoice download opens once you accept this order.
         </p>
       )}
+      <PdfPreviewModal
+        isOpen={preview.open}
+        onClose={closePreview}
+        title={preview.title}
+        blobUrl={preview.url}
+      />
     </StepShell>
   );
 };

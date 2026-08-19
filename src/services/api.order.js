@@ -529,9 +529,12 @@ export const downloadSingleTaxInvoice = async (invoiceId, invoiceNumber) => {
   triggerBlobDownload(blob, `${invoiceNumber || "invoice"}.pdf`);
 };
 
+export const fetchTaxInvoicePreviewBlob = async (invoiceId) => {
+  return fetchTaxInvoiceBlob(invoiceId, "preview");
+};
+
 export const previewTaxInvoice = async (invoiceId) => {
   const blob = await fetchTaxInvoiceBlob(invoiceId, "preview");
   const url = window.URL.createObjectURL(blob);
-  window.open(url, "_blank", "noopener,noreferrer");
-  setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+  return { blob, url };
 };

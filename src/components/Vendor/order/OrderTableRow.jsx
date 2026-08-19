@@ -182,7 +182,8 @@ const OrderTableRow = ({
       </td>
       <td className="px-6 py-4 whitespace-nowrap">
         <CourierCell 
-          name={order.courier_name} 
+          name={order.courier_name}
+          shippingProvider={order.shipping_provider}
           trackingId={order.tracking_id}
           returnAwb={order.return_awb}
           onShowTracking={setTrackingAwb}
@@ -468,6 +469,7 @@ const OrderTableRow = ({
         isOpen={showDetailModal}
         onClose={() => setShowDetailModal(false)}
         orderId={order.id || order.order_number}
+        onOrderUpdate={onOrderUpdate}
       />
     </tr>
   );

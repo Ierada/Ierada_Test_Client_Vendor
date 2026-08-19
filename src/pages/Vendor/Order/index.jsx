@@ -272,6 +272,7 @@ const Order = () => {
           fetchOrders();
         }}
         orderId={activeFlowOrderId}
+        onOrderUpdate={fetchOrders}
       />
     </div>
   );

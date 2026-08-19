@@ -2,7 +2,7 @@ import React from "react";
 import { X } from "lucide-react";
 import OrderDetail from "../../../pages/Vendor/Order/OrderDetail";
 
-const OrderDetailModal = ({ isOpen, onClose, orderId }) => {
+const OrderDetailModal = ({ isOpen, onClose, orderId, onOrderUpdate }) => {
   if (!isOpen || !orderId) return null;
 
   return (
@@ -19,7 +19,7 @@ const OrderDetailModal = ({ isOpen, onClose, orderId }) => {
 
         {/* Modal body */}
         <div className="flex-1 min-h-0 flex flex-col">
-          <OrderDetail orderId={orderId} onClose={onClose} />
+          <OrderDetail orderId={orderId} onClose={onClose} onOrderUpdate={onOrderUpdate} />
         </div>
       </div>
     </div>

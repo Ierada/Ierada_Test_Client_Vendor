@@ -1,7 +1,7 @@
 import React from "react";
 import { courierLabel } from "../../../utils/courierLabels";
 
-const CourierCell = ({ name, trackingId, returnAwb, onShowTracking }) => {
+const CourierCell = ({ name, shippingProvider, trackingId, returnAwb, onShowTracking }) => {
   const handleTrackingClick = (e, id) => {
     e.stopPropagation();
     if (id && onShowTracking) {
@@ -9,10 +9,16 @@ const CourierCell = ({ name, trackingId, returnAwb, onShowTracking }) => {
     }
   };
 
+  const displayName = () => {
+    if (name) return courierLabel(name);
+    if (shippingProvider) return courierLabel(shippingProvider);
+    return "—";
+  };
+
   return (
     <div>
       <div className="font-semibold text-gray-950 text-sm">
-        {name ? courierLabel(name) : "Self Ship"}
+        {displayName()}
       </div>
       {trackingId ? (
         <button

@@ -10,7 +10,7 @@ import useDiscountPercentage from "../../../../hooks/useDiscountPercentage";
 import { downloadTaxInvoicesForOrder } from "../../../../services/api.order";
 
 // ─── Main Component ────────────────────────────────────────────────────────────
-const OrderDetail = ({ orderId: propOrderId, onClose }) => {
+const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
   const { id: paramId } = useParams();
   const id = propOrderId || paramId;
   const isModal = !!propOrderId;
@@ -206,6 +206,11 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     }
   }, [orderData, invoiceReady]);
 
+  const handleShipSuccess = useCallback(() => {
+    onOrderUpdate?.();
+    onClose?.();
+  }, [onClose, onOrderUpdate]);
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -284,7 +289,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
               trackingId: data?.trackingId,
               courierName: data?.courierName,
             }}
-            onRefresh={() => refetch({ silent: true, keepStep: true })}
+            onShipSuccess={handleShipSuccess}
           />
         )}
       </div>
@@ -309,12 +314,12 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
 export default React.memo(OrderDetail);
 
 // ─── OrderDetailModal wrapper ─────────────────────────────────────────────────
-export const OrderDetailModal = ({ isOpen, onClose, orderId }) => {
+export const OrderDetailModal = ({ isOpen, onClose, orderId, onOrderUpdate }) => {
   if (!isOpen || !orderId) return null;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-[#F6F7F9] rounded-2xl w-full max-w-[1320px] h-[92vh] flex flex-col shadow-2xl overflow-hidden">
-        <OrderDetail orderId={orderId} onClose={onClose} />
+        <OrderDetail orderId={orderId} onClose={onClose} onOrderUpdate={onOrderUpdate} />
       </div>
     </div>
   );

@@ -25,7 +25,7 @@ const SelfShipForm = ({ orderId, onSuccess }) => {
     try {
       const res = await createSelfShip(orderId, form);
       if (res?.status === 1) {
-        notifyOnSuccess("Order shipped via Self Ship!");
+        notifyOnSuccess("Order marked as shipped via Self Ship.");
         onSuccess?.();
       } else {
         notifyOnFail(res?.message || "Failed to self-ship");
@@ -76,13 +76,13 @@ const SelfShipForm = ({ orderId, onSuccess }) => {
   );
 };
 
-export const MarkShippedStep = ({ orderData, onRefresh }) => {
-  const [mode, setMode] = useState(null);
+export const MarkShippedStep = ({ orderData, onShipSuccess }) => {
+  const selfShipAccess = Boolean(orderData?.selfShipAccess);
+  const [mode, setMode] = useState(selfShipAccess ? null : "courier");
   const [courierLoading, setCourierLoading] = useState(false);
 
   if (!orderData) return null;
 
-  const selfShipAccess = orderData.selfShipAccess;
   const orderId = orderData.rowId;
   const isSelfShip = orderData.shippingProvider === "self_ship";
   const alreadyShipped = ["shipped", "intransit", "delivered"].includes(
@@ -94,8 +94,8 @@ export const MarkShippedStep = ({ orderData, onRefresh }) => {
     try {
       const res = await initiateShipping(orderId);
       if (res?.status === 1) {
-        notifyOnSuccess("Order booked with courier!");
-        onRefresh?.();
+        notifyOnSuccess("Order marked as shipped.");
+        onShipSuccess?.();
       } else {
         notifyOnFail(res?.message || "Courier booking failed");
       }
@@ -121,65 +121,75 @@ export const MarkShippedStep = ({ orderData, onRefresh }) => {
     );
   }
 
+  if (!selfShipAccess || mode === "courier") {
+    return (
+      <div className="p-6 space-y-4">
+        <p className="text-sm text-gray-600">
+          {selfShipAccess
+            ? "Book this order with an integrated courier partner."
+            : "Book this order with Shadowfax, Shri Maruti, or Shipease."}
+        </p>
+        <button
+          type="button"
+          onClick={bookCourier}
+          disabled={courierLoading}
+          className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
+        >
+          {courierLoading ? "Booking…" : "Book with Courier"}
+        </button>
+        {selfShipAccess && (
+          <button
+            type="button"
+            onClick={() => setMode(null)}
+            className="text-xs text-gray-500"
+          >
+            ← Choose a different shipping method
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  if (mode === "self_ship") {
+    return (
+      <div className="p-6 space-y-4">
+        <SelfShipForm orderId={orderId} onSuccess={onShipSuccess} />
+        <button type="button" onClick={() => setMode(null)} className="text-xs text-gray-500">
+          ← Choose a different shipping method
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <p className="text-sm text-gray-600">
         Choose how you want to ship this order.
       </p>
-
-      {!mode && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setMode("courier")}
-            className="flex items-center gap-3 p-4 border rounded-xl hover:border-orange-400 hover:bg-orange-50 text-left"
-          >
-            <Truck className="w-5 h-5 text-orange-500" />
-            <div>
-              <p className="font-semibold text-sm">Courier (Auto)</p>
-              <p className="text-xs text-gray-500">Shadowfax / Shri Maruti / Shipease</p>
-            </div>
-          </button>
-          {selfShipAccess && (
-            <button
-              type="button"
-              onClick={() => setMode("self_ship")}
-              className="flex items-center gap-3 p-4 border rounded-xl hover:border-orange-400 hover:bg-orange-50 text-left"
-            >
-              <Package className="w-5 h-5 text-orange-500" />
-              <div>
-                <p className="font-semibold text-sm">Self Ship</p>
-                <p className="text-xs text-gray-500">Your own courier + AWB</p>
-              </div>
-            </button>
-          )}
-        </div>
-      )}
-
-      {mode === "courier" && (
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={bookCourier}
-            disabled={courierLoading}
-            className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold"
-          >
-            {courierLoading ? "Booking…" : "Book with Courier"}
-          </button>
-          <button type="button" onClick={() => setMode(null)} className="text-xs text-gray-500">
-            ← Change method
-          </button>
-        </div>
-      )}
-
-      {mode === "self_ship" && (
-        <div className="space-y-3">
-          <SelfShipForm orderId={orderId} onSuccess={onRefresh} />
-          <button type="button" onClick={() => setMode(null)} className="text-xs text-gray-500">
-            ← Change method
-          </button>
-        </div>
-      )}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setMode("courier")}
+          className="flex items-center gap-3 p-4 border rounded-xl hover:border-orange-400 hover:bg-orange-50 text-left"
+        >
+          <Truck className="w-5 h-5 text-orange-500" />
+          <div>
+            <p className="font-semibold text-sm">Courier (Auto)</p>
+            <p className="text-xs text-gray-500">Shadowfax / Shri Maruti / Shipease</p>
+          </div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("self_ship")}
+          className="flex items-center gap-3 p-4 border rounded-xl hover:border-orange-400 hover:bg-orange-50 text-left"
+        >
+          <Package className="w-5 h-5 text-orange-500" />
+          <div>
+            <p className="font-semibold text-sm">Self Ship</p>
+            <p className="text-xs text-gray-500">Your own courier + AWB</p>
+          </div>
+        </button>
+      </div>
     </div>
   );
 };
