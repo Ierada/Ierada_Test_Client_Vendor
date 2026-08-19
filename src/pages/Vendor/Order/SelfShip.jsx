@@ -29,6 +29,12 @@ import {
 } from "../../../services/api.order";
 import { formatDate } from "../../../utils/date&Time/dateAndTimeFormatter";
 import {
+  formatDdMmYyyyDisplay,
+  sanitizeDdMmYyyy,
+  todayDdMmYyyy,
+  validateSelfShipPayload,
+} from "./utils/selfShipForm";
+import {
   notifyOnFail,
   notifyOnSuccess,
 } from "../../../utils/notification/toast";
@@ -727,7 +733,7 @@ const CourierModal = ({ show, onClose, onSave, loading, currentOrder }) => {
         courier_name: "",
         tracking_id: "",
         tracking_url: "",
-        expected_delivery_date: "",
+        expected_delivery_date: todayDdMmYyyy(),
         vendor_comment: "",
       });
   }, [show, currentOrder?.id]);
@@ -787,20 +793,24 @@ const CourierModal = ({ show, onClose, onSave, loading, currentOrder }) => {
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Expected Delivery Date *
+              Expected Delivery Date (DDMMYYYY) *
             </label>
             <input
-              type="date"
-              value={form.expected_delivery_date}
+              inputMode="numeric"
+              value={formatDdMmYyyyDisplay(form.expected_delivery_date)}
               onChange={(e) =>
-                setForm((p) => ({ ...p, expected_delivery_date: e.target.value }))
+                setForm((p) => ({
+                  ...p,
+                  expected_delivery_date: sanitizeDdMmYyyy(e.target.value),
+                }))
               }
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
+              placeholder="DDMMYYYY"
             />
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Tracking URL
+              Tracking URL *
             </label>
             <input
               type="url"
@@ -1142,17 +1152,15 @@ const SelfShip = () => {
 
   const handleSaveCourier = async (form) => {
     if (!currentOrder) return;
-    if (!form.courier_name || !form.tracking_id || !form.expected_delivery_date) {
-      notifyOnFail("Courier name, tracking ID, and expected delivery date are required");
+    const check = validateSelfShipPayload(form);
+    if (!check.ok) {
+      notifyOnFail(check.message);
       return;
     }
     setSaving(true);
     try {
       const res = await createSelfShip(currentOrder.id, {
-        courier_name: form.courier_name,
-        tracking_id: form.tracking_id,
-        tracking_url: form.tracking_url || undefined,
-        expected_delivery_date: form.expected_delivery_date,
+        ...check.payload,
         vendor_comment: form.vendor_comment || undefined,
       });
       if (res?.status === 1) {

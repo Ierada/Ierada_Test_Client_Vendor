@@ -1,29 +1,36 @@
-import React, { useState } from "react";
-import { Truck, Package } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Truck, Package, Loader2 } from "lucide-react";
 import { createSelfShip } from "../../../../services/api.order";
 import { initiateShipping } from "../../../../services/api.shipping";
 import {
   notifyOnFail,
   notifyOnSuccess,
 } from "../../../../utils/notification/toast";
+import {
+  formatDdMmYyyyDisplay,
+  sanitizeDdMmYyyy,
+  todayDdMmYyyy,
+  validateSelfShipPayload,
+} from "../utils/selfShipForm";
 
 const SelfShipForm = ({ orderId, onSuccess }) => {
   const [form, setForm] = useState({
     courier_name: "",
     tracking_id: "",
-    expected_delivery_date: "",
+    expected_delivery_date: todayDdMmYyyy(),
     tracking_url: "",
   });
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    if (!form.courier_name || !form.tracking_id || !form.expected_delivery_date) {
-      notifyOnFail("Courier name, AWB, and expected delivery date are required.");
+    const check = validateSelfShipPayload(form);
+    if (!check.ok) {
+      notifyOnFail(check.message);
       return;
     }
     setLoading(true);
     try {
-      const res = await createSelfShip(orderId, form);
+      const res = await createSelfShip(orderId, check.payload);
       if (res?.status === 1) {
         notifyOnSuccess("Order marked as shipped via Self Ship.");
         onSuccess?.();
@@ -38,32 +45,60 @@ const SelfShipForm = ({ orderId, onSuccess }) => {
   return (
     <div className="border border-orange-200 rounded-xl p-4 bg-orange-50/50 space-y-3">
       <p className="text-sm font-bold text-gray-900">Self Ship details</p>
-      <input
-        className="w-full border rounded-lg px-3 py-2 text-sm"
-        placeholder="Courier partner name *"
-        value={form.courier_name}
-        onChange={(e) => setForm((p) => ({ ...p, courier_name: e.target.value }))}
-      />
-      <input
-        className="w-full border rounded-lg px-3 py-2 text-sm"
-        placeholder="AWB / Tracking ID *"
-        value={form.tracking_id}
-        onChange={(e) => setForm((p) => ({ ...p, tracking_id: e.target.value }))}
-      />
-      <input
-        type="date"
-        className="w-full border rounded-lg px-3 py-2 text-sm"
-        value={form.expected_delivery_date}
-        onChange={(e) =>
-          setForm((p) => ({ ...p, expected_delivery_date: e.target.value }))
-        }
-      />
-      <input
-        className="w-full border rounded-lg px-3 py-2 text-sm"
-        placeholder="Tracking URL (optional)"
-        value={form.tracking_url}
-        onChange={(e) => setForm((p) => ({ ...p, tracking_url: e.target.value }))}
-      />
+      <div>
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
+          Courier partner name *
+        </label>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+          placeholder="e.g. Delhivery, DTDC"
+          value={form.courier_name}
+          onChange={(e) => setForm((p) => ({ ...p, courier_name: e.target.value }))}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
+          AWB / Tracking ID *
+        </label>
+        <input
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+          placeholder="Enter AWB number"
+          value={form.tracking_id}
+          onChange={(e) => setForm((p) => ({ ...p, tracking_id: e.target.value }))}
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
+          Expected delivery date (DDMMYYYY) *
+        </label>
+        <input
+          inputMode="numeric"
+          className="w-full border rounded-lg px-3 py-2 text-sm font-mono"
+          placeholder="DDMMYYYY"
+          value={formatDdMmYyyyDisplay(form.expected_delivery_date)}
+          onChange={(e) =>
+            setForm((p) => ({
+              ...p,
+              expected_delivery_date: sanitizeDdMmYyyy(e.target.value),
+            }))
+          }
+        />
+        <p className="text-[11px] text-gray-500 mt-1">
+          Pre-filled with today&apos;s date — change if delivery is later.
+        </p>
+      </div>
+      <div>
+        <label className="block text-xs font-semibold text-gray-700 mb-1">
+          Tracking URL *
+        </label>
+        <input
+          type="url"
+          className="w-full border rounded-lg px-3 py-2 text-sm"
+          placeholder="https://track.courier.com/..."
+          value={form.tracking_url}
+          onChange={(e) => setForm((p) => ({ ...p, tracking_url: e.target.value }))}
+        />
+      </div>
       <button
         type="button"
         onClick={submit}
@@ -80,29 +115,52 @@ export const MarkShippedStep = ({ orderData, onShipSuccess }) => {
   const selfShipAccess = Boolean(orderData?.selfShipAccess);
   const [mode, setMode] = useState(selfShipAccess ? null : "courier");
   const [courierLoading, setCourierLoading] = useState(false);
+  const [courierError, setCourierError] = useState("");
+  const bookedRef = useRef(false);
 
-  if (!orderData) return null;
-
-  const orderId = orderData.rowId;
-  const isSelfShip = orderData.shippingProvider === "self_ship";
+  const orderId = orderData?.rowId;
+  const isSelfShip = orderData?.shippingProvider === "self_ship";
   const alreadyShipped = ["shipped", "intransit", "delivered"].includes(
-    String(orderData.status || "").toLowerCase(),
+    String(orderData?.status || "").toLowerCase(),
   );
 
-  const bookCourier = async () => {
+  const bookCourier = useCallback(async () => {
+    if (!orderId || bookedRef.current) return;
+    bookedRef.current = true;
     setCourierLoading(true);
+    setCourierError("");
     try {
       const res = await initiateShipping(orderId);
       if (res?.status === 1) {
         notifyOnSuccess("Order marked as shipped.");
         onShipSuccess?.();
       } else {
-        notifyOnFail(res?.message || "Courier booking failed");
+        bookedRef.current = false;
+        const msg = res?.message || "Courier booking failed";
+        setCourierError(msg);
+        notifyOnFail(msg);
       }
+    } catch (err) {
+      bookedRef.current = false;
+      const msg = err?.response?.data?.message || err?.message || "Courier booking failed";
+      setCourierError(msg);
+      notifyOnFail(msg);
     } finally {
       setCourierLoading(false);
     }
-  };
+  }, [orderId, onShipSuccess]);
+
+  useEffect(() => {
+    bookedRef.current = false;
+    setCourierError("");
+  }, [orderId]);
+
+  useEffect(() => {
+    if (alreadyShipped || mode !== "courier" || !orderId) return;
+    bookCourier();
+  }, [alreadyShipped, mode, orderId, bookCourier]);
+
+  if (!orderData) return null;
 
   if (alreadyShipped) {
     return (
@@ -121,30 +179,46 @@ export const MarkShippedStep = ({ orderData, onShipSuccess }) => {
     );
   }
 
-  if (!selfShipAccess || mode === "courier") {
+  if (mode === "courier") {
     return (
-      <div className="p-6 space-y-4">
-        <p className="text-sm text-gray-600">
-          {selfShipAccess
-            ? "Book this order with an integrated courier partner."
-            : "Book this order with Shadowfax, Shri Maruti, or Shipease."}
-        </p>
-        <button
-          type="button"
-          onClick={bookCourier}
-          disabled={courierLoading}
-          className="w-full py-2.5 bg-orange-500 text-white rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-50"
-        >
-          {courierLoading ? "Booking…" : "Book with Courier"}
-        </button>
-        {selfShipAccess && (
-          <button
-            type="button"
-            onClick={() => setMode(null)}
-            className="text-xs text-gray-500"
-          >
-            ← Choose a different shipping method
-          </button>
+      <div className="p-6 flex flex-col items-center justify-center gap-3 min-h-[180px]">
+        {courierLoading ? (
+          <>
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <p className="text-sm text-gray-600">Booking courier…</p>
+          </>
+        ) : courierError ? (
+          <div className="w-full max-w-md space-y-3 text-center">
+            <p className="text-sm text-red-600">{courierError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                bookedRef.current = false;
+                bookCourier();
+              }}
+              className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-semibold"
+            >
+              Retry booking
+            </button>
+            {selfShipAccess && (
+              <button
+                type="button"
+                onClick={() => {
+                  bookedRef.current = false;
+                  setMode(null);
+                  setCourierError("");
+                }}
+                className="block w-full text-xs text-gray-500"
+              >
+                ← Use Self Ship instead
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <p className="text-sm text-gray-600">Starting courier booking…</p>
+          </>
         )}
       </div>
     );
@@ -163,9 +237,7 @@ export const MarkShippedStep = ({ orderData, onShipSuccess }) => {
 
   return (
     <div className="p-6 space-y-4">
-      <p className="text-sm text-gray-600">
-        Choose how you want to ship this order.
-      </p>
+      <p className="text-sm text-gray-600">Choose how you want to ship this order.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <button
           type="button"
@@ -175,7 +247,7 @@ export const MarkShippedStep = ({ orderData, onShipSuccess }) => {
           <Truck className="w-5 h-5 text-orange-500" />
           <div>
             <p className="font-semibold text-sm">Courier (Auto)</p>
-            <p className="text-xs text-gray-500">Shadowfax / Shri Maruti / Shipease</p>
+            <p className="text-xs text-gray-500">Platform books automatically</p>
           </div>
         </button>
         <button
