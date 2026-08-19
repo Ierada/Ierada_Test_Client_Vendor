@@ -21,7 +21,7 @@ import {
   downloadShippingLabel,
   manifestOrder,
 } from "../../../services/api.shipping";
-import { saveShippingLabel, orderMetaFromOrder } from "../../../pages/Vendor/Order/utils/labelPdf";
+import { saveShippingLabel } from "../../../pages/Vendor/Order/utils/labelPdf";
 import {
   notifyOnFail,
   notifyOnSuccess,
@@ -143,7 +143,7 @@ const OrderActions = ({
         return;
       }
 
-      const saved = saveShippingLabel(res.data, orderMetaFromOrder(order));
+      const saved = saveShippingLabel(res.data);
       if (!saved) {
         notifyOnFail("Courier did not return a label. Please try again or reassign a different courier.");
         return;

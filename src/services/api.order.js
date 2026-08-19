@@ -289,6 +289,67 @@ export const downloadSelfShipTemplate = async () => {
   }
 };
 
+export const getSelfShipAccess = async () => {
+  try {
+    const res = await apiClient.get("/order/self-ship/access");
+    return res.data;
+  } catch (error) {
+    return { status: 0, data: { enabled: false } };
+  }
+};
+
+export const updateSelfShip = async (orderId, payload) => {
+  try {
+    const res = await apiClient.put(`/order/self-ship/${orderId}`, payload);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || error.message || "Failed to update self-ship";
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const uploadSelfShipPod = async (orderId, file) => {
+  try {
+    const formData = new FormData();
+    formData.append("pod_file", file);
+    const res = await apiClient.post(`/order/self-ship/${orderId}/pod`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || error.message || "Failed to upload POD";
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const submitSelfShipReturn = async (orderId, payload) => {
+  try {
+    const res = await apiClient.post(`/order/self-ship/${orderId}/return`, payload);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || error.message || "Failed to assign return courier";
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
+export const markSelfShipReturned = async (orderId) => {
+  try {
+    const res = await apiClient.post(`/order/self-ship/${orderId}/return/complete`);
+    return res.data;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || error.message || "Failed to mark returned";
+    notifyOnFail(message);
+    return { status: 0, message };
+  }
+};
+
 export const getSelfShipOrders = async (vendorId) => {
   try {
     const res = await apiClient.get(`/order/self-ship-orders/${vendorId}`);
@@ -342,7 +403,6 @@ export const downloadManifest = async (orderIds) => {
     const res = await apiClient.post("/shipping/manifest", { orderIds });
 
     if (res.data.status === 1 && res.data.data) {
-      console.log("Manifest data received:", res.data.data);
       notifyOnSuccess("Manifest data fetched successfully");
       return { status: 1, data: res.data.data };
     }
@@ -416,10 +476,6 @@ const triggerBlobDownload = (blob, filename) => {
   window.URL.revokeObjectURL(url);
 };
 
-// Requests for invoice PDFs use responseType "blob", so an error response body
-// (JSON) also arrives as a Blob instead of parsed JSON. Without this, the real
-// server message (e.g. "Invoice file missing") never reaches the UI and every
-// failure looks like a generic "Failed to download invoice".
 const extractBlobErrorMessage = async (error) => {
   const data = error?.response?.data;
   if (data instanceof Blob) {

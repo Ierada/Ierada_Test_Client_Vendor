@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { getOrdersByVendorId } from "../../../services/api.order";
+import { getOrdersByVendorId, getSelfShipAccess } from "../../../services/api.order";
 import { getNotificationPreview } from "../../../services/api.notification";
 
 export const useSidebarCounts = (user) => {
   const [counts, setCounts] = useState({
-    orders: 247,
-    selfShip: 18,
-    returns: 34,
-    notifications: 5,
+    orders: 0,
+    selfShip: 0,
+    returns: 0,
+    notifications: 0,
+    selfShipEnabled: false,
   });
 
   useEffect(() => {
@@ -41,11 +42,15 @@ export const useSidebarCounts = (user) => {
         const notifRes = await getNotificationPreview(user.id).catch(() => null);
         const unreadCount = notifRes?.data?.length || 5;
 
+        const accessRes = await getSelfShipAccess().catch(() => null);
+        const selfShipEnabled = Boolean(accessRes?.data?.enabled);
+
         setCounts({
           orders: activeOrders,
-          selfShip: selfShipCount,
+          selfShip: selfShipEnabled ? selfShipCount : 0,
           returns: returnsCount,
           notifications: unreadCount,
+          selfShipEnabled,
         });
       } catch (e) {
         console.error("Error fetching sidebar counts:", e);

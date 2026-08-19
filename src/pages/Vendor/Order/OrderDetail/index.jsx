@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 
 import { PageHeader, OrderStepper, FooterNav } from "./OrderFlowChrome";
 import OrderDetailsStep from "./OrderDetailsStep";
-import { InvoiceStep, MarkShippedStep } from "./OrderSteps";
+import { InvoiceStep } from "./OrderSteps";
+import { MarkShippedStep } from "./SelfShipStep";
 import { useOrderFlow } from "./useOrderFlow";
 import useDiscountPercentage from "../../../../hooks/useDiscountPercentage";
 import { downloadTaxInvoicesForOrder } from "../../../../services/api.order";
@@ -27,6 +28,7 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
     canGoBack,
     canCancel,
     nextLabel,
+    refetch,
   } = useOrderFlow(id, isModal, onClose);
 
   // ── Step 3 done: close modal or navigate back ───────────────────────────────
@@ -273,7 +275,18 @@ const OrderDetail = ({ orderId: propOrderId, onClose }) => {
       >
         {step === 1 && <OrderDetailsStep orderData={orderData} />}
         {step === 2 && <InvoiceStep orderData={orderData} />}
-        {step === 3 && <MarkShippedStep orderData={orderData} />}
+        {step === 3 && (
+          <MarkShippedStep
+            orderData={{
+              ...orderData,
+              selfShipAccess: data?.selfShipAccess,
+              shippingProvider: data?.shippingProvider,
+              trackingId: data?.trackingId,
+              courierName: data?.courierName,
+            }}
+            onRefresh={() => refetch({ silent: true, keepStep: true })}
+          />
+        )}
       </div>
 
       {/* Footer: Back | Cancel Order | Next (hidden for terminal orders) */}

@@ -3,7 +3,6 @@ import {
   getOrderByOrderId,
   updateOrderStatus,
 } from "../../../../services/api.order";
-import { initiateShipping } from "../../../../services/api.shipping";
 import {
   notifyOnFail,
   notifyOnSuccess,
@@ -55,7 +54,7 @@ const getNextLabel = (step, status) => {
   }
   if (step === 3) {
     if (isShippedStatus(status) || isTerminalStatus(status)) return null;
-    return "Mark as Shipped";
+    return null;
   }
   return null;
 };
@@ -135,57 +134,7 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     }
 
     if (step === 3) {
-      if (isShippedStatus(currentStatus)) return;
-
-      setActLoading(true);
-      try {
-        const isSelfShip = data?.shippingProvider === "self_ship";
-        const alreadyBooked = Boolean(
-          data?.providerOrderId || data?.providerShipmentId,
-        );
-
-        if (isSelfShip) {
-          const res = await updateOrderStatus(orderId, {
-            order_status: "shipped",
-            shipping_option: "self_ship",
-            shipping_provider: "self_ship",
-          });
-          if (res?.status === 1) {
-            notifyOnSuccess("Order marked as shipped!");
-            await fetchOrder({ silent: true, keepStep: true });
-          } else {
-            notifyOnFail(res?.message || "Failed to mark as shipped");
-          }
-          return;
-        }
-
-        if (!alreadyBooked) {
-          const shipRes = await initiateShipping(orderId);
-          if (shipRes?.status === 1) {
-            notifyOnSuccess("Order booked and marked as shipped!");
-            await fetchOrder({ silent: true, keepStep: true });
-          } else {
-            notifyOnFail(
-              shipRes?.message || "Failed to book order with shipping provider",
-            );
-          }
-          return;
-        }
-
-        const res = await updateOrderStatus(orderId, {
-          order_status: "shipped",
-        });
-        if (res?.status === 1) {
-          notifyOnSuccess("Order marked as shipped!");
-          await fetchOrder({ silent: true, keepStep: true });
-        } else {
-          notifyOnFail(res?.message || "Failed to mark as shipped");
-        }
-      } catch (err) {
-        notifyOnFail(err?.response?.data?.message || "Error updating order");
-      } finally {
-        setActLoading(false);
-      }
+      return;
     }
   }, [
     step,

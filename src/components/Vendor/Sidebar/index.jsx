@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useAppContext } from "../../../context/AppContext";
 import LogoutModal from "../LogoutModal";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -21,6 +21,17 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
   const [hoveredSubMenu, setHoveredSubMenu] = useState(null);
 
   const counts = useSidebarCounts(user);
+
+  const menuItems = useMemo(() => {
+    if (counts.selfShipEnabled) return vendorMenuConfig.mainMenuItems;
+    return vendorMenuConfig.mainMenuItems.map((item) => {
+      if (item.text !== "Orders" || !item.subItems) return item;
+      return {
+        ...item,
+        subItems: item.subItems.filter((s) => s.text !== "Self Ship"),
+      };
+    });
+  }, [counts.selfShipEnabled]);
 
   useEffect(() => {
     const scroll = localStorage.getItem(SCROLL_POSITION_KEY);
@@ -59,7 +70,7 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
         <SearchBar />
         <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300 py-2" ref={sidebarRef}>
           <ul className="space-y-1 px-3">
-            {vendorMenuConfig.mainMenuItems.map((item, i) => (
+            {menuItems.map((item, i) => (
               <MenuItem key={i} item={item} counts={counts} openSubMenus={openSubMenus} toggleSubMenu={toggleSubMenu} hoveredSubMenu={hoveredSubMenu} setHoveredSubMenu={setHoveredSubMenu} handleNavigation={handleNavigation} />
             ))}
           </ul>

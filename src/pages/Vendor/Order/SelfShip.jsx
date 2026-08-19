@@ -21,6 +21,11 @@ import {
   createSelfShip,
   bulkSelfShip,
   downloadSelfShipTemplate,
+  uploadSelfShipPod,
+  submitSelfShipReturn,
+  markSelfShipReturned,
+  updateSelfShip,
+  getSelfShipAccess,
 } from "../../../services/api.order";
 import { formatDate } from "../../../utils/date&Time/dateAndTimeFormatter";
 import {
@@ -48,9 +53,8 @@ const getStageIndex = (order) => {
   if (status === "delivered") return 6;
   if (status === "intransit" || status === "in transit") return 5;
   if (status === "shipped") return 4;
+  if (status === "accepted" || status === "packed") return 2;
   if (order.courier_name || order.tracking_id) return 3;
-  if (status === "packed") return 2;
-  if (status === "accepted") return 1;
   return 0;
 };
 
@@ -74,7 +78,10 @@ const mapToSelfShip = (ord) => {
     courier: ord.courier_name || "",
     trackingId: ord.tracking_id || "",
     trackingUrl: ord.tracking_url || "",
+    expectedDeliveryDate: ord.expected_delivery_date || "",
+    podUrl: ord.pod_url || "",
     vendorComment: ord.vendor_comment || "",
+    returnAwb: ord.return_awb || "",
     stageIndex: getStageIndex(ord),
     order_status: ord.order_status,
     shipping_provider: ord.shipping_provider,
@@ -546,11 +553,24 @@ const LabelModal = ({ show, onClose, order }) => {
 };
 
 // ─── Individual order card ─────────────────────────────────────────────────────
-const SelfShipOrderCard = ({ order, onAssignCourier, onViewLabel }) => {
-  const canShip = ["placed", "pending"].includes(
+const SelfShipOrderCard = ({ order, onAssignCourier, onViewLabel, onUploadPod, onReturnCourier, onMarkReturned }) => {
+  const canShip = ["accepted", "packed"].includes(
     (order.order_status || "").toLowerCase(),
   );
   const isShipped = order.stageIndex >= 4;
+  const needsPod =
+    isShipped &&
+    order.shipping_provider === "self_ship" &&
+    !["delivered", "returned", "cancelled"].includes(
+      (order.order_status || "").toLowerCase(),
+    );
+  const needsReturnCourier =
+    ["return initiated", "return pending"].includes(
+      (order.order_status || "").toLowerCase(),
+    ) && !order.returnAwb;
+  const canCompleteReturn =
+    (order.order_status || "").toLowerCase() === "return initiated" &&
+    order.returnAwb;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow">
@@ -632,6 +652,30 @@ const SelfShipOrderCard = ({ order, onAssignCourier, onViewLabel }) => {
 
       {/* Action buttons */}
       <div className="mt-3 flex items-center justify-end gap-2 flex-wrap">
+        {needsReturnCourier && (
+          <button
+            onClick={() => onReturnCourier(order)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-500 text-white text-xs font-semibold rounded-xl"
+          >
+            Assign Return Courier
+          </button>
+        )}
+        {canCompleteReturn && (
+          <button
+            onClick={() => onMarkReturned(order)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-purple-600 text-white text-xs font-semibold rounded-xl"
+          >
+            Mark Returned
+          </button>
+        )}
+        {needsPod && (
+          <button
+            onClick={() => onUploadPod(order)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-xs font-semibold rounded-xl"
+          >
+            Upload POD & Deliver
+          </button>
+        )}
         {/* View Label — shown whenever courier is assigned */}
         {isShipped && (order.courier || order.trackingId) && (
           <button
@@ -673,6 +717,7 @@ const CourierModal = ({ show, onClose, onSave, loading, currentOrder }) => {
     courier_name: "",
     tracking_id: "",
     tracking_url: "",
+    expected_delivery_date: "",
     vendor_comment: "",
   });
 
@@ -682,6 +727,7 @@ const CourierModal = ({ show, onClose, onSave, loading, currentOrder }) => {
         courier_name: "",
         tracking_id: "",
         tracking_url: "",
+        expected_delivery_date: "",
         vendor_comment: "",
       });
   }, [show, currentOrder?.id]);
@@ -737,6 +783,19 @@ const CourierModal = ({ show, onClose, onSave, loading, currentOrder }) => {
               }
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
               placeholder="Enter AWB / tracking number"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1">
+              Expected Delivery Date *
+            </label>
+            <input
+              type="date"
+              value={form.expected_delivery_date}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, expected_delivery_date: e.target.value }))
+              }
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400"
             />
           </div>
           <div>
@@ -1035,6 +1094,15 @@ const SelfShip = () => {
   const [courierModalOpen, setCourierModalOpen] = useState(false);
   const [currentOrder, setCurrentOrder] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [selfShipEnabled, setSelfShipEnabled] = useState(true);
+  const [podModalOpen, setPodModalOpen] = useState(false);
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [podFile, setPodFile] = useState(null);
+  const [returnForm, setReturnForm] = useState({
+    return_courier_name: "",
+    return_awb: "",
+    return_tracking_url: "",
+  });
 
   // Label modal
   const [labelModalOpen, setLabelModalOpen] = useState(false);
@@ -1046,8 +1114,11 @@ const SelfShip = () => {
       if (!silent) setLoading(true);
       else setRefreshing(true);
       try {
+        const access = await getSelfShipAccess();
+        setSelfShipEnabled(Boolean(access?.data?.enabled));
         const res = await getSelfShipOrders(user?.id);
         const orderList = res?.data?.orders || [];
+        setSelfShipEnabled(Boolean(res?.data?.self_ship_enabled ?? access?.data?.enabled));
         setOrders(orderList.map(mapToSelfShip));
       } catch (e) {
         console.error("Error fetching self-ship orders:", e);
@@ -1071,8 +1142,8 @@ const SelfShip = () => {
 
   const handleSaveCourier = async (form) => {
     if (!currentOrder) return;
-    if (!form.courier_name || !form.tracking_id) {
-      notifyOnFail("Courier name and tracking ID are required");
+    if (!form.courier_name || !form.tracking_id || !form.expected_delivery_date) {
+      notifyOnFail("Courier name, tracking ID, and expected delivery date are required");
       return;
     }
     setSaving(true);
@@ -1081,6 +1152,7 @@ const SelfShip = () => {
         courier_name: form.courier_name,
         tracking_id: form.tracking_id,
         tracking_url: form.tracking_url || undefined,
+        expected_delivery_date: form.expected_delivery_date,
         vendor_comment: form.vendor_comment || undefined,
       });
       if (res?.status === 1) {
@@ -1095,6 +1167,70 @@ const SelfShip = () => {
       }
     } catch (err) {
       notifyOnFail(err?.response?.data?.message || "An error occurred");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUploadPod = (order) => {
+    setCurrentOrder(order);
+    setPodFile(null);
+    setPodModalOpen(true);
+  };
+
+  const handleSavePod = async () => {
+    if (!currentOrder || !podFile) {
+      notifyOnFail("Select a POD file (image or PDF)");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await uploadSelfShipPod(currentOrder.id, podFile);
+      if (res?.status === 1) {
+        notifyOnSuccess("POD uploaded — order marked delivered!");
+        setPodModalOpen(false);
+        fetchOrders(true);
+      } else {
+        notifyOnFail(res?.message || "POD upload failed");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReturnCourier = (order) => {
+    setCurrentOrder(order);
+    setReturnForm({ return_courier_name: "", return_awb: "", return_tracking_url: "" });
+    setReturnModalOpen(true);
+  };
+
+  const handleSaveReturn = async () => {
+    if (!currentOrder) return;
+    setSaving(true);
+    try {
+      const res = await submitSelfShipReturn(currentOrder.id, returnForm);
+      if (res?.status === 1) {
+        notifyOnSuccess("Return courier assigned");
+        setReturnModalOpen(false);
+        fetchOrders(true);
+      } else {
+        notifyOnFail(res?.message || "Failed");
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkReturned = async (order) => {
+    setSaving(true);
+    try {
+      const res = await markSelfShipReturned(order.id);
+      if (res?.status === 1) {
+        notifyOnSuccess("Return completed");
+        fetchOrders(true);
+      } else {
+        notifyOnFail(res?.message || "Failed");
+      }
     } finally {
       setSaving(false);
     }
@@ -1121,7 +1257,7 @@ const SelfShip = () => {
 
   // ── Summary counts ─────────────────────────────────────────────────────────
   const shippableCount = orders.filter((o) =>
-    ["placed", "pending"].includes((o.order_status || "").toLowerCase()),
+    ["accepted", "packed"].includes((o.order_status || "").toLowerCase()),
   ).length;
   const shippedCount = orders.filter((o) => o.stageIndex >= 4).length;
 
@@ -1178,7 +1314,17 @@ const SelfShip = () => {
         </div>
       </div>
 
+      {/* Access gate */}
+      {!loading && !selfShipEnabled && (
+        <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center mb-6">
+          <p className="text-gray-700 font-semibold">Self Ship is not enabled for your account.</p>
+          <p className="text-sm text-gray-500 mt-1">Contact admin to enable Self Ship for your vendor profile.</p>
+        </div>
+      )}
+
       {/* Tabs */}
+      {selfShipEnabled && (
+      <>
       <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 p-1 shadow-sm mb-6 w-fit">
         {[
           { id: "workflow", label: "Workflow", icon: Truck },
@@ -1248,6 +1394,9 @@ const SelfShip = () => {
                 order={order}
                 onAssignCourier={handleAssignCourier}
                 onViewLabel={handleViewLabel}
+                onUploadPod={handleUploadPod}
+                onReturnCourier={handleReturnCourier}
+                onMarkReturned={handleMarkReturned}
               />
             ))
           )}
@@ -1255,8 +1404,9 @@ const SelfShip = () => {
       ) : (
         <BulkUploadTab />
       )}
+      </>
+      )}
 
-      {/* Courier assignment modal */}
       <CourierModal
         show={courierModalOpen}
         onClose={() => {
@@ -1268,7 +1418,6 @@ const SelfShip = () => {
         currentOrder={currentOrder}
       />
 
-      {/* Label modal */}
       <LabelModal
         show={labelModalOpen}
         onClose={() => {
@@ -1277,6 +1426,77 @@ const SelfShip = () => {
         }}
         order={labelOrder}
       />
+
+      {podModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4">
+            <h3 className="font-bold text-gray-900">Upload POD — Mark Delivered</h3>
+            <p className="text-xs text-gray-500">Order #{currentOrder?.orderId}</p>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setPodFile(e.target.files?.[0] || null)}
+              className="w-full text-sm"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPodModalOpen(false)} className="px-4 py-2 text-sm border rounded-xl">
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePod}
+                disabled={saving}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-xl disabled:opacity-50"
+              >
+                {saving ? "Uploading…" : "Upload & Deliver"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-3">
+            <h3 className="font-bold text-gray-900">Return Courier Details</h3>
+            <input
+              className="w-full border rounded-xl px-3 py-2 text-sm"
+              placeholder="Return courier name *"
+              value={returnForm.return_courier_name}
+              onChange={(e) =>
+                setReturnForm((p) => ({ ...p, return_courier_name: e.target.value }))
+              }
+            />
+            <input
+              className="w-full border rounded-xl px-3 py-2 text-sm"
+              placeholder="Return AWB *"
+              value={returnForm.return_awb}
+              onChange={(e) =>
+                setReturnForm((p) => ({ ...p, return_awb: e.target.value }))
+              }
+            />
+            <input
+              className="w-full border rounded-xl px-3 py-2 text-sm"
+              placeholder="Tracking URL (optional)"
+              value={returnForm.return_tracking_url}
+              onChange={(e) =>
+                setReturnForm((p) => ({ ...p, return_tracking_url: e.target.value }))
+              }
+            />
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={() => setReturnModalOpen(false)} className="px-4 py-2 text-sm border rounded-xl">
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveReturn}
+                disabled={saving}
+                className="px-4 py-2 text-sm bg-amber-500 text-white rounded-xl disabled:opacity-50"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

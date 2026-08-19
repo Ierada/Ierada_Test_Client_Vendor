@@ -10,7 +10,7 @@ import { useClickOutside } from "../../../hooks/useClickOutside";
 import { useFormatDate } from "../../../hooks/useFormatDate";
 import { useOrderActions } from "../../../hooks/useOrderActions";
 import { downloadShippingLabel, downloadManifest } from "../../../services/api.order";
-import { saveShippingLabel, orderMetaFromOrder } from "../../../pages/Vendor/Order/utils/labelPdf";
+import { saveShippingLabel } from "../../../pages/Vendor/Order/utils/labelPdf";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import TrackingModal from "./TrackingModal";
 import OrderDetailModal from "../Models/OrderDetailModal";
@@ -91,18 +91,16 @@ const OrderTableRow = ({
     order.order_status !== "rejected" &&
     order.order_status !== "returned";
 
-  // Download handlers
   const handleDownloadLabel = async (e) => {
     e.stopPropagation();
     if (!order.tracking_id && !order.provider_shipment_id) {
       notifyOnFail("No AWB number available for this order");
       return;
     }
-    
     try {
       const result = await downloadShippingLabel(order.id);
       if (result.status === 1) {
-        const saved = saveShippingLabel(result.data, orderMetaFromOrder(order));
+        const saved = saveShippingLabel(result.data);
         if (saved) {
           notifyOnSuccess("Shipping label downloaded");
         } else {
@@ -111,23 +109,26 @@ const OrderTableRow = ({
       }
     } catch (error) {
       console.error("Download label error:", error);
-      // Error is already handled by the API function with toast notification
     }
   };
 
   const handleDownloadManifest = async (e) => {
     e.stopPropagation();
-    
     try {
       const result = await downloadManifest([order.id]);
-      if (result.status === 1) {
-        // For now, just show success - PDF generation would be implemented here
-        console.log("Manifest data:", result.data);
-        notifyOnSuccess("Manifest data fetched successfully");
+      if (result.status !== 1) return;
+      const rows = Array.isArray(result.data) ? result.data : [result.data];
+      let opened = false;
+      for (const row of rows) {
+        const url = row?.data?.manifestUrl || row?.manifestUrl || null;
+        if (url) {
+          window.open(url, "_blank", "noopener,noreferrer");
+          opened = true;
+        }
       }
+      if (!opened) notifyOnSuccess("Manifest generated");
     } catch (error) {
       console.error("Download manifest error:", error);
-      // Error is already handled by the API function with toast notification
     }
   };
 
