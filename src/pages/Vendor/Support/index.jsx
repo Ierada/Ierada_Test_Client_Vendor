@@ -1,224 +1,405 @@
-import React, { useState, useEffect } from "react";
-import { X } from "lucide-react";
-import { RxDashboard } from "react-icons/rx";
-import { IoMdArrowForward } from "react-icons/io";
-import { useAppContext } from "../../../context/AppContext";
-import { createTicket, getTickets } from "../../../services/api.ticket";
+import React, { useEffect, useMemo, useState } from "react";
+import { Bot, Headphones, MessageCircle, Paperclip, Send } from "lucide-react";
+import * as supportApi from "../../../services/api.supportV1";
+import { useSupportSocket } from "../../../hooks/useSupportSocket";
+import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 
+const countWords = (value) =>
+  value.trim().split(/\s+/).filter(Boolean).length;
+
+const buildSubject = ({ category, productName, lastUserMessage }) => {
+  const hint = lastUserMessage.replace(/\s+/g, " ").trim().slice(0, 48);
+  const parts = [
+    category || "Support request",
+    productName ? `Product: ${productName}` : null,
+    hint || null,
+  ].filter(Boolean);
+  return parts.join(" \u00b7 ").slice(0, 120);
+};
 
 const SupportPage = () => {
-  // Form state
-  const [selectedIssue, setSelectedIssue] = useState("");
-  const [message, setMessage] = useState("");
-  const [file, setFile] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [complaintHistory, setComplaintHistory] = useState([]);
-    const { user } = useAppContext();
-  
+  const [context, setContext] = useState(null);
+  const [categories, setCategories] = useState([]);
+  const [supportStatus, setSupportStatus] = useState(null);
+  const [sessionId, setSessionId] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showHumanForm, setShowHumanForm] = useState(false);
+  const [tickets, setTickets] = useState([]);
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [reply, setReply] = useState("");
+  const [formCategory, setFormCategory] = useState("");
+  const [formProductId, setFormProductId] = useState("");
+  const [formSubject, setFormSubject] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [attachmentName, setAttachmentName] = useState("");
+  const [subjectTouched, setSubjectTouched] = useState(false);
 
-  
-  const userId = user.id;
-
-  const issueTypes = [
-    "Product problem",
-    "Shipping delay",
-    "Return/Refund",
-    "Order Issue",
-    "Payment issue",
-    "Technical Support",
-    "Other",
-  ];
-
-  const fetchComplaints = async () => {
-    try {
-      const response = await getTickets(user.id);
-      if (!response.status === 1) {
-        throw new Error("Failed to fetch complaint history");
-      }      
-      // Assuming the API response returns tickets in a "data" field
-      setComplaintHistory(response);
-    } catch (error) {
-      console.error("Error fetching complaint history:", error);
-    }
+  const loadTickets = async () => {
+    const res = await supportApi.listTickets();
+    if (res.data?.status === 1) setTickets(res.data.data || []);
   };
 
-  // Fetch complaint history on component mount
   useEffect(() => {
+    Promise.all([
+      supportApi.getContext(),
+      supportApi.getCategories(),
+      supportApi.startBotSession(),
+      supportApi.getStatus(),
+    ])
+      .then(([ctxRes, catRes, botRes, statusRes]) => {
+        if (ctxRes.data?.status === 1) setContext(ctxRes.data.data);
+        if (catRes.data?.status === 1) setCategories(catRes.data.data || []);
+        if (botRes.data?.status === 1) {
+          setSessionId(botRes.data.data.session_id);
+          setMessages([{ role: "bot", text: botRes.data.data.greeting }]);
+        }
+        if (statusRes.data?.status === 1) setSupportStatus(statusRes.data.data);
+        return loadTickets();
+      })
+      .catch((err) => notifyOnFail(err?.response?.data?.message || "Unable to load support"));
+  }, []);
 
-    fetchComplaints();
-  }, [userId]);
+  const products = context?.products || [];
+  const profile = context?.profile;
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
-    setFile(selectedFile);
+  const lastUserMessage = useMemo(
+    () => [...messages].reverse().find((item) => item.role === "user")?.text || "",
+    [messages]
+  );
+
+  useEffect(() => {
+    if (!showHumanForm || subjectTouched) return;
+    const product = products.find((p) => String(p.id) === String(formProductId));
+    setFormSubject(
+      buildSubject({ category: formCategory, productName: product?.name, lastUserMessage })
+    );
+  }, [showHumanForm, subjectTouched, formCategory, formProductId, lastUserMessage, products]);
+
+  const openHumanForm = () => {
+    setShowHumanForm(true);
+    setSubjectTouched(false);
+    setFormCategory("");
+    setFormProductId("");
+    setFormDescription(lastUserMessage || "");
+    setAttachmentName("");
+    setFormSubject(buildSubject({ category: "", productName: "", lastUserMessage }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-  
-    const ticketData = {
-      category: selectedIssue,
-      subject: selectedIssue,
-      description: message,
-      attachment: file ? [file] : [],
-    };
-  
+  const sendBotMessage = async (event) => {
+    event.preventDefault();
+    const text = input.trim();
+    if (!text || !sessionId || busy) return;
+    setInput("");
+    setMessages((current) => [...current, { role: "user", text }]);
+    setBusy(true);
     try {
-      const response = await createTicket(user.id, ticketData);
-  
-      if (!response) {
-        throw new Error("Failed to submit ticket");
+      const res = await supportApi.askBot({ session_id: sessionId, message: text });
+      if (res.data?.status === 1) {
+        setMessages((current) => [...current, { role: "bot", text: res.data.data.answer }]);
+      } else {
+        notifyOnFail(res.data?.message || "Something went wrong");
       }
-  
-      fetchComplaints();
-  
-      // Reset form fields
-      setSelectedIssue("");
-      setMessage("");
-      setFile(null);
-    } catch (error) {
-      console.error("Error submitting form:", error);
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Something went wrong");
+    } finally {
+      setBusy(false);
     }
   };
-  
+
+  const submitTicket = async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const category = String(form.get("category") || "");
+    const description = String(form.get("description") || "").trim();
+    const subject = String(form.get("subject") || "").trim();
+
+    if (countWords(description) < 30) {
+      notifyOnFail("Please describe the issue in at least 30 words");
+      return;
+    }
+    if (!subject) {
+      notifyOnFail("Subject is required");
+      return;
+    }
+
+    form.set("subject", subject);
+    form.set("description", description);
+    form.set("bot_session_id", sessionId);
+    form.set("channel", "chat");
+    setBusy(true);
+    try {
+      const res = await supportApi.createTicket(form);
+      if (res.data?.status !== 1) {
+        notifyOnFail(res.data?.message || "Failed to create ticket");
+        return;
+      }
+      notifyOnSuccess(`Ticket ${res.data.data.ticket_number} created`);
+      setShowHumanForm(false);
+      await loadTickets();
+      await openTicket(res.data.data.id);
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Failed to create ticket");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openTicket = async (id) => {
+    const res = await supportApi.getTicket(id);
+    if (res.data?.status === 1) setSelectedTicket(res.data.data);
+  };
+
+  useSupportSocket(selectedTicket?.id || null, () => {
+    if (selectedTicket) void openTicket(selectedTicket.id);
+  });
+
+  const sendReply = async (event) => {
+    event.preventDefault();
+    if (!selectedTicket || !reply.trim()) return;
+    const form = new FormData();
+    form.set("message", reply.trim());
+    form.set("channel", "chat");
+    try {
+      const res = await supportApi.replyToTicket(selectedTicket.id, form);
+      if (res.data?.status === 1) {
+        setReply("");
+        await openTicket(selectedTicket.id);
+      } else {
+        notifyOnFail(res.data?.message || "Failed to send reply");
+      }
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Failed to send reply");
+    }
+  };
 
   return (
-    <main>
-      <section className="space-y-8 p-4 md:p-6 lg:p-8">
-        <h2 className="text-2xl font-semibold mb-6">Support</h2>
-        <div className="flex flex-col md:flex-row gap-12 justify-around">
-          <div className="w-full">
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="relative">
-                <div className="absolute left-3 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                  <RxDashboard />
-                </div>
-                <select
-                  value={selectedIssue}
-                  onChange={(e) => setSelectedIssue(e.target.value)}
-                  className="w-full p-3 pl-10 bg-white border border-gray-300 rounded-lg appearance-none cursor-pointer focus:outline-none focus:border-gray-500"
-                  required
-                >
-                  <option value="">Select Complain Ticket Type</option>
-                  {issueTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-              </div>
+    <main className="p-4 md:p-6 lg:p-8 space-y-6">
+      <h2 className="text-2xl font-semibold">Support</h2>
 
-              {/* Message Input */}
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="Write your message here"
-                className="w-full p-3 min-h-[200px] bg-white border bg-[#56594E40] border-gray-300 rounded-lg focus:outline-none focus:border-gray-500"
-                required
-              />
-
-              {/* File Upload */}
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-gray-700">Media Files</p>
-                <label className="flex w-full items-center cursor-pointer">
-                  <span className="bg-[#0164CE] text-white px-4 py-2 rounded-l-lg">
-                    Choose File
-                  </span>
-                  <span className="bg-gray-200 px-4 py-2 flex-grow rounded-r-lg truncate">
-                    {file ? file.name : "No file chosen"}
-                  </span>
-                  <input
-                    type="file"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx"
-                  />
-                </label>
-              </div>
-
-              {/* Submit Button */}
-              <div className="flex justify-center">
-                <button
-                  type="submit"
-                  className="w-full bg-[#0164CE] text-white px-6 py-3 rounded-lg flex text-center justify-center items-center gap-2"
+      <section className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center gap-3">
+          <Bot className="text-primary-100" />
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold">Vendor Support Assistant</h3>
+              {supportStatus && (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                    supportStatus.online ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"
+                  }`}
                 >
-                  Submit Ticket
-                  <IoMdArrowForward />
-                </button>
-              </div>
-            </form>
-          </div>
-          {/* Complaints History Button */}
-          <div className="w-full items-center flex cursor-pointer transition-colors gap-4 flex-col">
-            <div className="bg-white p-6 flex flex-col items-center rounded-lg">
-              <div onClick={() => setIsModalOpen(true)} className="mb-2">
-                <svg
-                  className="w-10 h-10 text-gray-700"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                </svg>
-              </div>
-              <span className="text-lg font-medium">My Complaints History</span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${supportStatus.online ? "bg-green-600" : "bg-gray-400"}`} />
+                  {supportStatus.online ? "Support online" : "Support offline"}
+                </span>
+              )}
             </div>
+            <p className="text-xs text-gray-500">Ask about orders, invoices, payouts or products.</p>
           </div>
+        </div>
+
+        {supportStatus && !supportStatus.online && supportStatus.offline_message && (
+          <div className="mb-3 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+            {supportStatus.offline_message}
+          </div>
+        )}
+
+        <div className="h-72 space-y-3 overflow-y-auto rounded-xl bg-gray-50 p-3">
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`max-w-[85%] whitespace-pre-wrap rounded-xl px-3 py-2 text-sm ${
+                message.role === "user" ? "ml-auto bg-primary-100 text-white" : "bg-white"
+              }`}
+            >
+              {message.text}
+            </div>
+          ))}
+        </div>
+        <form onSubmit={sendBotMessage} className="mt-3 flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about orders, invoices, payouts or products..."
+            className="min-w-0 flex-1 rounded-lg border px-3 py-2"
+          />
+          <button className="cursor-pointer rounded-lg bg-primary-100 p-2 text-white" disabled={busy}>
+            <Send size={18} />
+          </button>
+        </form>
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={openHumanForm}
+            disabled={!messages.some((item) => item.role === "user")}
+            className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-primary-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Headphones size={17} /> Connect with vendor support
+          </button>
         </div>
       </section>
 
-      {/* Complaints History Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-3xl max-h-[80vh] overflow-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold">Complaints History</h3>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X size={24} />
-                </button>
-              </div>
+      {showHumanForm && (
+        <form onSubmit={submitTicket} className="grid gap-3 rounded-2xl border bg-white p-5">
+          <h3 className="font-bold">Help us with a few details</h3>
 
-              <div className="space-y-4">
-                {complaintHistory?.map((complaint) => (
-                  <div key={complaint.id} className="border rounded-lg p-4 space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium">{complaint.category}</p>
-                        <p className="text-sm text-gray-600">
-                          {new Date(complaint.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm ${
-                          complaint.status === "Resolved"
-                            ? "bg-green-100 text-green-800"
-                            : complaint.status === "In Progress"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {complaint.status}
-                      </span>
-                    </div>
-                    <p className="text-gray-700">{complaint.description}</p>
-                    <p className="text-sm text-gray-600 italic">
-                      Response: {complaint.response || "No response yet"}
-                    </p>
-                  </div>
-                ))}
-              </div>
+          {!profile?.email && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
+              <input name="contact_email" type="email" required className="w-full rounded-lg border p-2" />
             </div>
+          )}
+          {!profile?.phone && (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
+              <input name="contact_phone" required className="w-full rounded-lg border p-2" />
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Issue type</label>
+            <select
+              name="category"
+              required
+              value={formCategory}
+              onChange={(e) => setFormCategory(e.target.value)}
+              className="w-full cursor-pointer rounded-lg border p-2"
+            >
+              <option value="">Select issue</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Related product (optional)</label>
+            <select
+              name="product_id"
+              value={formProductId}
+              onChange={(e) => setFormProductId(e.target.value)}
+              className="w-full cursor-pointer rounded-lg border p-2"
+            >
+              <option value="">Not product-specific</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Subject</label>
+            <input
+              name="subject"
+              required
+              value={formSubject}
+              onChange={(e) => {
+                setSubjectTouched(true);
+                setFormSubject(e.target.value);
+              }}
+              className="w-full rounded-lg border p-2"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Describe the issue</label>
+            <textarea
+              name="description"
+              required
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              placeholder="Please share what happened and any order, invoice or payout details that can help us..."
+              className="min-h-28 w-full rounded-lg border p-2"
+            />
+            <p className={`mt-1 text-xs ${countWords(formDescription) >= 30 ? "text-green-600" : "text-gray-500"}`}>
+              {countWords(formDescription)}/30 words minimum
+            </p>
+          </div>
+
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm hover:border-primary-100">
+            <Paperclip size={18} className="shrink-0 text-primary-100" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">Add attachment</span>
+              <span className="block truncate text-xs text-gray-500">
+                {attachmentName || "Image or PDF (optional)"}
+              </span>
+            </span>
+            <input
+              name="attachment"
+              type="file"
+              accept="image/*,.pdf"
+              className="sr-only"
+              onChange={(e) => setAttachmentName(e.target.files?.[0]?.name || "")}
+            />
+          </label>
+
+          <button
+            disabled={busy}
+            className="cursor-pointer rounded-lg bg-primary-100 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Create ticket &amp; start chat
+          </button>
+        </form>
+      )}
+
+      <section className="rounded-2xl border bg-white p-5">
+        <h3 className="mb-3 font-bold">My tickets</h3>
+        {tickets.length === 0 ? (
+          <div className="rounded-xl border border-dashed bg-gray-50 p-6 text-center">
+            <p className="font-medium">No tickets yet</p>
+            <p className="mt-1 text-sm text-gray-500">
+              When you connect with support, your tickets will show up here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {tickets.map((ticket) => (
+              <button
+                key={ticket.id}
+                onClick={() => openTicket(ticket.id)}
+                className="cursor-pointer rounded-xl border p-3 text-left hover:border-primary-100"
+              >
+                <div className="font-semibold">{ticket.ticket_number}</div>
+                <div className="text-sm">{ticket.subject}</div>
+                <div className="text-xs text-gray-500">{ticket.status}</div>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {selectedTicket && (
+        <section className="rounded-2xl border bg-white p-5">
+          <div className="mb-3 flex items-center gap-2 font-bold">
+            <MessageCircle size={18} /> {selectedTicket.ticket_number}
+          </div>
+          <div className="max-h-80 space-y-2 overflow-y-auto">
+            {(selectedTicket.replies || []).map((item) => (
+              <div
+                key={item.id}
+                className={`rounded-lg p-2 text-sm ${item.is_admin_reply ? "bg-blue-50" : "bg-gray-100"}`}
+              >
+                <strong>{item.is_admin_reply ? "Support" : "You"}:</strong> {item.message}
+              </div>
+            ))}
+          </div>
+          {!["Closed", "Resolved"].includes(selectedTicket.status) && (
+            <form onSubmit={sendReply} className="mt-3 flex gap-2">
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                className="flex-1 rounded-lg border p-2"
+                placeholder="Reply..."
+              />
+              <button className="cursor-pointer rounded-lg bg-primary-100 px-4 text-white">Send</button>
+            </form>
+          )}
+        </section>
       )}
     </main>
   );
