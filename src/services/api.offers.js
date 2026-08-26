@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getActiveOffer = async () => {
   try {
@@ -12,7 +13,7 @@ export const getActiveOffer = async () => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error fetching Banners");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banners"));
     console.error(error);
   }
 };
@@ -28,7 +29,7 @@ export const getAllOffers = async () => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error fetching Banners");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banners"));
     console.error(error);
   }
 };
@@ -43,7 +44,7 @@ export const updateOffer = async (id, offerData) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error updating the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the Banner"));
     console.error(error);
   }
 };
@@ -58,7 +59,7 @@ export const addOffer = async (offerData) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error adding the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the Banner"));
     console.error(error);
   }
 };
@@ -73,7 +74,7 @@ export const deleteOffer = async (id) => {
     }
     return response.data.message;
   } catch (error) {
-    notifyOnFail("Error deleting the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Banner"));
     console.error(error);
   }
 };
@@ -89,7 +90,7 @@ export const getOfferById = async (offerId) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error fetching Banners");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banners"));
     console.error(error);
   }
 };
@@ -104,7 +105,7 @@ export const updateStatus = async (offerId, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

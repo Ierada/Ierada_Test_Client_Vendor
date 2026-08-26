@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getItemsForCoupon = async (type) => {
   try {
@@ -12,7 +13,7 @@ export const getItemsForCoupon = async (type) => {
     //   notifyOnFail(res.data.message);
     // }
   } catch (error) {
-    notifyOnFail("Error retrieving items for coupon");
+    notifyOnFail(getApiErrorMessage(error, "Error retrieving items for coupon"));
     console.error(error);
   }
 };
@@ -33,7 +34,7 @@ export const generateCoupon = async (couponData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error generating coupon");
+    notifyOnFail(getApiErrorMessage(error, "Error generating coupon"));
     console.error(error);
     return null;
   }
@@ -55,7 +56,7 @@ export const applyCoupon = async (couponDetails) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error applying coupon");
+    notifyOnFail(getApiErrorMessage(error, "Error applying coupon"));
     console.error(error);
     return null;
   }
@@ -76,7 +77,7 @@ export const getCoupons = async (params) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error retrieving coupons");
+    notifyOnFail(getApiErrorMessage(error, "Error retrieving coupons"));
     console.error(error);
     return null;
   }
@@ -97,7 +98,7 @@ export const getCouponsByUserId = async (userId) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error retrieving user-specific coupons");
+    notifyOnFail(getApiErrorMessage(error, "Error retrieving user-specific coupons"));
     console.error(error);
     return null;
   }
@@ -113,7 +114,7 @@ export const editCoupon = async (id, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -129,7 +130,7 @@ export const deleteCoupon = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the attribute");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the attribute"));
     console.error(error);
     return error.response || error;
   }
@@ -146,7 +147,7 @@ export const getAllCouponsAdmin = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error retrieving coupons");
+    notifyOnFail(getApiErrorMessage(error, "Error retrieving coupons"));
     console.error(error);
     return null;
   }
@@ -162,7 +163,7 @@ export const updateStatus = async (couponId, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

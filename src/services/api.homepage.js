@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 // Homepage Services
 export const getHomePageData = async (userId) => {
@@ -12,7 +13,7 @@ export const getHomePageData = async (userId) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.error(error);
   }
 };
@@ -22,7 +23,7 @@ export const getSections = async () => {
     const res = await apiClient.get("/homepage/sections");
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching sections");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching sections"));
     console.error(error);
   }
 };
@@ -42,7 +43,7 @@ export const createSection = async (sectionData) => {
     const res = await apiClient.post("/homepage/sections", sectionData);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error creating section");
+    notifyOnFail(getApiErrorMessage(error, "Error creating section"));
     console.error(error);
   }
 };
@@ -55,7 +56,7 @@ export const updateSection = async (id, sectionData) => {
     );
     return res.data;
   } catch (error) {
-    notifyOnFail("Error updating section");
+    notifyOnFail(getApiErrorMessage(error, "Error updating section"));
     console.error(error);
   }
 };
@@ -67,7 +68,7 @@ export const deleteSection = async (id) => {
       return res.data;
     }
   } catch (error) {
-    notifyOnFail("Error deleting section");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting section"));
     console.error(error);
   }
 };
@@ -77,7 +78,7 @@ export const updateSectionPositions = async (positions) => {
     const res = await apiClient.put("/homepage/sections/positions", positions);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error updating section positions");
+    notifyOnFail(getApiErrorMessage(error, "Error updating section positions"));
     console.error(error);
   }
 };
@@ -89,7 +90,7 @@ export const updateSectionStatus = async (id, status) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error updating section status");
+    notifyOnFail(getApiErrorMessage(error, "Error updating section status"));
     console.error(error);
   }
 };

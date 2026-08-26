@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllShippingPartners = async () => {
   try {
@@ -12,7 +13,7 @@ export const getAllShippingPartners = async () => {
 
     return response.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return;
   }
@@ -31,7 +32,7 @@ export const updateShippingPartner = async (id, shippingPartnerData) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error updating the ShippingPartner");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the ShippingPartner"));
     console.error(error);
   }
 };
@@ -50,7 +51,7 @@ export const updateShippingPartnerStatus = async (id, shippingPartnerData) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error updating the shipping partner status");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the shipping partner status"));
     console.error(error);
     return null;
   }
@@ -66,7 +67,7 @@ export const deleteShippingPartner = async (id) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error deleting the ShippingPartner");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the ShippingPartner"));
     console.error(error);
   }
 };
@@ -81,7 +82,7 @@ export const createShippingPartner = async (data) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the ShippingPartner");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the ShippingPartner"));
     console.error(error);
   }
 };

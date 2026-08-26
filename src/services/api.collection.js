@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getCollectionData = async (type, slug, queryParams) => {
   try {
@@ -17,7 +18,7 @@ export const getCollectionData = async (type, slug, queryParams) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -33,7 +34,7 @@ export const getCollectionBanner = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }

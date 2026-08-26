@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllSizes = async (query) => {
   try {
@@ -10,7 +11,7 @@ export const getAllSizes = async (query) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching sizes");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching sizes"));
     console.error(error);
   }
 };
@@ -24,7 +25,7 @@ export const getSizeById = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching size details");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching size details"));
     console.error(error);
   }
 };
@@ -38,7 +39,7 @@ export const getSizesByType = async (type) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching sizes by type");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching sizes by type"));
     console.error(error);
   }
 };
@@ -53,7 +54,7 @@ export const addSize = async (sizeData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding size");
+    notifyOnFail(getApiErrorMessage(error, "Error adding size"));
     console.error(error);
   }
 };
@@ -68,7 +69,7 @@ export const updateSize = async (id, sizeData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating size");
+    notifyOnFail(getApiErrorMessage(error, "Error updating size"));
     console.error(error);
   }
 };
@@ -83,7 +84,7 @@ export const deleteSize = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting size");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting size"));
     console.error(error);
   }
 };

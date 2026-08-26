@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getHomePageData = async (userId) => {
   try {
@@ -11,7 +12,7 @@ export const getHomePageData = async (userId) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.error(error);
   }
 };
@@ -29,7 +30,7 @@ export const getDesignerDashboard = async (vendor_id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.error(error);
   }
 };
@@ -47,7 +48,7 @@ export const getAdminDashboardData = async ({ startDate, endDate }) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.error(error);
   }
 };

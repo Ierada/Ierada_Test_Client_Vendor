@@ -2,6 +2,7 @@ import apiClient from "../axios.config";
 import Cookies from "js-cookie";
 import config from "../config/config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getUserDetails = async (userId) => {
   try {
@@ -14,7 +15,7 @@ export const getUserDetails = async (userId) => {
     }
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -34,7 +35,7 @@ export const updateUserDetails = async (userId, userData) => {
     }
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -51,7 +52,7 @@ export const changeUserPassword = async ({ currentPassword, newPassword }) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.error(error);
   }
 };
@@ -68,7 +69,7 @@ export const getAllCustomers = async (params) => {
     }
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -84,7 +85,7 @@ export const getCustomerById = async (id) => {
     }
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -101,7 +102,7 @@ export const updateCustomerStatus = async (id, is_active) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };

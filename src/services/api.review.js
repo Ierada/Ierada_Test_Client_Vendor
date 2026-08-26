@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const addReview = async (reviewData) => {
   try {
@@ -11,7 +12,7 @@ export const addReview = async (reviewData) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -27,7 +28,7 @@ export const updateReviewStatus = async (review_id, data) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -43,7 +44,7 @@ export const getReviewsByVendorId = async (vendor_id) => {
       // notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -75,7 +76,7 @@ export const getReviewsByUserId = async (user_id) => {
       // notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -99,7 +100,7 @@ export const getAllReviews = async (params = {}) => {
 
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return {
       status: 0,

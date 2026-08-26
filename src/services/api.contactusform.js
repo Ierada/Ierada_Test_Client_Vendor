@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllContacts = async () => {
   try {
@@ -10,7 +11,7 @@ export const getAllContacts = async () => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -26,7 +27,7 @@ export const createContact = async (data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -42,7 +43,7 @@ export const updateContact = async (id, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -58,7 +59,7 @@ export const deleteContact = async (id) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error deleting the attribute");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the attribute"));
     console.error(error);
     // return error.response || error;
   }

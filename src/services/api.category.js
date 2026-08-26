@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getCategories = async () => {
   try {
@@ -12,7 +13,7 @@ export const getCategories = async () => {
 
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -28,7 +29,7 @@ export const updateCategory = async (id, CategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the Category");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the Category"));
     console.error(error);
   }
 };
@@ -43,7 +44,7 @@ export const addCategory = async (CategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding the Category");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the Category"));
     console.error(error);
   }
 };
@@ -58,7 +59,7 @@ export const deleteCategory = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the Category");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Category"));
     console.error(error);
   }
 };
@@ -74,7 +75,7 @@ export const getSubCategories = async () => {
 
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -90,7 +91,7 @@ export const getSubCategoryById = async (id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
   }
 };
@@ -108,7 +109,7 @@ export const updateSubCategory = async (id, SubCategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the subcategory"));
     console.error(error);
   }
 };
@@ -123,7 +124,7 @@ export const addSubCategory = async (SubCategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the subcategory"));
     console.error(error);
   }
 };
@@ -139,7 +140,7 @@ export const deleteSubCategory = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the subcategory"));
     console.error(error);
   }
 };
@@ -155,7 +156,7 @@ export const getInnerSubCategories = async () => {
 
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -174,7 +175,7 @@ export const updateInnerSubCategory = async (id, SubCategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the subcategory"));
     console.error(error);
   }
 };
@@ -192,7 +193,7 @@ export const addInnerSubCategory = async (SubCategoryData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the subcategory"));
     console.error(error);
   }
 };
@@ -208,7 +209,7 @@ export const deleteInnerSubCategory = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the subcategory");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the subcategory"));
     console.error(error);
   }
 };
@@ -223,7 +224,7 @@ export const exportCategoriesCSV = async () => {
     });
     return response;
   } catch (error) {
-    notifyOnFail("Error adding the Category");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the Category"));
     console.error(error);
   }
 };
@@ -233,7 +234,7 @@ export const getSubCategoriesByCategoryId = async (id) => {
     const res = await apiClient.get(`/subcategory/getByCatId/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -244,7 +245,7 @@ export const getInnerSubCategoriesBySubCategoryId = async (id) => {
     const res = await apiClient.get(`/innersubcategory/getBySubCatId/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

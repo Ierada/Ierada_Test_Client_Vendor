@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getProductById = async (id) => {
   try {
@@ -12,7 +13,7 @@ export const getProductById = async (id) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -33,7 +34,7 @@ export const getProductBySlug = async (slug, variationId = null) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -51,7 +52,7 @@ export const getProductsByVendorId = async (id, params) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -67,7 +68,7 @@ export const getAllProducts = async (queryString = "") => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -85,7 +86,7 @@ export const searchProducts = async (keyword) => {
       return [];
     }
   } catch (error) {
-    notifyOnFail("Error searching products");
+    notifyOnFail(getApiErrorMessage(error, "Error searching products"));
     console.error(error);
     return [];
   }
@@ -147,7 +148,7 @@ export const updateProduct = async (id, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -158,7 +159,7 @@ export const patchProduct = async (id, data) => {
     const res = await apiClient.patch(`/product/patch/${id}`, data);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -174,7 +175,7 @@ export const deleteProduct = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -190,7 +191,7 @@ export const getVariationDetails = async (product_id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -226,7 +227,7 @@ export const importTemplate = async (vendorId) => {
       return { status: 0, message: "Failed to fetch template" };
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -240,7 +241,7 @@ export const bulkProductUpload = async (data, vendorId) => {
     const res = await apiClient.post(url, data);
     return res.data;
   } catch (error) {
-    // notifyOnFail("Error reaching the server");
+    // notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -275,7 +276,7 @@ export const stockPriceUpdateTemplate = async () => {
       return { status: 0, message: "Failed to fetch template" };
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -294,7 +295,7 @@ export const bulkStockPriceUpdate = async (data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -374,7 +375,7 @@ export const getProductCatData = async (type) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -390,7 +391,7 @@ export const updateBulkProductVisibility = async (data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -406,7 +407,7 @@ export const bulkDeleteProducts = async (data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -422,7 +423,7 @@ export const shiftProducts = async (data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

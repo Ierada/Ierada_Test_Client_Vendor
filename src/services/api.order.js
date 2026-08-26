@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getOrdersByVendorId = async (id) => {
   try {
@@ -11,7 +12,7 @@ export const getOrdersByVendorId = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -27,7 +28,7 @@ export const getOrdersByUserId = async (id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -43,7 +44,7 @@ export const initiatePayment = async (orderData) => {
     }
     notifyOnSuccess(res.data.message);
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -59,7 +60,7 @@ export const verifyPayment = async (orderData) => {
     }
     notifyOnSuccess(res.data.message);
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -75,7 +76,7 @@ export const createOrder = async (orderData) => {
     }
     notifyOnSuccess(res.data.message);
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -92,7 +93,7 @@ export const getOrderByOrderId = async (id) => {
     // notifyOnFail(res.data.message);
     // }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -108,7 +109,7 @@ export const getOrderByOrderNumber = async (order_number) => {
     // notifyOnFail(res.data.message);
     // }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -142,7 +143,7 @@ export const updateOrderStatus = async (order_id, data) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -208,7 +209,7 @@ export const cancelOrder = async (order_id, role, returnDetails = null) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -224,7 +225,7 @@ export const getAllShipments = async () => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the Server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the Server"));
     console.log(error);
     return null;
   }

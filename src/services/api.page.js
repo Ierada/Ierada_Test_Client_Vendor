@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 // Get all pages
 export const getAllPages = async () => {
@@ -12,7 +13,7 @@ export const getAllPages = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error fetching pages");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching pages"));
     console.error(error);
     return null;
   }
@@ -64,7 +65,7 @@ export const createPage = async (pageData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error creating page");
+    notifyOnFail(getApiErrorMessage(error, "Error creating page"));
     console.error(error);
     return null;
   }
@@ -117,7 +118,7 @@ export const getPolicy = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error fetching privacy policy");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching privacy policy"));
     console.error(error);
     return null;
   }
@@ -137,7 +138,7 @@ export const updatePolicy = async (content) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error updating privacy policy");
+    notifyOnFail(getApiErrorMessage(error, "Error updating privacy policy"));
     console.error(error);
     return null;
   }
@@ -154,7 +155,7 @@ export const getTermConditions = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error fetching terms and conditions");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching terms and conditions"));
     console.error(error);
     return null;
   }
@@ -174,7 +175,7 @@ export const updateTermConditions = async (content) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error updating terms and conditions");
+    notifyOnFail(getApiErrorMessage(error, "Error updating terms and conditions"));
     console.error(error);
     return null;
   }

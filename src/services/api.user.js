@@ -2,6 +2,7 @@ import apiClient from "../axios.config";
 import Cookies from "js-cookie";
 import config from "../config/config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getUserDetals = async (userId) => {
   try {
@@ -13,7 +14,7 @@ export const getUserDetals = async (userId) => {
     // }
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -47,7 +48,7 @@ export const updateUserDetails = async (userId, userData) => {
     // return res.data;
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -63,7 +64,7 @@ export const generateOTP = async (identifier) => {
     return res.data;
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -80,7 +81,7 @@ export const verifyOTP = async (identifier, otp) => {
     return res.data;
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -96,7 +97,7 @@ export const verifyMobileOTP = async (phone) => {
     return res.data;
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -117,7 +118,7 @@ export const resetPassword = async (identifier, password, identifierType) => {
     return res.data;
   } catch (error) {
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     // return error.response || error;
   }
 };
@@ -132,7 +133,7 @@ export const getAllDesigners = async () => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -184,7 +185,7 @@ export const sendOtp = async (mobileNumber) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };
 
@@ -218,7 +219,7 @@ export const userLogin = async (otp, mobileNumber) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -235,7 +236,7 @@ export const resendOtp = async (mobileNumber) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };
 
@@ -254,6 +255,6 @@ export const updateEmailNotifications = async (id, status) => {
     }
     return response.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };

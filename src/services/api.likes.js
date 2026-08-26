@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const addLike = async (userId, productId) => {
   try {
@@ -16,7 +17,7 @@ export const addLike = async (userId, productId) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error liking the product");
+    notifyOnFail(getApiErrorMessage(error, "Error liking the product"));
     console.log(error);
     return null;
   }
@@ -48,7 +49,7 @@ export const getLikesReport = async (params) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error fetching likes report");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching likes report"));
     console.log(error);
     return null;
   }
@@ -76,7 +77,7 @@ export const generateLikeTemplate = async () => {
     });
     return res;
   } catch (error) {
-    notifyOnFail("Error generating template");
+    notifyOnFail(getApiErrorMessage(error, "Error generating template"));
     console.log(error);
     throw error;
   }
@@ -98,7 +99,7 @@ export const bulkLikeUpdate = async (formData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error uploading bulk likes");
+    notifyOnFail(getApiErrorMessage(error, "Error uploading bulk likes"));
     console.log(error);
     return null;
   }

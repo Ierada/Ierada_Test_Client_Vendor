@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getVendorReport = async ({ vendor_id, startDate, endDate }) => {
   try {
@@ -14,7 +15,7 @@ export const getVendorReport = async ({ vendor_id, startDate, endDate }) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -32,7 +33,7 @@ export const getAdminReport = async ({ startDate, endDate }) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -48,7 +49,7 @@ export const getAllVendorPerformance = async () => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }

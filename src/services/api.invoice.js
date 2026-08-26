@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 // Get all bills for the vendor
 export const getAllBillsByVendor = async (vendorId) => {
@@ -99,7 +100,7 @@ export const getAllBills = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching address");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching address"));
     console.error(error);
   }
 };
@@ -117,7 +118,7 @@ export const updateInvoiceStatus = async (id, newStatus) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching address");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching address"));
     console.error(error);
   }
 };
@@ -132,7 +133,7 @@ export const deleteBill = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Banner"));
     console.error(error);
   }
 };

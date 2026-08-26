@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllBanners = async () => {
   try {
@@ -12,7 +13,7 @@ export const getAllBanners = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching Banners");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banners"));
     console.error(error);
   }
 };
@@ -28,7 +29,7 @@ export const getBannersByType = async (type) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching Banners");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banners"));
     console.error(error);
   }
 };
@@ -43,7 +44,7 @@ export const getBannerById = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Banner"));
     console.error(error);
   }
 };
@@ -58,7 +59,7 @@ export const updateBanner = async (id, BannerData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the Banner"));
     console.error(error);
   }
 };
@@ -73,7 +74,7 @@ export const addBanners = async (BannerData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the Banner"));
     console.error(error);
   }
 };
@@ -88,7 +89,7 @@ export const deleteBanner = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the Banner");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Banner"));
     console.error(error);
   }
 };

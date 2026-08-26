@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const updateTermConditions = async (terms_condition) => {
   try {
@@ -12,7 +13,7 @@ export const updateTermConditions = async (terms_condition) => {
     }
     return data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };
 
@@ -24,6 +25,6 @@ export const getTermConditions = async () => {
     }
     return data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };

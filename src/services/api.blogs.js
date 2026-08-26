@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 // Blog Routes
 export const getAllBlogs = async () => {
@@ -12,7 +13,7 @@ export const getAllBlogs = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -28,7 +29,7 @@ export const getAll = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -44,7 +45,7 @@ export const getBlogBySlug = async (slug) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -60,7 +61,7 @@ export const getBlogById = async (id) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -80,7 +81,7 @@ export const createBlog = async (authorId, blogData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -99,7 +100,7 @@ export const updateBlog = async (id, blogData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -115,7 +116,7 @@ export const updateStatus = async (blogId, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -132,7 +133,7 @@ export const deleteBlog = async (id) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -149,7 +150,7 @@ export const getAllBlogCategories = async () => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -165,7 +166,7 @@ export const getBlogCategoryById = async (id) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -182,7 +183,7 @@ export const createBlogCategory = async (categoryData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -199,7 +200,7 @@ export const updateBlogCategory = async (id, categoryData) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -216,7 +217,7 @@ export const deleteBlogCategory = async (id) => {
       return null;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }

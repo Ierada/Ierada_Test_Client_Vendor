@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Copy,
   Check,
@@ -469,7 +469,7 @@ const OrderActions = ({
                 }}
                 className="bg-red-50 hover:bg-red-100 text-red-700 py-2.5 px-3 rounded-lg text-center transition-colors"
               >
-                Cancel Order
+                Reject Order
               </button>
             </div>
           </div>
@@ -585,6 +585,8 @@ const OrderTable = ({
   orders = [],
   isLoading,
   selectedOrders = [],
+  allSelected = false,
+  someSelected = false,
   onSelectOrder,
   onSelectAll,
   onViewOrder,
@@ -594,6 +596,14 @@ const OrderTable = ({
   const [sortCol, setSortCol] = useState("created_at");
   const [sortDir, setSortDir] = useState("desc");
   const [trackingAwb, setTrackingAwb] = useState(null);
+  const selectAllRef = useRef(null);
+
+  // Native checkboxes need the indeterminate visual set imperatively.
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected && !allSelected;
+    }
+  }, [someSelected, allSelected]);
 
   const handleSort = (col) => {
     if (!SORTABLE.has(col)) return;
@@ -645,9 +655,6 @@ const OrderTable = ({
     return 0;
   });
 
-  const allSelected =
-    orders.length > 0 && selectedOrders.length === orders.length;
-
   if (isLoading) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -667,9 +674,11 @@ const OrderTable = ({
               {/* Checkbox */}
               <th className="px-6 py-4 w-12">
                 <input
+                  ref={selectAllRef}
                   type="checkbox"
                   checked={allSelected}
                   onChange={onSelectAll}
+                  title="Select all orders matching the current filters (all pages)"
                   className="rounded border-gray-300 text-[#FF6012] focus:ring-[#FF6012] w-4 h-4 cursor-pointer"
                 />
               </th>

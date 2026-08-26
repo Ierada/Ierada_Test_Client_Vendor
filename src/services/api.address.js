@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllAddress = async (user_id) => {
   try {
@@ -11,7 +12,7 @@ export const getAllAddress = async (user_id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching address");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching address"));
     console.error(error);
     // return error.response || error;
   }
@@ -27,7 +28,7 @@ export const addAddress = async (user_id, addressData) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -44,7 +45,7 @@ export const setDefaultAddress = async (user_id, address_id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error setting default address:", error);
   }
 };
@@ -59,7 +60,7 @@ export const updateAddress = async (id, data) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -75,7 +76,7 @@ export const deleteAddress = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the attribute");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the attribute"));
     console.error(error);
     // return error.response || error;
   }

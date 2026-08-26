@@ -1,5 +1,6 @@
 import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllFabrics = async () => {
   try {
@@ -11,7 +12,7 @@ export const getAllFabrics = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching Fabrics");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Fabrics"));
     console.error(error);
     return error.response || error;
   }
@@ -29,7 +30,7 @@ export const getAllFabricsByStatus = async (query = {}) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching Fabrics");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching Fabrics"));
     console.error(error);
     return error.response || error;
   }
@@ -45,7 +46,7 @@ export const getFabricById = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching the Fabric");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching the Fabric"));
     console.error(error);
     return error.response || error;
   }
@@ -61,7 +62,7 @@ export const addFabric = async (FabricData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding the Fabric");
+    notifyOnFail(getApiErrorMessage(error, "Error adding the Fabric"));
     console.error(error);
     return error.response || error;
   }
@@ -77,7 +78,7 @@ export const editFabric = async (id, FabricData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the Fabric");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the Fabric"));
     console.error(error);
     return error.response || error;
   }
@@ -93,7 +94,7 @@ export const deleteFabric = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the Fabric");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Fabric"));
     console.error(error);
     return error.response || error;
   }
@@ -109,7 +110,7 @@ export const updateStatus = async (fabricId, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

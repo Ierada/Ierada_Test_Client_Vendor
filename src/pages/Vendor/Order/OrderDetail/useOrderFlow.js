@@ -149,8 +149,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     if (step > 1) setStep((s) => s - 1);
   }, [step]);
 
-  const handleCancel = useCallback(async () => {}, []);
-
   return {
     step,
     setStep,
@@ -159,7 +157,6 @@ export const useOrderFlow = (orderId, forceStep1 = false, onClose) => {
     actLoading,
     handleNext,
     handleBack,
-    handleCancel,
     refetch: fetchOrder,
     currentStatus,
     isTerminal: terminal,

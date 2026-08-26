@@ -234,10 +234,10 @@ export const FooterNav = ({
           <button
             onClick={onCancel}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-[#E5E7EF] rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 rounded-lg hover:bg-red-50 text-sm font-medium text-red-600 shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-4 h-4" />
-            Cancel
+            Reject Order
           </button>
         )}
       </div>

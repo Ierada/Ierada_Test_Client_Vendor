@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 // Create an ad
 export const createAd = async (adData) => {
@@ -12,7 +13,7 @@ export const createAd = async (adData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error creating ad");
+    notifyOnFail(getApiErrorMessage(error, "Error creating ad"));
     console.error(error);
   }
 };
@@ -28,7 +29,7 @@ export const approveAd = async (adId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error approving ad");
+    notifyOnFail(getApiErrorMessage(error, "Error approving ad"));
     console.error(error);
   }
 };
@@ -44,7 +45,7 @@ export const rejectAd = async (adId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error rejecting ad");
+    notifyOnFail(getApiErrorMessage(error, "Error rejecting ad"));
     console.error(error);
   }
 };
@@ -60,7 +61,7 @@ export const setPendingAd = async (adId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error resetting ad status");
+    notifyOnFail(getApiErrorMessage(error, "Error resetting ad status"));
     console.error(error);
   }
 };
@@ -75,7 +76,7 @@ export const getAdsByVendorId = async (vendorId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching ads");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching ads"));
     console.error(error);
   }
 };
@@ -90,7 +91,7 @@ export const getAllAds = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching all ads");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching all ads"));
     console.error(error);
   }
 };
@@ -105,7 +106,7 @@ export const getAdById = async (adId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching ad details");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching ad details"));
     console.error(error);
   }
 };
@@ -121,7 +122,7 @@ export const deleteAd = async (adId) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting ad");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting ad"));
     console.error(error);
   }
 };

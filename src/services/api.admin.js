@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const addSubAdmin = async (data) => {
   try {
@@ -11,7 +12,7 @@ export const addSubAdmin = async (data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -27,7 +28,7 @@ export const getAllSubAdmin = async () => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -43,7 +44,7 @@ export const updateSubAdmin = async (id, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -59,7 +60,7 @@ export const deleteSubAdmin = async (id) => {
     }
     return response.data.message;
   } catch (error) {
-    notifyOnFail("Error deleting the attribute");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the attribute"));
     console.error(error);
     // return error.response || error;
   }
@@ -75,7 +76,7 @@ export const getSubAdminById = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -91,7 +92,7 @@ export const getAdminPermissions = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -107,7 +108,7 @@ export const updateStatus = async (id, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -123,7 +124,7 @@ export const editAdmin = async (id, data) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -139,7 +140,7 @@ export const getAdminById = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -155,7 +156,7 @@ export const getAdminByUserId = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log("Error adding address:", error);
     //   return error.response || error;
   }
@@ -171,7 +172,7 @@ export const toggleAdmin2FA = async (userId, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -186,7 +187,7 @@ export const verifyAdmin2FA = async (userId, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };

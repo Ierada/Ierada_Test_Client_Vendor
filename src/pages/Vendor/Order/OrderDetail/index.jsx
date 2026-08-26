@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { PageHeader, OrderStepper, FooterNav } from "./OrderFlowChrome";
@@ -7,7 +7,15 @@ import { InvoiceStep } from "./OrderSteps";
 import { MarkShippedStep } from "./SelfShipStep";
 import { useOrderFlow } from "./useOrderFlow";
 import useDiscountPercentage from "../../../../hooks/useDiscountPercentage";
-import { downloadTaxInvoicesForOrder } from "../../../../services/api.order";
+import {
+  downloadTaxInvoicesForOrder,
+  updateOrderStatus,
+} from "../../../../services/api.order";
+import {
+  notifyOnFail,
+  notifyOnSuccess,
+} from "../../../../utils/notification/toast";
+import { getApiErrorMessage } from "../../../../utils/apiError";
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
@@ -21,7 +29,6 @@ const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
     actLoading,
     handleNext: flowNext,
     handleBack: flowBack,
-    handleCancel: flowCancel,
     currentStatus,
     isTerminal,
     canGoNext,
@@ -30,6 +37,10 @@ const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
     nextLabel,
     refetch,
   } = useOrderFlow(id, isModal, onClose);
+
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectSubmitting, setRejectSubmitting] = useState(false);
 
   // ── Step 3 done: close modal or navigate back ───────────────────────────────
    const handleNext = async () => {
@@ -45,10 +56,34 @@ const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
     }
   };
 
-  // ── Cancel: close modal or let useOrderFlow handle ────────────────────────
-  const handleCancel = () => {
-    if (isModal && onClose) onClose();
-    else flowCancel();
+  // ── Reject (only offered by useOrderFlow while status is placed/accepted,
+  // i.e. strictly before shipping) ───────────────────────────────────────────
+  const handleRejectSubmit = async () => {
+    if (!rejectReason.trim()) {
+      notifyOnFail("Please enter a reason for rejecting this order");
+      return;
+    }
+    setRejectSubmitting(true);
+    try {
+      const res = await updateOrderStatus(id, {
+        order_status: "rejected",
+        reject_reason: rejectReason.trim(),
+      });
+      if (res?.status === 1) {
+        notifyOnSuccess("Order rejected");
+        setShowRejectModal(false);
+        setRejectReason("");
+        await refetch();
+        onOrderUpdate?.();
+        if (isModal && onClose) onClose();
+      } else {
+        notifyOnFail(res?.message || "Failed to reject order");
+      }
+    } catch (err) {
+      notifyOnFail(getApiErrorMessage(err, "Error rejecting order"));
+    } finally {
+      setRejectSubmitting(false);
+    }
   };
 
   // ── Shape API data → orderData for all step components ────────────────────
@@ -294,11 +329,11 @@ const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
         )}
       </div>
 
-      {/* Footer: Back | Cancel Order | Next (hidden for terminal orders) */}
+      {/* Footer: Back | Reject Order (pre-ship only) | Next (hidden for terminal orders) */}
       <FooterNav
         currentStep={step}
         onBack={handleBack}
-        onCancel={onClose}
+        onCancel={() => setShowRejectModal(true)}
         onNext={handleNext}
         loading={actLoading}
         isModal={isModal}
@@ -307,6 +342,49 @@ const OrderDetail = ({ orderId: propOrderId, onClose, onOrderUpdate }) => {
         canGoBack={canGoBack}
         canCancel={canCancel}
       />
+
+      {/* Reject reason modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1100] p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-150">
+            <h3 className="text-base font-bold text-gray-950 mb-2">
+              Reject Order
+            </h3>
+            <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+              Are you sure you want to reject order{" "}
+              <span className="font-bold text-gray-800">
+                #{orderData.id}
+              </span>
+              ? Please provide a reason for the rejection.
+            </p>
+            <textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Enter reason (e.g. Out of stock, pricing error)..."
+              className="w-full min-h-[80px] p-2.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#FF6012] mb-5 resize-none"
+            />
+            <div className="flex justify-end gap-2.5">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectReason("");
+                }}
+                disabled={rejectSubmitting}
+                className="px-3.5 py-1.5 text-xs font-bold text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRejectSubmit}
+                disabled={rejectSubmitting || !rejectReason.trim()}
+                className="px-3.5 py-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {rejectSubmitting ? "Rejecting…" : "Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

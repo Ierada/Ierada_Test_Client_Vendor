@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 
 
@@ -107,7 +108,7 @@ export const updateCharge = async (id, chargeData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating the Charge");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the Charge"));
     console.error(error);
   }
 };
@@ -123,7 +124,7 @@ export const deleteCharge = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting the Charge");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the Charge"));
     console.error(error);
   }
 };

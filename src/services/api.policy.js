@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const updatePolicy = async (privacy_policy) => {
   try {
@@ -11,7 +12,7 @@ export const updatePolicy = async (privacy_policy) => {
       return res.data;
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };
 
@@ -23,6 +24,6 @@ export const getPolicy = async () => {
     }
     return data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };

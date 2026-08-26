@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const addEmailSubscribe = async (emailSubscribeData) => {
   try {
@@ -28,7 +29,7 @@ export const getAllEmailSubscription = async () => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -39,7 +40,7 @@ export const unSubscribeEmail = async (data) => {
     const res = await apiClient.post(`/email_subscribe/unsubscribe`, data);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -50,7 +51,7 @@ export const deleteSubscription = async (id) => {
     const res = await apiClient.delete(`/email_subscribe/delete/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -61,7 +62,7 @@ export const reactivateSubscription = async (id) => {
     const res = await apiClient.post(`/email_subscribe/reactivate/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

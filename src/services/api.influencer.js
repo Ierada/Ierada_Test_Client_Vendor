@@ -1,6 +1,7 @@
 import apiClient from '../axios.config';
 import { notifyOnSuccess, notifyOnFail } from '../utils/notification/toast';
 import { useAppContext } from '../context/AppContext';
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllInfluencerByDesignerId = async id => {
   try {
@@ -90,7 +91,7 @@ export const updateInfluencer = async (id, influencerData) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -107,7 +108,7 @@ export const addInfluencer = async (influencerData) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -124,7 +125,7 @@ export const deleteInfluencer = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };

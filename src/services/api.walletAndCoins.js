@@ -11,7 +11,7 @@
 //       notifyOnFail(res.data.message);
 //     }
 //   } catch (error) {
-//     notifyOnFail("Error reaching the server");
+//     notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
 //     console.log(error);
 //     // return error.response || error;
 //   }
@@ -27,7 +27,7 @@
 //       notifyOnFail(res.data.message);
 //     }
 //   } catch (error) {
-//     notifyOnFail("Error reaching the server");
+//     notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
 //     console.log(error);
 //     // return error.response || error;
 //   }
@@ -46,7 +46,7 @@
 //       notifyOnFail(res.data.message);
 //     }
 //   } catch (error) {
-//     notifyOnFail("Error processing transaction");
+//     notifyOnFail(getApiErrorMessage(error, "Error processing transaction"));
 //     console.log(error);
 //   }
 // };
@@ -63,7 +63,7 @@
 //       notifyOnFail(res.data.message);
 //     }
 //   } catch (error) {
-//     notifyOnFail("Error processing redemption");
+//     notifyOnFail(getApiErrorMessage(error, "Error processing redemption"));
 //     console.log(error);
 //   }
 // };
@@ -103,6 +103,7 @@
 
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getBalance = async (user_id) => {
   try {
@@ -114,7 +115,7 @@ export const getBalance = async (user_id) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -130,7 +131,7 @@ export const getTransactions = async (userId) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }
@@ -149,7 +150,7 @@ export const addMoneyToWalletOrCoins = async (userId, transactionData) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error processing transaction");
+    notifyOnFail(getApiErrorMessage(error, "Error processing transaction"));
     console.log(error);
   }
 };
@@ -166,7 +167,7 @@ export const redeemCoinsToWallet = async (userId, amount) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error processing redemption");
+    notifyOnFail(getApiErrorMessage(error, "Error processing redemption"));
     console.log(error);
   }
 };

@@ -2,6 +2,7 @@ import apiClient from "../axios.config";
 import Cookies from "js-cookie";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 import config from "../config/config";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const registervendor = async (userData) => {
   try {
@@ -15,7 +16,7 @@ export const registervendor = async (userData) => {
     // return notifyOnFail(error.response.data.message);  can show noificatons accordingly
 
     //default fallback for error
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
   }
 };
 
@@ -36,7 +37,7 @@ export const vendorLogin = async (userData) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -45,7 +46,7 @@ export const requestDeactivation = async (id) => {
     const res = await apiClient.put(`/vendor/deactivate/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -55,7 +56,7 @@ export const getAllvendors = async () => {
     const res = await apiClient.get("/vendor/getAll");
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -65,7 +66,7 @@ export const getVendorDetails = async (userId) => {
     const res = await apiClient.get(`/vendor/getById/${userId}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -75,7 +76,7 @@ export const getVendorById = async (userId) => {
     const res = await apiClient.get(`/vendor/get/${userId}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -85,7 +86,7 @@ export const updateVendor = async (id, userData) => {
     const res = await apiClient.put(`/vendor/edit/${id}`, userData);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -100,7 +101,7 @@ export const toggleVendor2FA = async (userId, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -115,7 +116,7 @@ export const verifyVendor2FA = async (userId, data) => {
     // }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -130,7 +131,7 @@ export const updateVendorStatus = async (id, status) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -147,7 +148,7 @@ export const updateVendorActive = async (id, is_active) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -163,7 +164,7 @@ export const editvendor = async (id, userData) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -178,7 +179,7 @@ export const addvendor = async (userData) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -195,7 +196,7 @@ export const deletevendor = async (id) => {
     }
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -323,7 +324,7 @@ export const getVendorPerformance = () => {
     ];
     return data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return null;
   }
@@ -456,7 +457,7 @@ export const getVendorTransactions = () => {
 
     return data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return;
   }

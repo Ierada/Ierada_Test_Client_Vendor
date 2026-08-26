@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const getAllColors = async () => {
   try {
@@ -10,7 +11,7 @@ export const getAllColors = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error fetching colors");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching colors"));
     console.error(error);
   }
 };
@@ -25,7 +26,7 @@ export const addColor = async (colorData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error adding color");
+    notifyOnFail(getApiErrorMessage(error, "Error adding color"));
     console.error(error);
   }
 };
@@ -40,7 +41,7 @@ export const updateColor = async (id, colorData) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error updating color");
+    notifyOnFail(getApiErrorMessage(error, "Error updating color"));
     console.error(error);
   }
 };
@@ -54,7 +55,7 @@ export const deleteColor = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error deleting color");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting color"));
     console.error(error);
   }
 };

@@ -1,5 +1,6 @@
 import apiClient from "../axios.config";
 import { notifyOnFail } from "../utils/notification/toast";
+import { getApiErrorMessage } from "../utils/apiError";
 
 export const initiateShipping = async (order_id, provider) => {
   try {
@@ -70,7 +71,7 @@ export const getShippingRates = async (orderId) => {
     const res = await apiClient.get(`/shipping/rates/${orderId}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching shipping rates");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching shipping rates"));
     console.log(error);
   }
 };
@@ -82,7 +83,7 @@ export const assignProvider = async (orderId, provider) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error assigning provider");
+    notifyOnFail(getApiErrorMessage(error, "Error assigning provider"));
     console.log(error);
   }
 };
@@ -92,7 +93,7 @@ export const getAvailableProviders = async () => {
     const res = await apiClient.get(`/shipping/providers`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching providers");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching providers"));
     console.log(error);
   }
 };
@@ -104,7 +105,7 @@ export const getRateCards = async (filters = {}) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching rate cards");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching rate cards"));
     console.log(error);
   }
 };
@@ -114,7 +115,7 @@ export const getRateCardById = async (id) => {
     const res = await apiClient.get(`/shipping/rate-cards/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching the rate card");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching the rate card"));
     console.log(error);
   }
 };
@@ -124,7 +125,7 @@ export const createRateCard = async (payload) => {
     const res = await apiClient.post(`/shipping/rate-cards`, payload);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error creating the rate card");
+    notifyOnFail(getApiErrorMessage(error, "Error creating the rate card"));
     console.log(error);
   }
 };
@@ -134,7 +135,7 @@ export const updateRateCard = async (id, payload) => {
     const res = await apiClient.put(`/shipping/rate-cards/${id}`, payload);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error updating the rate card");
+    notifyOnFail(getApiErrorMessage(error, "Error updating the rate card"));
     console.log(error);
   }
 };
@@ -144,7 +145,7 @@ export const deleteRateCard = async (id) => {
     const res = await apiClient.delete(`/shipping/rate-cards/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error deleting the rate card");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting the rate card"));
     console.log(error);
   }
 };
@@ -154,7 +155,7 @@ export const getWarehouseAddresses = async (userId) => {
     const res = await apiClient.get(`/shipping/addresses/${userId}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching warehouse addresses");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching warehouse addresses"));
     console.log(error);
   }
 };
@@ -164,7 +165,7 @@ export const getAllWarehouseAddresses = async (params = {}) => {
     const res = await apiClient.get(`/shipping/addresses`, { params });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching warehouse addresses");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching warehouse addresses"));
     console.log(error);
   }
 };
@@ -174,7 +175,7 @@ export const addPickupAddress = async (payload) => {
     const res = await apiClient.post(`/shipping/addresses`, payload);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error adding pickup address");
+    notifyOnFail(getApiErrorMessage(error, "Error adding pickup address"));
     console.log(error);
   }
 };
@@ -184,7 +185,7 @@ export const updatePickupAddress = async (id, payload) => {
     const res = await apiClient.put(`/shipping/addresses/${id}`, payload);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error updating pickup address");
+    notifyOnFail(getApiErrorMessage(error, "Error updating pickup address"));
     console.log(error);
   }
 };
@@ -194,7 +195,7 @@ export const deletePickupAddress = async (id) => {
     const res = await apiClient.delete(`/shipping/addresses/${id}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error deleting pickup address");
+    notifyOnFail(getApiErrorMessage(error, "Error deleting pickup address"));
     console.log(error);
   }
 };
@@ -208,7 +209,7 @@ export const getShippingEstimate = async (userId, pincode = null) => {
     });
     return res.data;
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -229,7 +230,7 @@ export const getDeliveryEstimation = async (user_id, pin_code) => {
       notifyOnFail(res.data.message);
     }
   } catch (error) {
-    notifyOnFail("Error reaching the server");
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };
@@ -249,7 +250,7 @@ export const getReturnRates = async (orderId) => {
     const res = await apiClient.get(`/shipping/return/rates/${orderId}`);
     return res.data;
   } catch (error) {
-    notifyOnFail("Error fetching return couriers");
+    notifyOnFail(getApiErrorMessage(error, "Error fetching return couriers"));
     console.log(error);
   }
 };
