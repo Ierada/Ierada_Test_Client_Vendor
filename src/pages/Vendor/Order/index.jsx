@@ -239,7 +239,6 @@ const Order = () => {
         selectedOrders={selectedOrders}
         selectedOrderObjects={selectedOrderObjects}
         onBulkAction={handleBulkAction}
-        onExport={() => exportToPDF(filteredOrders)}
       />
 
       {/* 4. Advanced filter panel */}
