@@ -10,17 +10,19 @@ export const getExportProductFields = (o = {}) => {
   const color =
     variation?.Color?.name ||
     variation?.color?.name ||
-    variation?.color ||
+    (typeof variation?.color === "string" ? variation.color : "") ||
     product.color ||
     "";
   const size =
     variation?.Size?.name ||
     variation?.size?.name ||
-    variation?.size ||
+    (typeof variation?.size === "string" ? variation.size : "") ||
     product.size ||
     "";
+  const productName = product.name || product.productName || "—";
+
   return {
-    name,
+    name: productName,
     color: color || "—",
     size: size || "—",
     hsn: product.hsn_code || product.hsn || "—",
