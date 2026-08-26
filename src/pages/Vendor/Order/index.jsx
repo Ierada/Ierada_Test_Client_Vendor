@@ -76,6 +76,7 @@ const Order = () => {
           .toLowerCase()
           .includes(search.toLowerCase()) ||
         o.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
+        o.Product?.name?.toLowerCase().includes(search.toLowerCase()) ||
         (o.tracking_id || "").toLowerCase().includes(search.toLowerCase());
 
       const matchesStatus =

@@ -17,6 +17,7 @@ import {
   formatTime,
 } from "../../../utils/date&Time/dateAndTimeFormatter";
 import { updateOrderStatus } from "../../../services/api.order";
+import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   downloadShippingLabel,
   manifestOrder,
@@ -243,7 +244,7 @@ const OrderActions = ({
         notifyOnFail(res?.message || "Failed to reject order");
       }
     } catch (err) {
-      notifyOnFail(err?.response?.data?.message || "Error rejecting order");
+      notifyOnFail(getApiErrorMessage(err, "Error rejecting order"));
     } finally {
       setIsSubmitting(false);
     }
