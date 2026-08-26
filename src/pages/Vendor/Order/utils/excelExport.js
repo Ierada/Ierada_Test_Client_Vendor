@@ -1,29 +1,54 @@
 import * as XLSX from "xlsx";
 import {
-  formatDate,
-  formatTime,
-} from "../../../../utils/date&Time/dateAndTimeFormatter";
+  getExportCustomerName,
+  getExportDateTime,
+  getExportProductFields,
+} from "./exportFields";
 
-// Same columns as the PDF export, laid out as a proper worksheet so vendors
-// can filter/sort/pivot in Excel instead of just reading a printed table.
 export const exportToExcel = (orders = []) => {
-  const rows = orders.map((o) => ({
-    "Order #": o.order_number || "—",
-    "Date & Time": `${formatDate(o.created_at)} ${formatTime(o.created_at)}`,
-    Customer:
-      `${o.Address?.first_name || ""} ${o.Address?.last_name || ""}`.trim() ||
-      "—",
-    Product: o.product?.name || "—",
-    Qty: o.qty || 0,
-    "Amount (₹)": Number(o.order_total || 0),
-    Status: o.order_status || "—",
-    Payment: (o.payment_type || "—").toUpperCase(),
-    Provider: o.shipping_provider || o.courier_name || "—",
-    AWB: o.tracking_id || "—",
-    Manifested: o.is_manifested ? "Yes" : "No",
-  }));
+  const rows = orders.map((o) => {
+    const p = getExportProductFields(o);
+    return {
+      "Order #": o.order_number || "—",
+      "Date & Time": getExportDateTime(o),
+      Customer: getExportCustomerName(o),
+      Phone: o.Address?.phone || "—",
+      "Product Name": p.name,
+      Color: p.color,
+      Size: p.size,
+      HSN: p.hsn,
+      SKU: p.sku,
+      Qty: o.qty || 0,
+      "Amount (₹)": Number(o.order_total || 0),
+      Status: o.order_status || "—",
+      Payment: (o.payment_type || "—").toUpperCase(),
+      "Payment Status": o.payment_status || "—",
+      Provider: o.shipping_provider || o.courier_name || "—",
+      AWB: o.tracking_id || "—",
+      Manifested: o.is_manifested ? "Yes" : "No",
+    };
+  });
 
   const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 32 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 6 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 12 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 10 },
+  ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Orders");
   XLSX.writeFile(wb, `orders-export-${Date.now()}.xlsx`);
