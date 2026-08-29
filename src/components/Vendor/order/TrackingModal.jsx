@@ -236,7 +236,20 @@ const TrackingModal = ({ awb, onClose }) => {
         </div>
 
         {/* Tracking Timeline */}
-        <TrackingTimeline events={trackingData.orderStateInfo || []} />
+        <TrackingTimeline
+          events={
+            trackingData.orderStateInfo?.length
+              ? trackingData.orderStateInfo
+              : (trackingData.events || []).map((e) => ({
+                  state: e.timelineState || e.status || e.state,
+                  createdAt: e.when || e.statusUpdatedAt || e.createdAt,
+                  location: e.location,
+                  status: e.status,
+                  description: e.message || e.description,
+                  statusUpdatedAt: e.when || e.statusUpdatedAt,
+                }))
+          }
+        />
 
         {/* Line Items */}
         {trackingData.lineItems && trackingData.lineItems.length > 0 && (
