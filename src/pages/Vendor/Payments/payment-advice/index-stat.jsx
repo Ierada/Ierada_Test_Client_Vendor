@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ChevronRight,
   Download,
@@ -13,34 +13,88 @@ import {
   ChevronLeft,
   Copy,
 } from "lucide-react";
-import { useParams } from "react-router-dom";
-import {
-  getPaymentAdviceById,
-  getOrderWiseDetails,
-} from "../../../../services/api.paymentAdvice";
 
 // ---------------------------------------------------------------------------
-// Shared styling tokens
+// Static demo data — replace with API-backed data later
 // ---------------------------------------------------------------------------
-const card = "bg-white rounded-2xl border border-gray-100 shadow-sm";
-const secondaryBtn =
-  "inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors";
-const primaryBtn =
-  "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors shadow-sm";
-
-const TABLE_HEAD = "text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide bg-gray-50";
-
-const money = (n) =>
-  `₹${Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-const formatDate = (date) => {
-  if (!date) return "—";
-  return new Date(date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const HEADER = {
+  advicNo: "PADV-2508-001",
+  settlementId: "SET-2508-001",
+  period: "01 Aug 2026 - 15 Aug 2026",
+  cycle: "15 Days Cycle",
+  paymentDate: "08 Aug 2026",
+  status: "Paid",
+  netAmount: 230530,
 };
 
-const formatTime = (time) => {
-  if (!time) return "—";
-  return new Date(`2000-01-01T${time}`).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+const TOP_CARDS = [
+  { label: "Gross Sales", value: "₹2,48,500", sub: "152 Orders", link: "View Orders", icon: TrendingUp, iconBg: "bg-blue-50", iconColor: "text-blue-600" },
+  { label: "Total Deductions", value: "₹17,970", sub: "Fees & Adjustments", link: "View Breakup", icon: MinusCircle, iconBg: "bg-red-50", iconColor: "text-red-500" },
+  { label: "Net Payable", value: "₹2,30,530", sub: "Final Settlement", link: "View Details", icon: CheckCircle2, iconBg: "bg-green-50", iconColor: "text-green-600" },
+  { label: "TDS Deducted", value: "₹1,020", sub: "1% of Gross amount", link: "View Details", icon: FileText, iconBg: "bg-orange-50", iconColor: "text-orange-500" },
+  { label: "GST Collected", value: "₹3,850", sub: "CGST + SGST Details", link: "View Breakup", icon: Receipt, iconBg: "bg-purple-50", iconColor: "text-purple-600" },
+  { label: "Payment Mode", value: "NEFT", sub: "HDFC Bank Transfer", link: null, icon: Landmark, iconBg: "bg-teal-50", iconColor: "text-teal-600" },
+];
+
+const BANK_DETAILS = [
+  ["Beneficiary Name", "Fashion Hub"],
+  ["Bank Name", "HDFC Bank"],
+  ["Account Number", "XXXXXXXX1234"],
+  ["IFSC Code", "HDFC0001234"],
+  ["UTR Number", "HDFCD826D987451"],
+  ["Transfer Date", "08 Aug 2026"],
+  ["Transfer Time", "11:32 AM"],
+  ["Transfer Mode", "NEFT"],
+];
+
+const SETTLEMENT_BREAKDOWN = {
+  credits: [
+    ["Gross Sales", 248500, "+"],
+    ["Shipping Charges Collected", 15420, "+"],
+    ["Other Credits / Adjustments", 250, "+"],
+  ],
+  totalCredits: 264170,
+  deductions: [
+    ["Marketplace Commission", 12850, "-"],
+    ["Collection Fee", 8250, "-"],
+    ["Shipping Charges", 15420, "-"],
+    ["Reverse Logistics / Return Charges", 1200, "-"],
+    ["Return / RTO Adjustment", 950, "-"],
+    ["Other Adjustments", 250, "-"],
+    ["TDS (Section 194-O)", 1020, "-"],
+  ],
+  totalDeductions: 39940,
+  net: 230530,
+};
+
+const GST_SUMMARY = [
+  { head: "CGST (9%)", taxable: 21389, amount: 1925 },
+  { head: "SGST (9%)", taxable: 21389, amount: 1925 },
+  { head: "IGST (18%)", taxable: 0, amount: 0 },
+];
+
+const TDS_SUMMARY = {
+  gross: 248500,
+  rate: "0.1%",
+  deducted: 1020,
+};
+
+const ORDER_ROWS = [
+  { orderId: "ORD-123456", invoice: "INV-100245", date: "01 Aug 2026", sku: "Men Solid T-Shirt (M / Blue)", value: 899, comm: 44.95, shipping: 40, gst: 40.46, tds: 8.09, adj: -5, net: 800.5, status: "Delivered" },
+  { orderId: "ORD-123457", invoice: "INV-100246", date: "01 Aug 2026", sku: "Women Kurti (L / White)", value: 1299, comm: 64.95, shipping: 50, gst: 58.46, tds: 11.69, adj: 0, net: 1158.9, status: "Delivered" },
+  { orderId: "ORD-123458", invoice: "INV-100247", date: "02 Aug 2026", sku: "Denim Jeans (32)", value: 1499, comm: 74.95, shipping: 60, gst: 67.46, tds: 13.49, adj: -5, net: 1338.1, status: "Delivered" },
+  { orderId: "ORD-123459", invoice: "INV-100248", date: "03 Aug 2026", sku: "Casual Shirt (L)", value: 899, comm: 44.95, shipping: 40, gst: 40.46, tds: 8.09, adj: -5, net: 800.5, status: "Delivered" },
+  { orderId: "ORD-123460", invoice: "INV-100249", date: "03 Aug 2026", sku: "Women Top (M / Black)", value: 699, comm: 34.95, shipping: 30, gst: 31.46, tds: 6.29, adj: -5, net: 620.85, status: "Delivered" },
+];
+
+const ORDER_TOTALS = {
+  orders: 152,
+  orderValue: 248500,
+  commission: 12850,
+  shipping: 15420,
+  adjustments: 250,
+  tds: 1020,
+  netPaid: 230530,
 };
 
 const TABS = [
@@ -52,158 +106,20 @@ const TABS = [
   "Attachments",
 ];
 
+// ---------------------------------------------------------------------------
+// Shared styling tokens
+// ---------------------------------------------------------------------------
+const card = "bg-white rounded-2xl border border-gray-100 shadow-sm";
+const secondaryBtn =
+  "inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors";
+const primaryBtn =
+  "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors shadow-sm";
+
+const money = (n) =>
+  `₹${Math.abs(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 const PaymentAdvice = () => {
-  const { id } = useParams();
   const [activeTab, setActiveTab] = useState("Order Wise Details");
-  const [loading, setLoading] = useState(true);
-  const [paymentAdvice, setPaymentAdvice] = useState(null);
-  const [orderDetails, setOrderDetails] = useState([]);
-  const [orderSummary, setOrderSummary] = useState({});
-  const [search, setSearch] = useState("");
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (id) {
-      fetchPaymentAdvice();
-    } else {
-      setLoading(false);
-      setError("No payment advice ID provided");
-    }
-  }, [id]);
-
-  useEffect(() => {
-    if (paymentAdvice && id) {
-      fetchOrderDetails();
-    }
-  }, [paymentAdvice, search, id]);
-
-  const fetchPaymentAdvice = async () => {
-    try {
-      setLoading(true);
-      const response = await getPaymentAdviceById(id);
-      if (response.status === 1) {
-        setPaymentAdvice(response.data);
-      } else {
-        setError(response.message || "Failed to fetch payment advice");
-      }
-    } catch (err) {
-      console.error("Error fetching payment advice:", err);
-      setError("Error fetching payment advice");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchOrderDetails = async () => {
-    try {
-      const response = await getOrderWiseDetails(id, { search });
-      if (response.status === 1) {
-        setOrderDetails(response.data.orderDetails);
-        setOrderSummary(response.data.summary);
-      }
-    } catch (err) {
-      console.error("Error fetching order details:", err);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FBF3EC] flex items-center justify-center">
-        <div className="text-gray-500">Loading payment advice...</div>
-      </div>
-    );
-  }
-
-  if (error || !paymentAdvice) {
-    return (
-      <div className="min-h-screen bg-[#FBF3EC] flex items-center justify-center">
-        <div className="text-red-500">{error || "Payment advice not found"}</div>
-      </div>
-    );
-  }
-
-  // Prepare dynamic data from API response
-  const HEADER = {
-    advicNo: paymentAdvice.advice_number,
-    settlementId: paymentAdvice.settlement?.settlement_id || "—",
-    period: paymentAdvice.settlement_period_start && paymentAdvice.settlement_period_end
-      ? `${formatDate(paymentAdvice.settlement_period_start)} - ${formatDate(paymentAdvice.settlement_period_end)}`
-      : "—",
-    cycle: paymentAdvice.settlement_cycle || "—",
-    paymentDate: formatDate(paymentAdvice.transfer_date),
-    status: paymentAdvice.payment_status,
-    netAmount: paymentAdvice.net_payable,
-  };
-
-  const TOP_CARDS = [
-    { label: "Gross Sales", value: money(paymentAdvice.gross_sales), sub: `${paymentAdvice.settlement?.orders_count || 0} Orders`, link: "View Orders", icon: TrendingUp, iconBg: "bg-blue-50", iconColor: "text-blue-600" },
-    { label: "Total Deductions", value: money(paymentAdvice.total_deductions), sub: "Fees & Adjustments", link: "View Breakup", icon: MinusCircle, iconBg: "bg-red-50", iconColor: "text-red-500" },
-    { label: "Net Payable", value: money(paymentAdvice.net_payable), sub: "Final Settlement", link: "View Details", icon: CheckCircle2, iconBg: "bg-green-50", iconColor: "text-green-600" },
-    { label: "TDS Deducted", value: money(paymentAdvice.tds_deducted), sub: `${(paymentAdvice.tds_rate || 0).toFixed(1)}% of Gross amount`, link: "View Details", icon: FileText, iconBg: "bg-orange-50", iconColor: "text-orange-500" },
-    { label: "GST Collected", value: money(paymentAdvice.gst_collected), sub: "CGST + SGST Details", link: "View Breakup", icon: Receipt, iconBg: "bg-purple-50", iconColor: "text-purple-600" },
-    { label: "Payment Mode", value: paymentAdvice.transfer_mode || "—", sub: `${paymentAdvice.bank_name || "Bank"} Transfer`, link: null, icon: Landmark, iconBg: "bg-teal-50", iconColor: "text-teal-600" },
-  ];
-
-  const BANK_DETAILS = [
-    ["Beneficiary Name", paymentAdvice.beneficiary_name || "—"],
-    ["Bank Name", paymentAdvice.bank_name || "—"],
-    ["Account Number", paymentAdvice.account_number || "—"],
-    ["IFSC Code", paymentAdvice.ifsc_code || "—"],
-    ["UTR Number", paymentAdvice.utr_number || "—"],
-    ["Transfer Date", formatDate(paymentAdvice.transfer_date)],
-    ["Transfer Time", formatTime(paymentAdvice.transfer_time)],
-    ["Transfer Mode", paymentAdvice.transfer_mode || "—"],
-  ];
-
-  const credits_summary = paymentAdvice.credits_summary || {};
-  const deductions_summary = paymentAdvice.deductions_summary || {};
-
-  const SETTLEMENT_BREAKDOWN = {
-    credits: [
-      ["Gross Sales", credits_summary.gross_sales || paymentAdvice.gross_sales, "+"],
-      ["Shipping Charges Collected", credits_summary.shipping_charges || 0, "+"],
-      ["Other Credits / Adjustments", credits_summary.other_credits || 0, "+"],
-    ],
-    totalCredits: (credits_summary.gross_sales || paymentAdvice.gross_sales) + (credits_summary.shipping_charges || 0) + (credits_summary.other_credits || 0),
-    deductions: [
-      ["Marketplace Commission", deductions_summary.commission || 0, "-"],
-      ["Collection Fee", deductions_summary.collection_fee || 0, "-"],
-      ["Shipping Charges", deductions_summary.shipping || 0, "-"],
-      ["Reverse Logistics / Return Charges", deductions_summary.returns || 0, "-"],
-      ["Return / RTO Adjustment", 0, "-"],
-      ["Other Adjustments", deductions_summary.other || paymentAdvice.adjustments || 0, "-"],
-      ["TDS (Section 194-O)", deductions_summary.tds || paymentAdvice.tds_deducted || 0, "-"],
-    ],
-    totalDeductions: Object.values(deductions_summary).reduce((sum, val) => sum + (parseFloat(val) || 0), 0) + (paymentAdvice.adjustments || 0),
-    net: paymentAdvice.net_payable,
-  };
-
-  const GST_SUMMARY = [
-    { head: "CGST (9%)", taxable: paymentAdvice.cgst_taxable || 0, amount: paymentAdvice.cgst_amount || 0 },
-    { head: "SGST (9%)", taxable: paymentAdvice.sgst_taxable || 0, amount: paymentAdvice.sgst_amount || 0 },
-    { head: "IGST (18%)", taxable: paymentAdvice.igst_taxable || 0, amount: paymentAdvice.igst_amount || 0 },
-  ];
-
-  const TDS_SUMMARY = {
-    gross: paymentAdvice.tds_gross_amount || paymentAdvice.gross_sales,
-    rate: `${(paymentAdvice.tds_rate || 0).toFixed(1)}%`,
-    deducted: paymentAdvice.tds_deducted,
-  };
-
-  const ORDER_ROWS = orderDetails.map((detail) => ({
-    orderId: detail.order?.order_number || `ORD-${detail.id}`,
-    invoice: detail.invoice_number || "—",
-    date: formatDate(detail.order_date),
-    sku: detail.product_sku || detail.product_name || "—",
-    value: detail.order_value || 0,
-    comm: detail.commission || 0,
-    shipping: detail.shipping_charges || 0,
-    gst: detail.gst || 0,
-    tds: detail.tds || 0,
-    adj: detail.adjustments || 0,
-    net: detail.net_payable || 0,
-    status: detail.order?.vendor_payment_status || detail.vendor_payment_status || detail.order_status || "Pending",
-  }));
 
   return (
     <div className="min-h-screen bg-[#FBF3EC]">
@@ -214,7 +130,7 @@ const PaymentAdvice = () => {
           <ChevronRight className="w-3 h-3" />
           <span>Payments</span>
           <ChevronRight className="w-3 h-3" />
-          <span className="text-gray-600 font-medium">Payment Advice · {HEADER.advicNo}</span>
+          <span className="text-gray-600 font-medium">Payment Advice · PADV-2508-001</span>
         </div>
 
         {/* Page header */}
@@ -434,8 +350,6 @@ const PaymentAdvice = () => {
               <div className="relative flex-1 max-w-sm">
                 <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search by Order ID, Invoice No., SKU"
                   className="w-full pl-9 pr-3 py-2 text-sm text-gray-700 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 placeholder:text-gray-400"
                 />
@@ -471,55 +385,29 @@ const PaymentAdvice = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {ORDER_ROWS.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="py-12 text-center text-gray-500">
-                        No order details found
+                  {ORDER_ROWS.map((r) => (
+                    <tr key={r.orderId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
+                      <td className="py-2.5 px-4 font-medium text-blue-600">{r.orderId}</td>
+                      <td className="py-2.5 px-4 text-gray-500">{r.invoice}</td>
+                      <td className="py-2.5 px-4 text-gray-500">{r.date}</td>
+                      <td className="py-2.5 px-4 text-gray-700">{r.sku}</td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">₹{r.value.toFixed(2)}</td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">₹{r.comm.toFixed(2)}</td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">₹{r.shipping.toFixed(2)}</td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">₹{r.gst.toFixed(2)}</td>
+                      <td className="py-2.5 px-4 text-right text-gray-700">₹{r.tds.toFixed(2)}</td>
+                      <td className={`py-2.5 px-4 text-right ${r.adj < 0 ? "text-red-500" : "text-gray-700"}`}>
+                        {r.adj < 0 ? `-₹${Math.abs(r.adj).toFixed(2)}` : `₹${r.adj.toFixed(2)}`}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-medium text-gray-900">₹{r.net.toFixed(2)}</td>
+                      <td className="py-2.5 px-4">
+                        <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600">
+                          {r.status}
+                        </span>
                       </td>
                     </tr>
-                  ) : (
-                    ORDER_ROWS.map((r) => (
-                      <tr key={r.orderId} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                        <td className="py-2.5 px-4 font-medium text-blue-600">{r.orderId}</td>
-                        <td className="py-2.5 px-4 text-gray-500">{r.invoice}</td>
-                        <td className="py-2.5 px-4 text-gray-500">{r.date}</td>
-                        <td className="py-2.5 px-4 text-gray-700">{r.sku}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">₹{r.value.toFixed(2)}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">₹{r.comm.toFixed(2)}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">₹{r.shipping.toFixed(2)}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">₹{r.gst.toFixed(2)}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">₹{r.tds.toFixed(2)}</td>
-                        <td className={`py-2.5 px-4 text-right ${r.adj < 0 ? "text-red-500" : "text-gray-700"}`}>
-                          {r.adj < 0 ? `-₹${Math.abs(r.adj).toFixed(2)}` : `₹${r.adj.toFixed(2)}`}
-                        </td>
-                        <td className="py-2.5 px-4 text-right font-medium text-gray-900">₹{r.net.toFixed(2)}</td>
-                        <td className="py-2.5 px-4">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            r.status === "Successful" ? "bg-green-50 text-green-600" :
-                            r.status === "Initiated" ? "bg-purple-50 text-purple-600" :
-                            r.status === "Approved" ? "bg-indigo-50 text-indigo-600" :
-                            r.status === "Processing" ? "bg-blue-50 text-blue-600" :
-                            "bg-amber-50 text-amber-600"
-                          }`}>
-                            {r.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
+                  ))}
                 </tbody>
-                <tfoot>
-                  <tr className="bg-gray-50 font-semibold text-gray-800">
-                    <td className="py-3 px-4" colSpan={4}>Total Summary</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_order_value || 0)}</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_commission || 0)}</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_shipping || 0)}</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_gst || 0)}</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_tds || 0)}</td>
-                    <td className="py-3 px-4 text-right">{money(orderSummary.total_net_payable || 0)}</td>
-                    <td colSpan={2}></td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
 
@@ -591,5 +479,7 @@ const PaymentAdvice = () => {
     </div>
   );
 };
+
+const TABLE_HEAD = "text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide bg-gray-50";
 
 export default PaymentAdvice;

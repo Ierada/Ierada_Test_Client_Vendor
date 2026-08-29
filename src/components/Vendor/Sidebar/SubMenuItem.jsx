@@ -14,7 +14,7 @@ const SubMenuItem = ({ subItem, counts, subActive, handleNavigation }) => {
     <li>
       <NavLink
         to={subItem.path}
-        className={`flex items-center gap-2.5 px-3 py-2 rounded-md transition-all duration-200 relative overflow-hidden
+        className={`flex items-center gap-2.5 pl-8 pr-3 py-2 rounded-md transition-all duration-200 relative overflow-hidden
           ${subActive
             ? "bg-[#EEF2F6] text-[#0164CE] font-semibold"
             : "text-[#475467] hover:bg-gray-50 hover:text-gray-950"

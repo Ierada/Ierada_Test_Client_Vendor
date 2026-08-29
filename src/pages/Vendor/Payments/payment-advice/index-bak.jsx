@@ -202,7 +202,7 @@ const PaymentAdvice = () => {
     tds: detail.tds || 0,
     adj: detail.adjustments || 0,
     net: detail.net_payable || 0,
-    status: detail.order?.vendor_payment_status || detail.vendor_payment_status || detail.order_status || "Pending",
+    status: detail.order_status || "Delivered",
   }));
 
   return (
@@ -494,13 +494,7 @@ const PaymentAdvice = () => {
                         </td>
                         <td className="py-2.5 px-4 text-right font-medium text-gray-900">₹{r.net.toFixed(2)}</td>
                         <td className="py-2.5 px-4">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                            r.status === "Successful" ? "bg-green-50 text-green-600" :
-                            r.status === "Initiated" ? "bg-purple-50 text-purple-600" :
-                            r.status === "Approved" ? "bg-indigo-50 text-indigo-600" :
-                            r.status === "Processing" ? "bg-blue-50 text-blue-600" :
-                            "bg-amber-50 text-amber-600"
-                          }`}>
+                          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-600">
                             {r.status}
                           </span>
                         </td>
@@ -591,5 +585,7 @@ const PaymentAdvice = () => {
     </div>
   );
 };
+
+// const TABLE_HEAD = "text-left text-[11px] font-medium text-gray-400 uppercase tracking-wide bg-gray-50";
 
 export default PaymentAdvice;

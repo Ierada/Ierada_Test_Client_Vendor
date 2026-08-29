@@ -14,18 +14,19 @@ import {
   Map,
   Bell,
   FolderMinus,
-  MessageCircleMore,
   Wallet,
   FileText,
   CreditCard,
   ScrollText,
   Percent,
+  Receipt,
 } from "lucide-react";
 import { BsHandbag } from "react-icons/bs";
 
 export const vendorMenuConfig = {
   mainMenuItems: [
     { text: "Dashboard", icon: LayoutDashboard, path: "/dashboard" },
+    { text: "Profile", icon: Building2, path: "/profile" },
     {
       text: "Orders",
       icon: BsHandbag,
@@ -78,14 +79,12 @@ export const vendorMenuConfig = {
         },
       ],
     },
-    { text: "Invoice/Bill", icon: MessageCircleMore, path: "/invoice" },
-    { text: "Profile", icon: Building2, path: "/profile" },
-    { text: "Settings", icon: Settings, path: "/settings" },
     { text: "Report", icon: ArrowLeftRight, path: "/report" },
     { text: "Advertising", icon: Megaphone, path: "/ads/history" },
     { text: "Review", icon: Star, path: "/review" },
     { text: "Support", icon: HelpCircle, path: "/support" },
     { text: "Training", icon: Youtube, path: "/training" },
     { text: "Notifications", icon: Bell, path: "/notifications" },
+    { text: "Settings", icon: Settings, path: "/settings" },
   ],
 };

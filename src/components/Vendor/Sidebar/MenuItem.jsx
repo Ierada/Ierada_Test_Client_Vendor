@@ -49,7 +49,7 @@ const MenuItem = ({ item, counts, openSubMenus, toggleSubMenu, hoveredSubMenu, s
             {getBadge()}
             {isExpanded ? <ChevronUp className="w-4 h-4 ml-1 text-gray-400" /> : <ChevronDown className="w-4 h-4 ml-1 text-gray-400" />}
           </button>
-          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? "max-h-60 opacity-100 mt-1 mb-2" : "max-h-0 opacity-0"}`}>
+          <div className={`transition-all duration-300 overflow-hidden ${isExpanded ? "max-h-96 opacity-100 mt-1 mb-2" : "max-h-0 opacity-0"}`}>
             <ul className="space-y-1">
               {item.subItems.map((sub, idx) => (
                 <SubMenuItem key={idx} subItem={sub} counts={counts} subActive={location.pathname === sub.path} handleNavigation={handleNavigation} />

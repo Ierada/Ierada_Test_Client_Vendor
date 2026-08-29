@@ -22,7 +22,7 @@ import Returns from "../pages/Vendor/Order/Returns.jsx";
 import OrderDetail from "../pages/Vendor/Order/OrderDetail/index.jsx";
 import Invoice from "../pages/Vendor/Invoice";
 import Coupons from "../pages/Vendor/Coupons";
-import Report from "../pages/Vendor/Report";
+import ReportNew from "../pages/Vendor/ReportNew";
 import Profile from "../pages/Vendor/Profile";
 import TrackCustomerOrders from "../pages/Vendor/TrackOrder";
 import CreateCampaign from "../components/Vendor/CreateCampaign";
@@ -183,7 +183,7 @@ const VendorRoutes = () => {
         { path: "/invoice", element: <Invoice /> },
         // { path: "/invoice/create", element: <CreateInvoice /> },
         { path: "/coupons", element: <Coupons /> },
-        { path: "/report", element: <Report /> },
+        { path: "/report", element: <ReportNew /> },
         { path: "/chat", element: <ChatLayout /> },
         { path: "/influencer", element: <ManageInfluencer /> },
         { path: "/profile", element: <Profile /> },
