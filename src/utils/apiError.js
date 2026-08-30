@@ -16,6 +16,9 @@ export const getApiErrorMessage = (
   if (status === 401 || status === 403) {
     return serverMsg || "You don't have permission to do this, or your session has expired.";
   }
+  if (status === 404) {
+    return serverMsg || "This action is unavailable. Stay on the page and try another option.";
+  }
   if (status === 429) {
     return "Too many requests — please wait a moment and try again.";
   }

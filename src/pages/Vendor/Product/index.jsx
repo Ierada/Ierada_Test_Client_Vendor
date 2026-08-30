@@ -19,6 +19,7 @@ import {
   Save,
   X,
   Pencil,
+  Copy,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ProductModal from "../../../components/Vendor/Models/ProductModal";
@@ -28,11 +29,9 @@ import {
   getProductsByVendorId,
   patchProduct,
 } from "../../../services/api.product";
+import { seedDuplicateListingDraft } from "../../../components/Vendor/SmartListing/utils/duplicateListing";
+import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import { useAppContext } from "../../../context/AppContext";
-import {
-  notifyOnFail,
-  notifyOnSuccess,
-} from "../../../utils/notification/toast";
 import config from "../../../config/config";
 import { motion } from "framer-motion";
 import {
@@ -699,6 +698,24 @@ const Product = () => {
               title="Edit"
             >
               <Edit className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  await seedDuplicateListingDraft(row.original.id, {
+                    mode: "vendor",
+                  });
+                  notifyOnSuccess("Draft opened as copy — review and submit");
+                  navigate(`${config.VITE_BASE_VENDOR_URL}/product/add`);
+                } catch (err) {
+                  notifyOnFail(err?.message || "Could not duplicate listing");
+                }
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Duplicate listing"
+            >
+              <Copy className="w-4 h-4 text-gray-600" />
             </button>
             <button
               onClick={(e) => {

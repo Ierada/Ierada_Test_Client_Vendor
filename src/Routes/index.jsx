@@ -14,6 +14,7 @@ import NotFoundPage from "../pages/NotFound/index.jsx";
 import Dashboard from "../pages/Vendor/Dashboard";
 import Product from "../pages/Vendor/Product";
 import AddEditProduct from "../pages/Vendor/AddProduct";
+import SmartListing from "../pages/Vendor/SmartListing";
 import Setting from "../pages/Vendor/Setting";
 import Order from "../pages/Vendor/Order";
 import OrderPipeline from "../pages/Vendor/Order/OrderPipeline.jsx";
@@ -37,6 +38,7 @@ import VendorLogoutPage from "../pages/Vendor/Logout/index.jsx";
 import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
 import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
 import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
+import BulkListingManager from "../pages/Vendor/BulkListingManager";
 import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
 import PaymentOverview from "../pages/Vendor/Payments/payment-overview/index.jsx";
 import Settlements from "../pages/Vendor/Payments/settlements/index.jsx";
@@ -169,9 +171,12 @@ const VendorRoutes = () => {
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: "/dashboard", element: <Dashboard /> },
         { path: "/product", element: <Product /> },
-        { path: "/product/add", element: <AddEditProduct /> },
-        { path: "/product/edit/:id", element: <AddEditProduct /> },
-        { path: "/bulk-upload", element: <ProductFilesManager /> },
+        { path: "/product/add", element: <SmartListing mode="vendor" /> },
+        { path: "/product/add-classic", element: <AddEditProduct /> },
+        { path: "/product/edit/:id", element: <SmartListing mode="vendor" /> },
+        { path: "/product/edit-classic/:id", element: <AddEditProduct /> },
+        { path: "/bulk-upload", element: <BulkListingManager mode="vendor" /> },
+        { path: "/bulk-upload/media", element: <ProductFilesManager /> },
         { path: "/settings", element: <Setting /> },
         { path: "/pickup-verification", element: <PickupVerification /> },
         { path: "/orders", element: <Order /> },

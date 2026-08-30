@@ -210,7 +210,7 @@ const AddEditProduct = () => {
           name: c.title,
           categoryId: c.cat_id,
           hsn_code: c.hsn_code,
-          gst: c.gst,
+          gst: c.tax ?? c.gst,
         })) || [],
       );
       setInnerSubCategories(
@@ -219,7 +219,7 @@ const AddEditProduct = () => {
           name: c.title,
           subCategoryId: c.sub_cat_id,
           hsn_code: c.hsn_code,
-          gst: c.gst,
+          gst: c.tax ?? c.gst,
         })) || [],
       );
       setColors(colorRes.status === 1 ? colorRes.data : []);
@@ -598,10 +598,21 @@ const AddEditProduct = () => {
         inner_sub_category_id: "",
       }));
     } else if (name === "sub_category_id") {
+      const sub = subCategories.find((s) => String(s.id) === String(value));
       setFormData((prev) => ({
         ...prev,
         sub_category_id: value,
         inner_sub_category_id: "",
+        ...(sub?.hsn_code ? { hsn_code: sub.hsn_code } : {}),
+        ...(sub?.gst != null && sub?.gst !== "" ? { gst: sub.gst } : {}),
+      }));
+    } else if (name === "inner_sub_category_id") {
+      const inner = innerSubCategories.find((s) => String(s.id) === String(value));
+      setFormData((prev) => ({
+        ...prev,
+        inner_sub_category_id: value,
+        ...(inner?.hsn_code ? { hsn_code: inner.hsn_code } : {}),
+        ...(inner?.gst != null && inner?.gst !== "" ? { gst: inner.gst } : {}),
       }));
     } else if (name === "low_stock_threshold") {
       const threshold = Math.min(

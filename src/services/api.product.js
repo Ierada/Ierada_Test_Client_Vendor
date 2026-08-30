@@ -101,12 +101,14 @@ export const addProduct = async (productData) => {
     //   notifyOnFail(res.data.message);
     // }
     return res.data;
-  } catch (error) {
+    } catch (error) {
     notifyOnFail(
-      error.response?.data?.message ||
+      getApiErrorMessage(
+        error,
         "There was an error adding the product. Please try again later.",
+      ),
     );
-    return error.response || error;
+    return error.response?.data || { status: 0, message: "Error adding product" };
   }
 };
 

@@ -1,0 +1,51 @@
+{
+  "note": "Use these label sets and matching SVG charts for apparel/footwear/kids. Upload size_chart_image on Inner Subcategory, or run scripts/applyDefaultSizeCharts.js on Test.",
+  "standards": {
+    "apparel_tops": [
+      "XS",
+      "S",
+      "M",
+      "L",
+      "XL",
+      "XXL",
+      "3XL"
+    ],
+    "apparel_bottoms": [
+      "26",
+      "28",
+      "30",
+      "32",
+      "34",
+      "36",
+      "38",
+      "40"
+    ],
+    "footwear": [
+      "UK 3",
+      "UK 4",
+      "UK 5",
+      "UK 6",
+      "UK 7",
+      "UK 8",
+      "UK 9",
+      "UK 10",
+      "UK 11"
+    ],
+    "kids": [
+      "0-3M",
+      "3-6M",
+      "6-12M",
+      "1-2Y",
+      "2-3Y",
+      "3-4Y",
+      "4-5Y",
+      "5-6Y"
+    ]
+  },
+  "images": {
+    "apparel_tops": "size-charts/size-chart-apparel_tops.svg",
+    "apparel_bottoms": "size-charts/size-chart-apparel_bottoms.svg",
+    "footwear": "size-charts/size-chart-footwear.svg",
+    "kids": "size-charts/size-chart-kids.svg"
+  }
+}
