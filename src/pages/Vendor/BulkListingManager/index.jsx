@@ -295,28 +295,32 @@ export default function BulkListingManager({ mode = "vendor" }) {
 
   return (
     <ListingErrorBoundary>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="p-6 max-w-6xl mx-auto space-y-5">
+        <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Bulk Manager</h1>
-            <p className="text-sm text-gray-500">
-              Create, update, export, and archive listings
-              {mode === "vendor" ? " (your catalog only)" : " (admin scope)"}.
+            <h1 className="text-xl font-semibold text-gray-900">Bulk listing</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Excel create + full-field update. Path: Products → Bulk Manager.
             </p>
           </div>
-          <Link to="/product/add" className="text-sm text-blue-600">
+          <Link
+            to="/product/add"
+            className="text-sm font-medium text-blue-600 hover:text-blue-700"
+          >
             Smart Listing
           </Link>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-b pb-2">
+        <div className="flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1">
           {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-sm ${
-                tab === t.id ? "bg-blue-600 text-white" : "bg-slate-100 text-gray-700"
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                tab === t.id
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
               }`}
             >
               {t.label}
@@ -324,25 +328,44 @@ export default function BulkListingManager({ mode = "vendor" }) {
           ))}
         </div>
 
-        {progress ? <p className="text-sm text-blue-700">{progress}</p> : null}
+        {progress ? (
+          <p className="text-sm text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-4 py-2">
+            {progress}
+          </p>
+        ) : null}
+
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-gray-700 space-y-2">
+          <p className="font-semibold text-gray-900">Bulk listing flow</p>
+          <ol className="list-decimal pl-5 space-y-1 text-xs sm:text-sm">
+            <li>This page: <strong>Products → Bulk Manager</strong>. One-by-one listing is Smart Listing.</li>
+            <li><strong>Create</strong> — download Import template, fill Products + Specifications (custom fields) + box + variations, upload.</li>
+            <li><strong>Update</strong> — download Update template for name, HSN, GST, prices, stock, specs, variations (not only stock/price).</li>
+            <li>Images via media / folder-pack manager.</li>
+          </ol>
+        </div>
 
         {tab === "upload" ? (
-          <div className="bg-white border rounded-2xl p-5 space-y-3">
-            <p className="text-sm text-gray-600">
-              Excel create / stock-price update (existing reliable path). Folder-pack images via media
-              manager.
-            </p>
-            <BulkProductImport vendorId={vendorId} user={user} />
-            <Link to="/bulk-upload/media" className="block text-sm text-blue-600">
-              Open media / folder-pack manager
-            </Link>
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="text-sm text-gray-600 max-w-xl">
+                Download a template, fill the Excel, then upload. Images go through the media / folder-pack manager.
+              </p>
+              <Link to="/bulk-upload/media" className="text-sm font-medium text-blue-600 shrink-0">
+                Open media manager
+              </Link>
+            </div>
+            <BulkProductImport vendorId={vendorId} user={user} compact />
           </div>
         ) : null}
 
         {tab === "update" ? (
-          <div className="bg-white border rounded-2xl p-5 space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-sm text-gray-600">
-              CSV columns: sku, discounted_price, stock, visibility (Published/Hidden)
+              CSV columns: <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">sku</code>,{" "}
+              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">discounted_price</code>,{" "}
+              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">stock</code>,{" "}
+              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">visibility</code>{" "}
+              (Published / Hidden)
             </p>
             <textarea
               className="w-full h-48 border rounded-xl p-3 font-mono text-xs"
@@ -361,7 +384,7 @@ export default function BulkListingManager({ mode = "vendor" }) {
         ) : null}
 
         {tab === "export" ? (
-          <div className="bg-white border rounded-2xl p-5 space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-sm text-gray-600">
               Download CSV of catalog ({exportRows.length ? `${exportRows.length} last` : "ready"}).
             </p>
@@ -377,7 +400,7 @@ export default function BulkListingManager({ mode = "vendor" }) {
         ) : null}
 
         {tab === "archive" ? (
-          <div className="bg-white border rounded-2xl p-5 space-y-3">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-sm text-gray-600">Paste SKUs (comma or newline). Soft-archive sets Hidden.</p>
             <textarea
               className="w-full h-32 border rounded-xl p-3 font-mono text-xs"
@@ -408,23 +431,25 @@ export default function BulkListingManager({ mode = "vendor" }) {
         ) : null}
 
         {tab === "history" ? (
-          <div className="bg-white border rounded-2xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-gray-500 text-left">
                 <tr>
-                  <th className="px-4 py-2">When</th>
-                  <th className="px-4 py-2">Type</th>
-                  <th className="px-4 py-2">OK</th>
-                  <th className="px-4 py-2">Failed</th>
+                  <th className="px-4 py-2.5 font-medium">When</th>
+                  <th className="px-4 py-2.5 font-medium">Type</th>
+                  <th className="px-4 py-2.5 font-medium">OK</th>
+                  <th className="px-4 py-2.5 font-medium">Failed</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.map((j) => (
                   <tr key={j.id} className="border-t">
-                    <td className="px-4 py-2 text-xs">{j.at}</td>
-                    <td className="px-4 py-2">{j.type}</td>
-                    <td className="px-4 py-2">{j.success}</td>
-                    <td className="px-4 py-2">{j.failed}</td>
+                    <td className="px-4 py-2.5 text-xs text-gray-600">
+                      {j.at ? new Date(j.at).toLocaleString() : "—"}
+                    </td>
+                    <td className="px-4 py-2.5 capitalize">{j.type}</td>
+                    <td className="px-4 py-2.5">{j.success}</td>
+                    <td className="px-4 py-2.5">{j.failed}</td>
                   </tr>
                 ))}
                 {!jobs.length ? (

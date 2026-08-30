@@ -11,7 +11,7 @@ import {
   notifyOnSuccess,
 } from "../../../utils/notification/toast";
 
-const BulkProductImport = ({ vendorId, user }) => {
+const BulkProductImport = ({ vendorId, user, compact = false }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -112,20 +112,24 @@ const BulkProductImport = ({ vendorId, user }) => {
   };
 
   return (
-    <div className="p-6 rounded-lg">
-      <h2 className="text-2xl font-bold mb-6">Bulk Product Management</h2>
+    <div className={compact ? "space-y-5" : "p-6 rounded-lg"}>
+      {compact ? null : (
+        <h2 className="text-2xl font-bold mb-6">Bulk Product Management</h2>
+      )}
 
-      <div className="mb-6">
+      <div className={compact ? "mb-4 max-w-md" : "mb-6"}>
         <label className="block text-sm font-medium text-gray-700 mb-2">
-          Select Operation Type
+          Operation
         </label>
         <select
           value={operationType}
           onChange={(e) => setOperationType(e.target.value)}
-          className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
         >
-          <option value="productImport">Bulk Product Import</option>
-          <option value="stockPriceUpdate">Stock & Price Update</option>
+          <option value="productImport">Create new listings (full Excel)</option>
+          <option value="stockPriceUpdate">
+            Update existing listings (name, HSN, GST, price, stock, specs, variations)
+          </option>
         </select>
       </div>
 
@@ -180,7 +184,11 @@ const BulkProductImport = ({ vendorId, user }) => {
         </p>
       </div>
 
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center mb-6">
+      <div
+        className={`border-2 border-dashed border-gray-300 rounded-xl text-center mb-6 ${
+          compact ? "p-6" : "p-8"
+        }`}
+      >
         <input
           type="file"
           id="product-file-upload"

@@ -4,6 +4,7 @@ import { getAllColors, addColor } from "../../../services/api.color";
 import { getAllSizes, addSize } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { suggestVariantSku } from "./utils/variationHelpers";
+import SearchablePicker from "./SearchablePicker";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
@@ -217,22 +218,17 @@ export default function ColorSizeMatrix({ state, patch }) {
           <div className="flex flex-wrap gap-2 items-end">
             <label className="flex-1 min-w-[160px] space-y-1">
               <span className="text-xs font-medium text-gray-600">Color</span>
-              <select
-                className={inputCls}
+              <SearchablePicker
+                compact
                 value={g.color_id}
-                onChange={(e) => {
-                  const id = e.target.value;
+                onChange={(id) => {
                   const c = colors.find((x) => String(x.id) === String(id));
                   updateGroup(gi, { color_id: id, color_name: c?.name || "" });
                 }}
-              >
-                <option value="">Select color</option>
-                {colors.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select color"
+                searchPlaceholder="Search color…"
+                options={colors.map((c) => ({ id: c.id, label: c.name }))}
+              />
             </label>
             {groups.length > 1 ? (
               <button
@@ -302,19 +298,15 @@ export default function ColorSizeMatrix({ state, patch }) {
               <tbody>
                 {(g.sizes || []).map((s, si) => (
                   <tr key={si} className="border-b border-gray-100">
-                    <td className="py-1.5 pr-2">
-                      <select
-                        className={inputCls}
+                    <td className="py-1.5 pr-2 min-w-[140px]">
+                      <SearchablePicker
+                        compact
                         value={s.size_id}
-                        onChange={(e) => updateSize(gi, si, { size_id: e.target.value })}
-                      >
-                        <option value="">Size</option>
-                        {sizes.map((z) => (
-                          <option key={z.id} value={z.id}>
-                            {z.name}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(id) => updateSize(gi, si, { size_id: id })}
+                        placeholder="Size"
+                        searchPlaceholder="Search size…"
+                        options={sizes.map((z) => ({ id: z.id, label: z.name }))}
+                      />
                     </td>
                     <td className="py-1.5 pr-2">
                       <input

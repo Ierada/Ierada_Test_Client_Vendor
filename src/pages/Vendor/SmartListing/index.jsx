@@ -34,6 +34,12 @@ import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/inn
 import { calcSettlement, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
 import { buildSmartListingFormData } from "../../../components/Vendor/SmartListing/utils/buildFormData";
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
+import {
+  stashListingMedia,
+  stripFilesForDraft,
+  mergeCachedMedia,
+} from "../../../components/Vendor/SmartListing/utils/listingMediaCache";
+import SearchablePicker from "../../../components/Vendor/SmartListing/SearchablePicker";
 import ColorSizeMatrix from "../../../components/Vendor/SmartListing/ColorSizeMatrix";
 import CustomVariationMatrix from "../../../components/Vendor/SmartListing/CustomVariationMatrix";
 import ComboBuilder from "../../../components/Vendor/SmartListing/ComboBuilder";
@@ -205,8 +211,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const autosaveTimer = useRef(null);
 
   const patch = useCallback((partial) => {
-    setState((prev) => ({ ...prev, ...partial }));
-  }, []);
+    setState((prev) => {
+      const next = { ...prev, ...partial };
+      stashListingMedia(stableId, next);
+      return next;
+    });
+  }, [stableId]);
 
   const patchSection = useCallback((section, partial) => {
     setState((prev) => ({
@@ -281,7 +291,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (editProductId) return;
     const local = loadLocalDraft(stableId) || loadLocalDraft();
     if (local?.payload) {
-      setState((prev) => ({ ...prev, ...local.payload }));
+      setState((prev) => {
+        const next = mergeCachedMedia(stableId, { ...prev, ...local.payload }, prev);
+        stashListingMedia(stableId, next);
+        return next;
+      });
       if (local.phase) setPhase(local.phase);
       if (local.step) setStep(local.step);
       if (local.reviewSection) setReviewSection(local.reviewSection);
@@ -447,7 +461,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   useEffect(() => {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(async () => {
-      const payload = { ...state, files: undefined, brandAuthFile: undefined };
+      const payload = stripFilesForDraft(state);
+      stashListingMedia(stableId, state);
       saveLocalDraft(stableId, {
         payload,
         phase,
@@ -840,6 +855,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               categories={categories}
               filteredSubs={filteredSubs}
               filteredInners={filteredInners}
+              onBrandTypeSelected={(t) => {
+                if (t === "generic") setStep("type");
+              }}
             />
           ) : (
             <ReviewPanel
@@ -926,6 +944,7 @@ function BasicsPanel({
   categories,
   filteredSubs,
   filteredInners,
+  onBrandTypeSelected,
 }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-5">
@@ -937,7 +956,10 @@ function BasicsPanel({
               <button
                 key={t}
                 type="button"
-                onClick={() => patch({ brandType: t })}
+                onClick={() => {
+                  patch({ brandType: t });
+                  onBrandTypeSelected?.(t);
+                }}
                 className={`text-left rounded-xl border p-4 ${
                   state.brandType === t ? "border-blue-500 bg-blue-50" : "border-gray-200"
                 }`}
@@ -953,6 +975,16 @@ function BasicsPanel({
           </div>
           {fieldErrors.brandType ? (
             <p className="text-xs text-red-600">{fieldErrors.brandType}</p>
+          ) : null}
+          {state.brandType === "generic" ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
+              <p className="text-sm font-medium text-emerald-900">
+                Generic product — no brand certificate needed
+              </p>
+              <p className="text-xs text-emerald-800">
+                Click Next to choose listing type (Single, Combo, Color & Size, or Custom).
+              </p>
+            </div>
           ) : null}
           {state.brandType === "branded" ? (
             <div className="space-y-2 border rounded-xl p-4 bg-slate-50">
@@ -1056,65 +1088,78 @@ function BasicsPanel({
           <h2 className="font-semibold text-gray-900">Select Category</h2>
           <div className="grid gap-3">
             <Field label="Category" required error={fieldErrors.category_id}>
-              <select
-                className={inputCls}
+              <SearchablePicker
                 value={state.category_id}
-                onChange={(e) =>
+                onChange={(id) =>
                   patch({
-                    category_id: e.target.value,
+                    category_id: id,
                     sub_category_id: "",
                     inner_sub_category_id: "",
                   })
                 }
-              >
-                <option value="">Select</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Search category"
+                searchPlaceholder="Search category…"
+                options={categories.map((c) => ({ id: c.id, label: c.name }))}
+                error={fieldErrors.category_id}
+              />
             </Field>
             <Field label="Sub Category" required error={fieldErrors.sub_category_id}>
-              <select
-                className={inputCls}
+              <SearchablePicker
                 value={state.sub_category_id}
-                onChange={(e) =>
+                onChange={(id) =>
                   patch({
-                    sub_category_id: e.target.value,
+                    sub_category_id: id,
                     inner_sub_category_id: "",
                   })
                 }
-              >
-                <option value="">Select</option>
-                {filteredSubs.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Search subcategory"
+                searchPlaceholder="Search subcategory…"
+                options={filteredSubs.map((c) => ({ id: c.id, label: c.name }))}
+                error={fieldErrors.sub_category_id}
+              />
             </Field>
             <Field label="Inner Sub Category">
-              <select
-                className={inputCls}
+              <SearchablePicker
                 value={state.inner_sub_category_id}
-                onChange={(e) => patch({ inner_sub_category_id: e.target.value })}
-              >
-                <option value="">Select (optional)</option>
-                {filteredInners.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(id) => patch({ inner_sub_category_id: id })}
+                placeholder="Select (optional)"
+                searchPlaceholder="Search inner subcategory…"
+                options={filteredInners.map((c) => ({ id: c.id, label: c.name }))}
+              />
             </Field>
-            <div className="grid sm:grid-cols-2 gap-3 text-sm bg-slate-50 rounded-xl p-3">
-              <div>
-                HSN: <strong>{state.hsn_code || "—"}</strong>
-              </div>
-              <div>
-                GST %: <strong>{state.gst ?? "—"}</strong>
-              </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label="HSN Code" required>
+                <input
+                  className={inputCls}
+                  value={state.hsn_code}
+                  onChange={(e) => patch({ hsn_code: e.target.value })}
+                  placeholder="Autofill after category, or type"
+                />
+              </Field>
+              <Field label="GST %">
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={state.gst}
+                  onChange={(e) => patch({ gst: e.target.value })}
+                />
+              </Field>
+              <Field label="MRP (₹)" required>
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={state.original_price}
+                  onChange={(e) => patch({ original_price: e.target.value })}
+                />
+              </Field>
+              <Field label="Selling price (₹)" required>
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={state.discounted_price}
+                  onChange={(e) => patch({ discounted_price: e.target.value })}
+                />
+              </Field>
             </div>
           </div>
         </>
@@ -1209,6 +1254,22 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                   className={inputCls}
                   value={state.gst}
                   onChange={(e) => patch({ gst: e.target.value })}
+                />
+              </Field>
+              <Field label="MRP (₹)" required>
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={state.original_price}
+                  onChange={(e) => patch({ original_price: e.target.value })}
+                />
+              </Field>
+              <Field label="Selling price (₹)" required>
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={state.discounted_price}
+                  onChange={(e) => patch({ discounted_price: e.target.value })}
                 />
               </Field>
               {state.gst_mixed ? (
