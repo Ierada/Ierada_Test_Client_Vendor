@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
-import { searchProducts, getProductById } from "../../../services/api.product";
+import { getProductById, getProductsByVendorId } from "../../../services/api.product";
 import { notifyOnFail } from "../../../utils/notification/toast";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
 
-export default function ComboBuilder({ state, patch }) {
+export default function ComboBuilder({ state, patch, vendorId }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -26,9 +26,17 @@ export default function ComboBuilder({ state, patch }) {
 
   const runSearch = async () => {
     if (!q.trim()) return;
+    if (!vendorId) {
+      notifyOnFail("Vendor account required before searching combo products");
+      return;
+    }
     setBusy(true);
     try {
-      const res = await searchProducts(q.trim());
+      const res = await getProductsByVendorId(vendorId, {
+        search: q.trim(),
+        limit: 20,
+        visibility: "all",
+      });
       setHits(res?.data || []);
     } catch {
       notifyOnFail("Search failed");
@@ -38,9 +46,17 @@ export default function ComboBuilder({ state, patch }) {
   };
 
   const addProduct = async (p) => {
+    if (vendorId && Number(p.vendor_id) !== Number(vendorId)) {
+      notifyOnFail("Only your products can be added to a combo");
+      return;
+    }
     try {
       const detail = await getProductById(p.id);
       const product = detail?.data || p;
+      if (vendorId && Number(product.vendor_id) !== Number(vendorId)) {
+        notifyOnFail("Only your products can be added to a combo");
+        return;
+      }
       const variations = product.variations || [];
       const stock =
         variations.length > 0
@@ -58,11 +74,18 @@ export default function ComboBuilder({ state, patch }) {
           discount_percentage: null,
         },
       ];
-      patch({ comboItems: next, stock: String(Math.min(...next.map((it) => {
-        const child = Number(it.available_stock) || 0;
-        const qty = Math.max(1, Number(it.qty) || 1);
-        return Math.floor(child / qty);
-      })) || 0) });
+      patch({
+        comboItems: next,
+        stock: String(
+          Math.min(
+            ...next.map((it) => {
+              const child = Number(it.available_stock) || 0;
+              const qty = Math.max(1, Number(it.qty) || 1);
+              return Math.floor(child / qty);
+            }),
+          ) || 0,
+        ),
+      });
       setHits([]);
       setQ("");
     } catch {
@@ -106,13 +129,16 @@ export default function ComboBuilder({ state, patch }) {
         <p className="text-xs text-gray-500">
           Parent stock = min(floor(component stock ÷ qty)). Tax uses parent listing
           HSN/GST only (pan-India ecommerce standard — no component breakup).
+          <span className="block mt-1 text-amber-700">
+            Search is limited to your catalog only.
+          </span>
         </p>
       </div>
 
       <div className="flex gap-2">
         <input
           className={inputCls}
-          placeholder="Search products to add…"
+          placeholder="Search your products to add…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && runSearch()}
@@ -121,7 +147,7 @@ export default function ComboBuilder({ state, patch }) {
           type="button"
           disabled={busy}
           onClick={runSearch}
-          className="px-3 rounded-lg bg-blue-600 text-white text-sm inline-flex items-center gap-1"
+          className="px-3 rounded-lg bg-blue-600 text-white text-sm inline-flex items-center gap-1 disabled:opacity-50"
         >
           <Search className="w-4 h-4" /> Search
         </button>

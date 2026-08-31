@@ -41,28 +41,46 @@ function pushJob(job) {
   return next;
 }
 
+const CSV_FIELDS = [
+  "sku",
+  "name",
+  "hsn_code",
+  "gst",
+  "original_price",
+  "discounted_price",
+  "stock",
+  "visibility",
+];
+
 function parseCsv(text) {
-  return String(text || "")
+  const lines = String(text || "")
     .split(/\r?\n/)
     .map((l) => l.trim())
-    .filter(Boolean)
+    .filter(Boolean);
+  if (!lines.length) return [];
+  const first = lines[0].split(",").map((p) => p.trim().toLowerCase());
+  const hasHeader = first.includes("sku");
+  const keys = hasHeader ? first : CSV_FIELDS;
+  const start = hasHeader ? 1 : 0;
+  return lines.slice(start)
     .map((line) => {
       const parts = line.split(",").map((p) => p.trim());
-      return {
-        sku: parts[0],
-        discounted_price: parts[1],
-        stock: parts[2],
-        visibility: parts[3],
-      };
+      const row = {};
+      keys.forEach((k, i) => {
+        row[k] = parts[i] ?? "";
+      });
+      return row;
     })
-    .filter((r) => r.sku && r.sku.toLowerCase() !== "sku");
+    .filter((r) => r.sku && String(r.sku).toLowerCase() !== "sku");
 }
 
 export default function BulkListingManager({ mode = "vendor" }) {
   const { user } = useAppContext();
   const vendorId = mode === "vendor" ? user?.id : null;
   const [tab, setTab] = useState("upload");
-  const [paste, setPaste] = useState("sku,discounted_price,stock,visibility\n");
+  const [paste, setPaste] = useState(
+    "sku,name,hsn_code,gst,original_price,discounted_price,stock,visibility\n",
+  );
   const [busy, setBusy] = useState(false);
   const [jobs, setJobs] = useState(() => loadJobs());
 
@@ -123,7 +141,7 @@ export default function BulkListingManager({ mode = "vendor" }) {
   const runUpdate = async () => {
     const rows = parseCsv(paste);
     if (!rows.length) {
-      notifyOnFail("Paste CSV rows with sku,discounted_price,stock,visibility");
+      notifyOnFail("Paste CSV with a sku column (and any fields to update)");
       return;
     }
     setBusy(true);
@@ -153,13 +171,17 @@ export default function BulkListingManager({ mode = "vendor" }) {
         }
         try {
           const fd = new FormData();
-          if (row.discounted_price !== undefined && row.discounted_price !== "") {
-            fd.append("discounted_price", row.discounted_price);
-          }
-          if (row.stock !== undefined && row.stock !== "") {
-            fd.append("stock", row.stock);
-          }
-          if (row.visibility) fd.append("visibility", row.visibility);
+          [
+            "name",
+            "hsn_code",
+            "gst",
+            "original_price",
+            "discounted_price",
+            "stock",
+            "visibility",
+          ].forEach((key) => {
+            if (row[key] !== undefined && row[key] !== "") fd.append(key, row[key]);
+          });
           fd.append("vendor_id", product.vendor_id);
           const res = await updateProduct(product.id, fd);
           if (res?.status === 1) success += 1;
@@ -361,11 +383,11 @@ export default function BulkListingManager({ mode = "vendor" }) {
         {tab === "update" ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-sm text-gray-600">
-              CSV columns: <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">sku</code>,{" "}
-              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">discounted_price</code>,{" "}
-              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">stock</code>,{" "}
-              <code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">visibility</code>{" "}
-              (Published / Hidden)
+              Quick CSV (header row). For custom spec fields / variations use the Excel{" "}
+              <strong>Update existing listings</strong> template on Create / Upload.
+            </p>
+            <p className="text-xs text-gray-500 font-mono break-all">
+              sku,name,hsn_code,gst,original_price,discounted_price,stock,visibility
             </p>
             <textarea
               className="w-full h-48 border rounded-xl p-3 font-mono text-xs"

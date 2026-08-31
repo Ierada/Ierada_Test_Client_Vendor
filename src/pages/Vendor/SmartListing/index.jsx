@@ -58,6 +58,16 @@ function basicsStepsFor(listingType) {
   return base;
 }
 
+const STEP_LABELS = {
+  brand: "Brand",
+  type: "Listing Type",
+  category: "Category",
+  images: "Images",
+  matrix: "Variations",
+  combo: "Combo",
+  review: "AI Review",
+};
+
 const REVIEW_SECTIONS = [
   { id: "product_info", label: "Product Information" },
   { id: "key_features", label: "Key Features" },
@@ -737,7 +747,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           listing_type: state.listingType || "single",
           step: reviewSection,
           vendor_id: vendorId || undefined,
-          payload: { ...state, files: undefined, brandAuthFile: undefined },
+          payload: stripFilesForDraft(state),
         });
         if (res?.status === 1) {
           notifyOnSuccess("Draft saved — add images before publishing");
@@ -828,6 +838,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             </Link>
           </div>
         </div>
+        {!isEditMode ? (
+          <ListingStepper phase={phase} step={step} steps={steps} />
+        ) : null}
       </div>
 
       {banner ? (
@@ -855,6 +868,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               categories={categories}
               filteredSubs={filteredSubs}
               filteredInners={filteredInners}
+              vendorId={vendorId}
               onBrandTypeSelected={(t) => {
                 if (t === "generic") setStep("type");
               }}
@@ -878,7 +892,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           )}
         </div>
 
-        <aside className="lg:col-span-4 space-y-4">
+        <aside className="lg:col-span-4 space-y-3 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
           <RightRail state={state} settlement={settlement} previewUrl={previewUrls[0]} />
         </aside>
       </div>
@@ -944,6 +958,7 @@ function BasicsPanel({
   categories,
   filteredSubs,
   filteredInners,
+  vendorId,
   onBrandTypeSelected,
 }) {
   return (
@@ -1076,7 +1091,7 @@ function BasicsPanel({
 
       {step === "combo" ? (
         <>
-          <ComboBuilder state={state} patch={patch} />
+          <ComboBuilder state={state} patch={patch} vendorId={vendorId} />
           {fieldErrors.combo ? (
             <p className="text-xs text-red-600">{fieldErrors.combo}</p>
           ) : null}
@@ -1551,14 +1566,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 <option value="no">No</option>
               </select>
             </Field>
-            <Field label="Return Window (days)">
-              <input
-                type="number"
-                className={inputCls}
-                value={state.return_window_days}
-                onChange={(e) => patch({ return_window_days: e.target.value })}
-              />
-            </Field>
             <Field label="Free Shipping">
               <select
                 className={inputCls}
@@ -1690,15 +1697,65 @@ function BoxEditor({ items, onChange }) {
   );
 }
 
+function ListingStepper({ phase, step, steps }) {
+  const flowSteps = [...steps, "review"];
+  const activeId = phase === "review" ? "review" : step;
+  const activeIdx = Math.max(0, flowSteps.indexOf(activeId));
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 pb-3 overflow-x-auto border-t border-slate-100 pt-3">
+      <ol className="flex items-center gap-0.5 min-w-max">
+        {flowSteps.map((id, idx) => {
+          const done = idx < activeIdx;
+          const active = idx === activeIdx;
+          const label = STEP_LABELS[id] || id;
+          return (
+            <li key={id} className="flex items-center">
+              {idx > 0 ? (
+                <span
+                  className={`w-5 sm:w-8 h-px shrink-0 ${done ? "bg-blue-400" : "bg-gray-200"}`}
+                  aria-hidden
+                />
+              ) : null}
+              <span
+                className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border text-[11px] sm:text-xs whitespace-nowrap ${
+                  active
+                    ? "bg-blue-600 text-white border-blue-600 font-medium"
+                    : done
+                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      : "bg-white text-gray-400 border-gray-200"
+                }`}
+              >
+                <span
+                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    active
+                      ? "bg-white/25 text-white"
+                      : done
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {done ? "✓" : idx + 1}
+                </span>
+                {label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
 function RightRail({ state, settlement, previewUrl }) {
   const off = settlement.discountPct > 0 ? `${settlement.discountPct}% OFF` : null;
   return (
     <>
-      <div className="bg-white rounded-2xl border p-4 space-y-3 sticky top-20">
+      <div className="bg-white rounded-2xl border p-3 space-y-2">
         <h3 className="font-semibold text-sm flex items-center gap-2">
           <Package className="w-4 h-4" /> Preview on IERADA
         </h3>
-        <div className="relative aspect-[3/4] rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
+        <div className="relative h-36 sm:h-40 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
           {previewUrl ? (
             <img
               src={previewUrl}
@@ -1726,8 +1783,8 @@ function RightRail({ state, settlement, previewUrl }) {
           ) : null}
         </p>
       </div>
-      <div className="bg-white rounded-2xl border p-4 space-y-2 text-sm">
-        <h3 className="font-semibold">Bank Settlement Summary</h3>
+      <div className="bg-white rounded-2xl border p-3 space-y-1.5 text-sm">
+        <h3 className="font-semibold text-sm">Bank Settlement Summary</h3>
         <Row k="MRP" v={settlement.mrp} />
         <Row k="Sale" v={settlement.sale} />
         <Row k="Discount %" v={`${settlement.discountPct}%`} raw />
@@ -1740,7 +1797,7 @@ function RightRail({ state, settlement, previewUrl }) {
           Rates are provisional until Ops confirms commission/TDS rules.
         </p>
       </div>
-      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-xs text-amber-900 space-y-1">
+      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-xs text-amber-900 space-y-1">
         <p className="font-semibold">Listing Tips</p>
         <p>Use clear primary photo on white/clean background.</p>
         <p>Confirm HSN/GST after category select.</p>
