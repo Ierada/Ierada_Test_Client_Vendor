@@ -25,7 +25,7 @@ export function taxFromCategoryTree({
   };
 }
 
-/** Heuristic AI draft from basics — no network. Ops templates can replace later. */
+/** Offline / API-failure fallback — keep usable, not marketing-quality. */
 export function localAiDraft(state) {
   const cat =
     [state.categoryTitle, state.subCategoryTitle, state.innerSubCategoryTitle]
@@ -113,11 +113,58 @@ const SECTION_FIELDS = {
   shipping: ["shipsFrom", "shipsTo", "deliveryTimeText", "warrantyType", "warrantyPeriod"],
 };
 
+function scrubDraftStrings(draft) {
+  if (!draft || typeof draft !== "object") return draft;
+  const next = { ...draft };
+  for (const key of [
+    "name",
+    "brand",
+    "shortDescription",
+    "countryOfOrigin",
+    "productDetails",
+    "generalInfo",
+    "metaTitle",
+    "metaDescription",
+    "metaKeywords",
+    "warrantyType",
+    "warrantyPeriod",
+    "shipsFrom",
+    "shipsTo",
+    "deliveryTimeText",
+  ]) {
+    if (typeof next[key] === "string") next[key] = scrubRestrictedText(next[key]);
+  }
+  if (Array.isArray(next.keyFeatures)) {
+    next.keyFeatures = next.keyFeatures.map((x) => scrubRestrictedText(x));
+  }
+  if (Array.isArray(next.benefits)) {
+    next.benefits = next.benefits.map((x) => scrubRestrictedText(x));
+  }
+  if (Array.isArray(next.tags)) {
+    next.tags = next.tags.map((x) => scrubRestrictedText(x));
+  }
+  if (Array.isArray(next.specifications)) {
+    next.specifications = next.specifications.map((row) => ({
+      feature: scrubRestrictedText(row?.feature || ""),
+      specification: scrubRestrictedText(row?.specification || ""),
+    }));
+  }
+  if (Array.isArray(next.whatsInTheBox)) {
+    next.whatsInTheBox = next.whatsInTheBox.map((row) => ({
+      title: scrubRestrictedText(row?.title || ""),
+      details: scrubRestrictedText(row?.details || ""),
+    }));
+  }
+  return next;
+}
+
 /**
  * Merge AI draft into state. Skips sections marked dirty unless forceOverwrite.
+ * @param {object} state
+ * @param {{ forceOverwrite?: boolean, draft?: object|null }} opts
  */
-export function mergeAiDraft(state, { forceOverwrite = false } = {}) {
-  const draft = localAiDraft(state);
+export function mergeAiDraft(state, { forceOverwrite = false, draft = null } = {}) {
+  const source = scrubDraftStrings(draft || localAiDraft(state));
   const dirty = state.dirtySections || {};
   const next = { ...state };
   const applied = [];
@@ -125,7 +172,7 @@ export function mergeAiDraft(state, { forceOverwrite = false } = {}) {
   for (const [section, keys] of Object.entries(SECTION_FIELDS)) {
     if (!forceOverwrite && dirty[section]) continue;
     for (const key of keys) {
-      if (draft[key] !== undefined) next[key] = draft[key];
+      if (source[key] !== undefined) next[key] = source[key];
     }
     applied.push(section);
   }
@@ -134,4 +181,21 @@ export function mergeAiDraft(state, { forceOverwrite = false } = {}) {
     new Set([...(state.aiGeneratedSections || []), ...applied]),
   );
   return next;
+}
+
+/** Payload for POST /api/ai/listing-draft */
+export function buildListingAiPayload(state) {
+  return {
+    brandType: state.brandType || "",
+    brand: state.brand || "",
+    name: state.name || "",
+    listingType: state.listingType || "single",
+    categoryTitle: state.categoryTitle || "",
+    subCategoryTitle: state.subCategoryTitle || "",
+    innerSubCategoryTitle: state.innerSubCategoryTitle || "",
+    countryOfOrigin: state.countryOfOrigin || "India",
+    original_price: state.original_price || "",
+    discounted_price: state.discounted_price || "",
+    mediaLabels: Array.isArray(state.mediaLabels) ? state.mediaLabels : [],
+  };
 }

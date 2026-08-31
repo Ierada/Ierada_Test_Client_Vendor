@@ -31,3 +31,15 @@ export async function createBulkListingJob(body) {
     throw error.response?.data || error;
   }
 }
+
+/** High-quality OpenAI listing draft for Smart Listing review step */
+export async function generateListingAiDraft(payload) {
+  try {
+    const res = await apiClient.post("/ai/listing-draft", payload, {
+      timeout: 90000,
+    });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
+}

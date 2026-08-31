@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { getCategories, getSubCategories, getInnerSubCategories } from "../../../services/api.category";
 import { addProduct, updateProduct } from "../../../services/api.product";
-import { getBrandAuthStatus } from "../../../services/api.smartListing";
+import { getBrandAuthStatus, generateListingAiDraft } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
 import { getShippingRates } from "../../../services/api.shippingRate";
 import { saveProductDraft } from "../../../services/api.productDraft";
@@ -27,7 +27,7 @@ import {
   saveLocalDraft,
   clearLocalDraft,
 } from "../../../components/Vendor/SmartListing/utils/draftStorage";
-import { taxFromCategoryTree, mergeAiDraft } from "../../../components/Vendor/SmartListing/utils/aiDraft";
+import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload } from "../../../components/Vendor/SmartListing/utils/aiDraft";
 import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstBands";
 import { BRAND_AUTH_DOC_TYPES, BRAND_AUTH_SLA_BUSINESS_DAYS } from "../../../components/Vendor/SmartListing/utils/brandAuthConfig";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
@@ -215,6 +215,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
   const [saveHint, setSaveHint] = useState("Ready");
   const [banner, setBanner] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -652,32 +653,60 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     else navigate("/product");
   };
 
-  const runAiGenerate = (opts = {}) => {
+  const runAiGenerate = async (opts = {}) => {
+    let confirmedOverwrite = true;
+    if (opts.forceOverwrite === true) {
+      confirmedOverwrite = true;
+    } else if (opts.confirmDirty) {
+      confirmedOverwrite = window.confirm(
+        "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.",
+      );
+    }
+
+    const runId = (runAiGenerate._seq = (runAiGenerate._seq || 0) + 1);
+    setAiGenerating(true);
+    setBanner(null);
     try {
-      const forceOverwrite =
-        opts.forceOverwrite === true ||
-        (opts.confirmDirty &&
-          window.confirm(
-            "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.",
-          ));
+      let draft = null;
+      let source = "local";
+      try {
+        const res = await generateListingAiDraft(buildListingAiPayload(state));
+        if (runId !== runAiGenerate._seq) return;
+        if (res?.status === 1 && res?.data?.draft) {
+          draft = res.data.draft;
+          source = res.data.source || "openai";
+        }
+      } catch (apiErr) {
+        if (runId !== runAiGenerate._seq) return;
+        console.warn("Listing AI API failed, using local fallback:", apiErr);
+      }
+
+      if (runId !== runAiGenerate._seq) return;
+
       const merged = mergeAiDraft(state, {
-        forceOverwrite: forceOverwrite === true,
+        forceOverwrite: confirmedOverwrite,
+        draft,
       });
       if (!merged.sku) merged.sku = suggestSku(merged.name, merged.brand);
       setState(merged);
       setPhase("review");
       setReviewSection("product_info");
       notifyOnSuccess(
-        forceOverwrite
-          ? "AI regenerated all sections"
-          : "AI draft ready — edited sections were kept",
+        source === "openai"
+          ? confirmedOverwrite
+            ? "AI regenerated all sections (high quality)"
+            : "AI draft ready — edited sections were kept"
+          : "Basic draft ready (AI unavailable — review carefully)",
       );
     } catch (e) {
+      if (runId !== runAiGenerate._seq) return;
       setBanner({
         type: "error",
         text: "Could not auto-generate content. You can fill sections manually.",
       });
       setPhase("review");
+    } finally {
+      if (runId === runAiGenerate._seq) setAiGenerating(false);
     }
   };
 
@@ -881,6 +910,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               patch={patch}
               patchSection={patchSection}
               runAiGenerate={runAiGenerate}
+              aiGenerating={aiGenerating}
               sizeChartUrl={
                 state.sizeChartUrl ||
                 innerSubCategories.find(
@@ -918,10 +948,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             {phase === "basics" ? (
               <button
                 type="button"
+                disabled={aiGenerating}
                 onClick={goNextBasics}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
               >
-                {step === steps[steps.length - 1] ? (
+                {aiGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Writing listing…
+                  </>
+                ) : step === steps[steps.length - 1] ? (
                   <>
                     <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
                   </>
@@ -1195,7 +1230,7 @@ function BasicsPanel({
   );
 }
 
-function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, sizeChartUrl }) {
+function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, sizeChartUrl }) {
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
   return (
@@ -1223,10 +1258,19 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ))}
         <button
           type="button"
+          disabled={aiGenerating}
           onClick={() => runAiGenerate({ confirmDirty: true })}
-          className="w-full mt-3 inline-flex items-center justify-center gap-2 text-sm border rounded-xl py-2"
+          className="w-full mt-3 inline-flex items-center justify-center gap-2 text-sm border rounded-xl py-2 disabled:opacity-50"
         >
-          <Sparkles className="w-4 h-4" /> Regenerate All
+          {aiGenerating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Generating…
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" /> Regenerate All
+            </>
+          )}
         </button>
       </nav>
       <div className="md:col-span-8 bg-white rounded-2xl border p-5 space-y-4">
