@@ -7,7 +7,8 @@ const DeleteConfirmationModal = ({
   onConfirm,
   title,
   message,
-  isDeleting
+  isDeleting,
+  confirmLabel = "Delete",
 }) => {
   if (!isOpen) return null;
 
@@ -30,7 +31,7 @@ const DeleteConfirmationModal = ({
             className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2"
           >
             {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Delete
+            {confirmLabel}
           </button>
         </div>
       </div>

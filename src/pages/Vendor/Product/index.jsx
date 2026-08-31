@@ -21,7 +21,7 @@ import {
   Pencil,
   Copy,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import ProductModal from "../../../components/Vendor/Models/ProductModal";
 import DeleteConfirmationModal from "../../../components/Vendor/Models/DeleteConfirmationModal";
 import {
@@ -120,6 +120,7 @@ const ConfirmUpdateModal = ({
 
 const Product = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAppContext();
   const [showModal, setShowModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,7 +136,9 @@ const Product = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
-  const [visibilityFilter, setVisibilityFilter] = useState("all");
+  const [visibilityFilter, setVisibilityFilter] = useState(() =>
+    searchParams.get("tab") === "draft" ? "draft" : "all",
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
@@ -179,7 +182,9 @@ const Product = () => {
       }),
       ...(sortConfig.key && { sortDir: sortConfig.direction }),
     };
-    if (visibilityFilter !== "all") {
+    if (visibilityFilter === "draft") {
+      params.listing_status = "draft";
+    } else if (visibilityFilter !== "all") {
       params.visibility =
         visibilityFilter.charAt(0).toUpperCase() + visibilityFilter.slice(1);
     }
@@ -646,6 +651,19 @@ const Product = () => {
               </div>
             );
           }
+          const isDraft = String(product.listing_status || "").toLowerCase() === "draft";
+          if (isDraft) {
+            return (
+              <div
+                className="flex items-center gap-1 p-1 rounded bg-amber-50 text-amber-800"
+                title="Draft — open Edit to continue or publish"
+              >
+                <span className="px-2 py-1 rounded-full text-sm font-medium">
+                  Draft
+                </span>
+              </div>
+            );
+          }
           const badgeClass =
             product.visibility === "Published"
               ? "bg-green-100 text-green-700"
@@ -723,7 +741,11 @@ const Product = () => {
                 openDeleteModal(row.original);
               }}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Delete"
+              title={
+                String(row.original.listing_status || "").toLowerCase() === "draft"
+                  ? "Discard draft"
+                  : "Delete"
+              }
             >
               <Trash2 className="w-4 h-4 text-gray-600" />
             </button>
@@ -793,6 +815,9 @@ const Product = () => {
       const response = await deleteProduct(selectedProduct.id);
       if (response.status === 1) {
         setIsDeleteModalOpen(false);
+        const wasDraft =
+          String(selectedProduct.listing_status || "").toLowerCase() === "draft";
+        notifyOnSuccess(wasDraft ? "Draft discarded" : "Product deleted");
         await fetchProducts();
       }
     } catch (error) {
@@ -912,7 +937,7 @@ const Product = () => {
             </button>
             <button
               onClick={() =>
-                navigate(`${config.VITE_BASE_VENDOR_URL}/product/add`)
+                navigate(`${config.VITE_BASE_VENDOR_URL}/product/add?fresh=1`)
               }
               className="px-6 py-2.5 bg-button-gradient text-white rounded-lg font-medium hover:bg-orange-600 transition-colors w-full sm:w-auto self-start sm:self-center"
             >
@@ -1031,8 +1056,21 @@ const Product = () => {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
-        title="Delete Product"
-        message="Are you sure you want to delete this product? This action cannot be undone."
+        title={
+          String(selectedProduct?.listing_status || "").toLowerCase() === "draft"
+            ? "Discard Draft"
+            : "Delete Product"
+        }
+        message={
+          String(selectedProduct?.listing_status || "").toLowerCase() === "draft"
+            ? "Discard this draft listing? You can start a new product anytime. This cannot be undone."
+            : "Are you sure you want to delete this product? This action cannot be undone."
+        }
+        confirmLabel={
+          String(selectedProduct?.listing_status || "").toLowerCase() === "draft"
+            ? "Discard"
+            : "Delete"
+        }
         isDeleting={isDeletingProduct}
       />
 

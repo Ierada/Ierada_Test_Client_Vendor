@@ -32,6 +32,18 @@ export async function createBulkListingJob(body) {
   }
 }
 
+/** Vision-based category suggestion from product photo */
+export async function suggestListingCategory(payload) {
+  try {
+    const res = await apiClient.post("/ai/listing-category-suggest", payload, {
+      timeout: 60000,
+    });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
+}
+
 /** High-quality OpenAI listing draft for Smart Listing review step */
 export async function generateListingAiDraft(payload) {
   try {

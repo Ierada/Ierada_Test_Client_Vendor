@@ -151,6 +151,30 @@ function appendFilesAndMedia(fd, state) {
   return allFiles.length;
 }
 
+export function applyAutoListingPolicies(partial, context = {}) {
+  const {
+    subCategory,
+    innerSubCategory,
+    defaultReturnWindowDays = 7,
+  } = context;
+  return {
+    ...partial,
+    shipsTo: "Pan India",
+    deliveryTimeText: "3–7 business days",
+    cod_available: true,
+    free_shipping: false,
+    return_shipping_payer: "seller",
+    return_window_days:
+      subCategory?.is_returnable === false
+        ? 0
+        : Number(defaultReturnWindowDays) || 7,
+    replacement_allowed:
+      innerSubCategory != null
+        ? innerSubCategory.replacement_allowed !== false
+        : partial.replacement_allowed !== false,
+  };
+}
+
 export function buildSmartListingFormData(state, { asDraft = false } = {}) {
   const fd = new FormData();
   const settlement = calcSettlement({

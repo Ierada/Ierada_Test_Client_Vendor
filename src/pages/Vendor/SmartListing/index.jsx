@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, Link, useParams } from "react-router-dom";
+import { useNavigate, Link, useParams, useSearchParams } from "react-router-dom";
 import { useAppContext } from "../../../context/AppContext";
 import {
   ArrowLeft,
@@ -13,8 +13,8 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { getCategories, getSubCategories, getInnerSubCategories } from "../../../services/api.category";
-import { addProduct, updateProduct } from "../../../services/api.product";
-import { getBrandAuthStatus, generateListingAiDraft } from "../../../services/api.smartListing";
+import { addProduct, updateProduct, deleteProduct } from "../../../services/api.product";
+import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
 import { getShippingRates } from "../../../services/api.shippingRate";
 import { saveProductDraft } from "../../../services/api.productDraft";
@@ -32,7 +32,8 @@ import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstB
 import { BRAND_AUTH_DOC_TYPES, BRAND_AUTH_SLA_BUSINESS_DAYS } from "../../../components/Vendor/SmartListing/utils/brandAuthConfig";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
 import { calcSettlement, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
-import { buildSmartListingFormData } from "../../../components/Vendor/SmartListing/utils/buildFormData";
+import { fileToBase64 } from "../../../components/Vendor/SmartListing/utils/fileToBase64";
+import { buildSmartListingFormData, applyAutoListingPolicies } from "../../../components/Vendor/SmartListing/utils/buildFormData";
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
 import {
   stashListingMedia,
@@ -52,7 +53,7 @@ import SizeChartGuide from "../../../components/Vendor/SmartListing/SizeChartGui
 import { findRestrictedHits } from "../../../components/Vendor/SmartListing/utils/restrictedClaims";
 
 function basicsStepsFor(listingType) {
-  const base = ["brand", "type", "category", "images"];
+  const base = ["brand", "type", "images", "category"];
   if (listingType === "color_size" || listingType === "custom") return [...base, "matrix"];
   if (listingType === "combo") return [...base, "combo"];
   return base;
@@ -69,16 +70,16 @@ const STEP_LABELS = {
 };
 
 const REVIEW_SECTIONS = [
+  { id: "pricing", label: "Pricing & Inventory" },
+  { id: "shipping", label: "Shipping Details" },
+  { id: "compliance", label: "India Compliance" },
   { id: "product_info", label: "Product Information" },
   { id: "key_features", label: "Key Features" },
   { id: "description", label: "Product Description" },
   { id: "specifications", label: "Specifications" },
   { id: "whats_in_box", label: "What's in the Box" },
   { id: "benefits", label: "Benefits" },
-  { id: "pricing", label: "Pricing & Inventory" },
   { id: "seo", label: "SEO Information" },
-  { id: "shipping", label: "Shipping Details" },
-  { id: "compliance", label: "India Compliance" },
   { id: "size_chart", label: "Size Chart" },
 ];
 
@@ -154,6 +155,7 @@ const emptyState = () => ({
   platformFee: 0,
   platform_fee_pct: 0,
   platform_fee_max: 0,
+  default_return_window_days: 7,
   aiGeneratedSections: [],
   dirtySections: {},
   colorGroups: [],
@@ -178,12 +180,16 @@ const emptyState = () => ({
   },
 });
 
-function Field({ label, required, children, error }) {
+function Field({ label, required, optional, children, error }) {
+  const showOptional = optional ?? !required;
   return (
     <label className="block space-y-1.5">
       <span className="text-sm font-medium text-gray-700">
         {label}
         {required ? <span className="text-red-500"> *</span> : null}
+        {showOptional && !required ? (
+          <span className="text-gray-400 font-normal text-xs ml-1.5">optional</span>
+        ) : null}
       </span>
       {children}
       {error ? <span className="text-xs text-red-600">{error}</span> : null}
@@ -196,15 +202,18 @@ const inputCls =
 
 export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp = null }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const freshStart = searchParams.get("fresh") === "1";
   const { user } = useAppContext();
   const { id: editProductId } = useParams();
   const isEditMode = !!editProductId;
   const vendorId = vendorIdProp || user?.id || null;
   const [phase, setPhase] = useState("basics"); // basics | review
   const [step, setStep] = useState("brand");
-  const [reviewSection, setReviewSection] = useState("product_info");
+  const [reviewSection, setReviewSection] = useState("pricing");
   const [state, setState] = useState(emptyState);
   const [stableId] = useState(() => {
+    if (freshStart) return newStableId(mode);
     const existing = loadLocalDraft();
     return existing?.stableId || newStableId(mode);
   });
@@ -216,6 +225,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [categorySuggesting, setCategorySuggesting] = useState(false);
+  const categorySuggestToken = useRef(0);
   const [saveHint, setSaveHint] = useState("Ready");
   const [banner, setBanner] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -297,9 +308,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-fetch on identity keys
   }, [state.brandType, state.vendor_id, state.productId, vendorId, editProductId, user?.id]);
 
-  // Restore local draft once (skip when editing existing product)
+  // Restore local draft once (skip when editing existing product or fresh Add Product)
   useEffect(() => {
-    if (editProductId) return;
+    if (editProductId || freshStart) return;
     const local = loadLocalDraft(stableId) || loadLocalDraft();
     if (local?.payload) {
       setState((prev) => {
@@ -312,7 +323,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       if (local.reviewSection) setReviewSection(local.reviewSection);
       setSaveHint("Restored local draft");
     }
-  }, [stableId]);
+  }, [stableId, editProductId, freshStart]);
 
   useEffect(() => {
     let cancelled = false;
@@ -356,12 +367,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             hsn_code: c.hsn_code,
             tax: c.tax ?? c.gst,
             size_chart_image: c.size_chart_image || null,
+            replacement_allowed: c.replacement_allowed !== false,
           })),
         );
         if (settingsRes?.status === 1) {
           patch({
             platform_fee_pct: settingsRes.data.platform_fee || 0,
             platform_fee_max: settingsRes.data.platform_fee_max_charge || 0,
+            default_return_window_days:
+              settingsRes.data.default_return_window_days ?? 7,
             platformFee: 0,
           });
         }
@@ -416,15 +430,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (bandGst != null) next.gst = bandGst;
     else if (lookup?.tax != null) next.gst = lookup.tax;
     else if (tax.gst != null) next.gst = tax.gst;
-    if (subCategory?.is_returnable === false) {
-      next.return_window_days = 0;
-    }
-    patch(next);
+    patch(
+      applyAutoListingPolicies(next, {
+        subCategory,
+        innerSubCategory,
+        defaultReturnWindowDays: state.default_return_window_days ?? 7,
+      }),
+    );
   }, [
     state.category_id,
     state.sub_category_id,
     state.inner_sub_category_id,
     state.discounted_price,
+    state.default_return_window_days,
     categories,
     subCategories,
     innerSubCategories,
@@ -590,6 +608,53 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     patch,
   ]);
 
+  const runCategorySuggest = useCallback(async () => {
+    const file = state.files?.[0];
+    if (!file || !state.listingType) return;
+    const token = ++categorySuggestToken.current;
+    setCategorySuggesting(true);
+    try {
+      const image_base64 = await fileToBase64(file);
+      const res = await suggestListingCategory({
+        image_base64,
+        mime_type: file.type || "image/jpeg",
+        listing_type: state.listingType,
+      });
+      if (token !== categorySuggestToken.current) return;
+      if (res?.status === 1 && res?.data) {
+        const d = res.data;
+        patch({
+          category_id: String(d.category_id),
+          sub_category_id: String(d.sub_category_id),
+          inner_sub_category_id: d.inner_sub_category_id
+            ? String(d.inner_sub_category_id)
+            : "",
+          categoryTitle: d.categoryTitle || "",
+          subCategoryTitle: d.subCategoryTitle || "",
+          innerSubCategoryTitle: d.innerSubCategoryTitle || "",
+        });
+        setBanner({
+          type: "info",
+          text: "Category auto-selected from your photo — change below if needed.",
+        });
+      }
+    } catch {
+      /* pick manually */
+    } finally {
+      if (token === categorySuggestToken.current) setCategorySuggesting(false);
+    }
+  }, [state.files, state.listingType, patch]);
+
+  useEffect(() => {
+    categorySuggestToken.current += 1;
+  }, [state.files?.[0]?.name, state.files?.[0]?.lastModified]);
+
+  useEffect(() => {
+    if (step === "category" && state.files?.length && !state.category_id) {
+      runCategorySuggest();
+    }
+  }, [step, state.files?.length, state.category_id, runCategorySuggest]);
+
   const validateBasicsStep = () => {
     const err = {};
     if (step === "brand" && !state.brandType) err.brandType = "Select brand type";
@@ -644,7 +709,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     setBanner(null);
     if (phase === "review") {
       setPhase("basics");
-      const last = steps[steps.length - 1] || "images";
+      const last = steps[steps.length - 1] || "category";
       setStep(last);
       return;
     }
@@ -670,7 +735,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       let draft = null;
       let source = "local";
       try {
-        const res = await generateListingAiDraft(buildListingAiPayload(state));
+        const res = await generateListingAiDraft(buildListingAiPayload(state, user));
         if (runId !== runAiGenerate._seq) return;
         if (res?.status === 1 && res?.data?.draft) {
           draft = res.data.draft;
@@ -686,11 +751,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       const merged = mergeAiDraft(state, {
         forceOverwrite: confirmedOverwrite,
         draft,
+        vendorContext: user || {},
       });
       if (!merged.sku) merged.sku = suggestSku(merged.name, merged.brand);
       setState(merged);
       setPhase("review");
-      setReviewSection("product_info");
+      setReviewSection("pricing");
       notifyOnSuccess(
         source === "openai"
           ? confirmedOverwrite
@@ -705,8 +771,31 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         text: "Could not auto-generate content. You can fill sections manually.",
       });
       setPhase("review");
+      setReviewSection("pricing");
     } finally {
       if (runId === runAiGenerate._seq) setAiGenerating(false);
+    }
+  };
+
+  const discardDraft = async () => {
+    const savedId = editProductId || state.productId;
+    const msg = savedId
+      ? "Discard this draft? It will be permanently deleted."
+      : "Discard this listing progress? Your local draft will be cleared.";
+    if (!window.confirm(msg)) return;
+    try {
+      if (savedId) {
+        const res = await deleteProduct(savedId);
+        if (res?.status !== 1) {
+          notifyOnFail(res?.message || "Could not discard draft");
+          return;
+        }
+      }
+      clearLocalDraft(stableId);
+      notifyOnSuccess(savedId ? "Draft discarded" : "Listing progress cleared");
+      navigate("/product?tab=draft");
+    } catch (e) {
+      notifyOnFail(getApiErrorMessage(e, "Could not discard draft"));
     }
   };
 
@@ -766,41 +855,32 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     setSubmitting(true);
     setBanner(null);
     try {
-      if (
-        asDraft &&
-        (!state.files || !state.files.length) &&
-        (state.listingType === "single" || !state.listingType)
-      ) {
-        const res = await saveProductDraft({
-          stable_id: stableId,
-          listing_type: state.listingType || "single",
-          step: reviewSection,
-          vendor_id: vendorId || undefined,
-          payload: stripFilesForDraft(state),
-        });
-        if (res?.status === 1) {
-          notifyOnSuccess("Draft saved — add images before publishing");
-        } else {
-          setBanner({
-            type: "error",
-            text: res?.message || "Could not save draft on server (kept locally).",
-          });
-        }
-        return;
-      }
+      // Always create/update a real Product row for drafts so they appear under
+      // Products → Draft and can be edited later.
+      const draftState = {
+        ...state,
+        vendor_id: vendorId || state.vendor_id,
+        name:
+          state.name?.trim() ||
+          [state.brand, state.innerSubCategoryTitle || state.subCategoryTitle || state.categoryTitle]
+            .filter(Boolean)
+            .join(" ") ||
+          "Untitled draft",
+      };
 
-      const { formData } = buildSmartListingFormData(
-        { ...state, vendor_id: vendorId || state.vendor_id },
-        { asDraft },
-      );
+      const { formData } = buildSmartListingFormData(draftState, { asDraft });
       const pid = state.productId || editProductId;
       const res = pid
         ? await updateProduct(pid, formData)
         : await addProduct(formData);
       if (res?.status === 1) {
         clearLocalDraft(stableId);
-        notifyOnSuccess(asDraft ? "Draft listing saved" : "Product listed successfully");
-        navigate("/product");
+        notifyOnSuccess(
+          asDraft
+            ? "Draft saved — find it under Products → Draft. You can add a new listing anytime."
+            : "Product listed successfully",
+        );
+        navigate(asDraft ? "/product?tab=draft" : "/product");
       } else {
         setBanner({
           type: "error",
@@ -894,6 +974,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               state={state}
               patch={patch}
               fieldErrors={fieldErrors}
+              categorySuggesting={categorySuggesting}
+              onSuggestCategory={runCategorySuggest}
               categories={categories}
               filteredSubs={filteredSubs}
               filteredInners={filteredInners}
@@ -911,6 +993,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               patchSection={patchSection}
               runAiGenerate={runAiGenerate}
               aiGenerating={aiGenerating}
+              hideSeo
               sizeChartUrl={
                 state.sizeChartUrl ||
                 innerSubCategories.find(
@@ -936,7 +1019,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           >
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {(isEditMode ||
+              state.productId ||
+              phase === "review" ||
+              state.files?.length ||
+              state.category_id) && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={discardDraft}
+                className="px-4 py-2 rounded-xl border border-red-200 text-red-700 text-sm font-medium disabled:opacity-50"
+              >
+                Discard draft
+              </button>
+            )}
             <button
               type="button"
               disabled={submitting}
@@ -990,6 +1087,8 @@ function BasicsPanel({
   state,
   patch,
   fieldErrors,
+  categorySuggesting,
+  onSuggestCategory,
   categories,
   filteredSubs,
   filteredInners,
@@ -1133,9 +1232,52 @@ function BasicsPanel({
         </>
       ) : null}
 
+      {step === "images" ? (
+        <>
+          <h2 className="font-semibold text-gray-900">Upload Product Images</h2>
+          <p className="text-xs text-gray-500">
+            {state.listingType === "color_size" || state.listingType === "custom"
+              ? "Add cover photos first — category will be suggested from your image on the next step."
+              : "Upload front photo first — we will suggest category on the next step."}
+          </p>
+          <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
+        </>
+      ) : null}
+
       {step === "category" ? (
         <>
-          <h2 className="font-semibold text-gray-900">Select Category</h2>
+          <h2 className="font-semibold text-gray-900">Category & pricing</h2>
+          {categorySuggesting ? (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Detecting category from your photo…
+            </p>
+          ) : state.category_id ? (
+            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+              Category pre-filled from your image — adjust if incorrect.
+              {onSuggestCategory ? (
+                <button
+                  type="button"
+                  className="ml-2 underline text-emerald-800"
+                  onClick={onSuggestCategory}
+                >
+                  Re-detect
+                </button>
+              ) : null}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-500">
+              Select category manually or{" "}
+              {onSuggestCategory ? (
+                <button type="button" className="text-blue-600 underline" onClick={onSuggestCategory}>
+                  detect from photo
+                </button>
+              ) : (
+                "upload a clearer front photo on the previous step"
+              )}
+              .
+            </p>
+          )}
           <div className="grid gap-3">
             <Field label="Category" required error={fieldErrors.category_id}>
               <SearchablePicker
@@ -1168,11 +1310,11 @@ function BasicsPanel({
                 error={fieldErrors.sub_category_id}
               />
             </Field>
-            <Field label="Inner Sub Category">
+            <Field label="Inner Sub Category" optional>
               <SearchablePicker
                 value={state.inner_sub_category_id}
                 onChange={(id) => patch({ inner_sub_category_id: id })}
-                placeholder="Select (optional)"
+                placeholder="Search inner subcategory"
                 searchPlaceholder="Search inner subcategory…"
                 options={filteredInners.map((c) => ({ id: c.id, label: c.name }))}
               />
@@ -1186,7 +1328,7 @@ function BasicsPanel({
                   placeholder="Autofill after category, or type"
                 />
               </Field>
-              <Field label="GST %">
+              <Field label="GST %" optional>
                 <input
                   type="number"
                   className={inputCls}
@@ -1214,29 +1356,25 @@ function BasicsPanel({
           </div>
         </>
       ) : null}
-
-      {step === "images" ? (
-        <>
-          <h2 className="font-semibold text-gray-900">Upload Product Images</h2>
-          <p className="text-xs text-gray-500">
-            {state.listingType === "color_size" || state.listingType === "custom"
-              ? "Optional cover images here. Color/variant images are attached on the next matrix step."
-              : "Use labeled slots — Front is required for Single/Combo."}
-          </p>
-          <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
-        </>
-      ) : null}
     </div>
   );
 }
 
-function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, sizeChartUrl }) {
+function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, sizeChartUrl, hideSeo = false }) {
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
+  const sections = hideSeo
+    ? REVIEW_SECTIONS.filter((s) => s.id !== "seo")
+    : REVIEW_SECTIONS;
+
+  useEffect(() => {
+    if (hideSeo && reviewSection === "seo") setReviewSection("pricing");
+  }, [hideSeo, reviewSection, setReviewSection]);
+
   return (
     <div className="grid md:grid-cols-12 gap-4">
       <nav className="md:col-span-4 space-y-1">
-        {REVIEW_SECTIONS.map((s) => (
+        {sections.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -1288,9 +1426,10 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             <Field label="Short Description">
               <textarea
                 className={inputCls}
-                rows={2}
+                rows={5}
                 value={state.shortDescription}
                 onChange={(e) => patch({ shortDescription: e.target.value })}
+                placeholder="3–5 lines — product-specific summary for shoppers"
               />
             </Field>
             <div className="grid sm:grid-cols-2 gap-3">
@@ -1463,16 +1602,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 <option>Refurbished</option>
               </select>
             </Field>
-            <Field label="Allow Backorders">
-              <select
-                className={inputCls}
-                value={state.allow_backorders ? "yes" : "no"}
-                onChange={(e) => patch({ allow_backorders: e.target.value === "yes" })}
-              >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
-            </Field>
             <Field label="Warranty Type">
               <input
                 className={inputCls}
@@ -1501,7 +1630,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
           />
         ) : null}
 
-        {reviewSection === "seo" ? (
+        {reviewSection === "seo" && !hideSeo ? (
           <div className="grid gap-3">
             <Field label="Meta Title">
               <input className={inputCls} value={state.metaTitle} onChange={(e) => patch({ metaTitle: e.target.value })} />
@@ -1561,65 +1690,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             <Field label="Ships From">
               <input className={inputCls} value={state.shipsFrom} onChange={(e) => patch({ shipsFrom: e.target.value })} />
             </Field>
-            <Field label="Ships To">
-              <input className={inputCls} value={state.shipsTo} onChange={(e) => patch({ shipsTo: e.target.value })} />
-            </Field>
-            <Field label="Delivery Time">
-              <input
-                className={inputCls}
-                value={state.deliveryTimeText}
-                onChange={(e) => patch({ deliveryTimeText: e.target.value })}
-              />
-            </Field>
-            <Field label="Return window (days)">
-              <input
-                type="number"
-                className={inputCls}
-                value={state.return_window_days ?? ""}
-                onChange={(e) => patch({ return_window_days: e.target.value })}
-              />
-            </Field>
-            <Field label="Replacement allowed">
-              <select
-                className={inputCls}
-                value={state.replacement_allowed ? "yes" : "no"}
-                onChange={(e) => patch({ replacement_allowed: e.target.value === "yes" })}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </Field>
-            <Field label="Return shipping payer">
-              <select
-                className={inputCls}
-                value={state.return_shipping_payer || "seller"}
-                onChange={(e) => patch({ return_shipping_payer: e.target.value })}
-              >
-                <option value="seller">Seller</option>
-                <option value="buyer">Buyer</option>
-                <option value="platform">Platform</option>
-              </select>
-            </Field>
-            <Field label="COD Available">
-              <select
-                className={inputCls}
-                value={state.cod_available ? "yes" : "no"}
-                onChange={(e) => patch({ cod_available: e.target.value === "yes" })}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </Field>
-            <Field label="Free Shipping">
-              <select
-                className={inputCls}
-                value={state.free_shipping ? "yes" : "no"}
-                onChange={(e) => patch({ free_shipping: e.target.value === "yes" })}
-              >
-                <option value="no">No</option>
-                <option value="yes">Yes</option>
-              </select>
-            </Field>
+            <p className="sm:col-span-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+              Ships to Pan India, delivery time, return window ({state.return_window_days ?? 7} days for returnable categories), COD, shipping charges, and replacement rules are applied automatically from admin settings and your category.
+            </p>
           </div>
         ) : null}
       </div>
