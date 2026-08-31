@@ -331,6 +331,7 @@ export const uploadBulkFiles = async (formData) => {
     const response = await apiClient.post(
       `/product/product-images/upload-bulk`,
       formData,
+      { timeout: 300000 },
     );
 
     return await response.data;

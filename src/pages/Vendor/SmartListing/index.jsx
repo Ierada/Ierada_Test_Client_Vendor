@@ -51,12 +51,36 @@ import RequestSpecField from "../../../components/Vendor/SmartListing/RequestSpe
 import SpecTemplateHints from "../../../components/Vendor/SmartListing/SpecTemplateHints";
 import SizeChartGuide from "../../../components/Vendor/SmartListing/SizeChartGuide";
 import { findRestrictedHits } from "../../../components/Vendor/SmartListing/utils/restrictedClaims";
+import {
+  getBulkSession,
+  advanceBulkSession,
+  clearBulkSession,
+  bulkSessionProgress,
+  getPlannedType,
+  typeLabel,
+} from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
 
 function basicsStepsFor(listingType) {
   const base = ["brand", "type", "images", "category"];
   if (listingType === "color_size" || listingType === "custom") return [...base, "matrix"];
   if (listingType === "combo") return [...base, "combo"];
   return base;
+}
+
+/** Prefer front slot, else first uploaded file. */
+function firstListingImageFile(state) {
+  const files = state.files || [];
+  const labels = state.mediaLabels || [];
+  const frontIdx = labels.findIndex((l) => l?.label === "front");
+  if (frontIdx >= 0 && files[frontIdx] instanceof File) return files[frontIdx];
+  if (files[0] instanceof File) return files[0];
+  for (const g of state.colorGroups || []) {
+    for (const m of g.media || []) {
+      if (m instanceof File) return m;
+      if (m?.file instanceof File) return m.file;
+    }
+  }
+  return null;
 }
 
 const STEP_LABELS = {
@@ -204,6 +228,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const freshStart = searchParams.get("fresh") === "1";
+  const bulkMode = searchParams.get("bulk") === "1";
   const { user } = useAppContext();
   const { id: editProductId } = useParams();
   const isEditMode = !!editProductId;
@@ -212,8 +237,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [step, setStep] = useState("brand");
   const [reviewSection, setReviewSection] = useState("pricing");
   const [state, setState] = useState(emptyState);
-  const [stableId] = useState(() => {
-    if (freshStart) return newStableId(mode);
+  const [bulkSession, setBulkSession] = useState(() =>
+    bulkMode && !editProductId ? getBulkSession() : null,
+  );
+  const [stableId, setStableId] = useState(() => {
+    if (freshStart || bulkMode) return newStableId(mode);
     const existing = loadLocalDraft();
     return existing?.stableId || newStableId(mode);
   });
@@ -247,6 +275,101 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       dirtySections: { ...(prev.dirtySections || {}), [section]: true },
     }));
   }, []);
+
+  const applyBulkSlotState = useCallback((sessionOverride) => {
+    const session = sessionOverride || getBulkSession();
+    const planned = getPlannedType(session);
+    const next = emptyState();
+    if (planned) {
+      next.listingType = planned;
+    }
+    setState(next);
+    setPhase("basics");
+    setStep("brand");
+    setReviewSection("pricing");
+    setFieldErrors({});
+    if (planned === "combo") {
+      setBanner({
+        type: "info",
+        text: "This slot is planned as Combo — add products that already exist in your catalog. If they are not ready yet, Skip and do singles/variations first.",
+      });
+    } else if (planned) {
+      setBanner({
+        type: "info",
+        text: `Planned type for this listing: ${typeLabel(planned)}. You can still change type on the Listing Type step.`,
+      });
+    } else {
+      setBanner(null);
+    }
+    setSaveHint(planned ? `Bulk · ${typeLabel(planned)}` : "Ready");
+  }, []);
+
+  const resetForNextBulkListing = useCallback(() => {
+    clearLocalDraft(stableId);
+    const newId = newStableId(mode);
+    setStableId(newId);
+    applyBulkSlotState();
+  }, [mode, stableId, applyBulkSlotState]);
+
+  const skipBulkListing = useCallback(() => {
+    if (!bulkMode) return;
+    const ok = window.confirm(
+      "Skip this listing without saving? You can finish it later as a new listing.",
+    );
+    if (!ok) return;
+    const session = bulkSession || getBulkSession();
+    if (!session) return;
+    const next = advanceBulkSession({
+      listingType: state.listingType || getPlannedType(session) || "any",
+      status: "skipped",
+    });
+    setBulkSession(next);
+    if (!next || next.completed >= next.total) {
+      clearBulkSession();
+      notifyOnSuccess("Bulk session finished (some skipped).");
+      navigate("/bulk-upload");
+      return;
+    }
+    clearLocalDraft(stableId);
+    const newId = newStableId(mode);
+    setStableId(newId);
+    applyBulkSlotState(next);
+    notifyOnSuccess(
+      `Skipped · next ${next.completed + 1}/${next.total}${
+        getPlannedType(next) ? ` (${typeLabel(getPlannedType(next))})` : ""
+      }`,
+    );
+  }, [
+    bulkMode,
+    bulkSession,
+    state.listingType,
+    stableId,
+    mode,
+    applyBulkSlotState,
+    navigate,
+  ]);
+
+  const bulkProgress = useMemo(
+    () => bulkSessionProgress(bulkSession),
+    [bulkSession],
+  );
+
+  // First slot: apply planned type when entering bulk mode
+  useEffect(() => {
+    if (!bulkMode || isEditMode || !bulkSession) return;
+    if ((bulkSession.completed || 0) > 0) return;
+    const planned = getPlannedType(bulkSession);
+    if (planned && !state.listingType) {
+      setState((prev) => ({ ...prev, listingType: planned }));
+      if (planned === "combo") {
+        setBanner({
+          type: "info",
+          text: "This slot is planned as Combo — components must already exist in catalog.",
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on bulk session start
+  }, [bulkMode, isEditMode, bulkSession?.id]);
 
   const steps = useMemo(
     () => basicsStepsFor(state.listingType),
@@ -609,7 +732,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   ]);
 
   const runCategorySuggest = useCallback(async () => {
-    const file = state.files?.[0];
+    const file = firstListingImageFile(state);
     if (!file || !state.listingType) return;
     const token = ++categorySuggestToken.current;
     setCategorySuggesting(true);
@@ -635,25 +758,43 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         });
         setBanner({
           type: "info",
-          text: "Category auto-selected from your photo — change below if needed.",
+          text: `Category auto-selected: ${[d.categoryTitle, d.subCategoryTitle, d.innerSubCategoryTitle].filter(Boolean).join(" › ")}`,
+        });
+      } else {
+        setBanner({
+          type: "error",
+          text:
+            res?.message ||
+            "Could not detect category from photo — pick category manually.",
         });
       }
-    } catch {
-      /* pick manually */
+    } catch (e) {
+      setBanner({
+        type: "error",
+        text: getApiErrorMessage(
+          e,
+          "Could not detect category from photo — pick category manually.",
+        ),
+      });
     } finally {
       if (token === categorySuggestToken.current) setCategorySuggesting(false);
     }
-  }, [state.files, state.listingType, patch]);
+  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, patch]);
 
   useEffect(() => {
-    categorySuggestToken.current += 1;
-  }, [state.files?.[0]?.name, state.files?.[0]?.lastModified]);
-
-  useEffect(() => {
-    if (step === "category" && state.files?.length && !state.category_id) {
-      runCategorySuggest();
-    }
-  }, [step, state.files?.length, state.category_id, runCategorySuggest]);
+    if (!state.listingType || state.category_id) return;
+    const file = firstListingImageFile(state);
+    if (!file) return;
+    runCategorySuggest();
+  }, [
+    state.listingType,
+    state.category_id,
+    state.files?.length,
+    state.files?.[0]?.name,
+    state.files?.[0]?.lastModified,
+    state.mediaLabels,
+    runCategorySuggest,
+  ]);
 
   const validateBasicsStep = () => {
     const err = {};
@@ -847,7 +988,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     ) {
       setBanner({
         type: "error",
-        text: "Branded listings need Admin-approved brand authorization before publish. Save as draft, then publish after approval.",
+        text: "Branded listings need Admin-approved brand authorization before publish request. Save as draft, then request publish after approval.",
       });
       return;
     }
@@ -862,25 +1003,66 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         vendor_id: vendorId || state.vendor_id,
         name:
           state.name?.trim() ||
-          [state.brand, state.innerSubCategoryTitle || state.subCategoryTitle || state.categoryTitle]
-            .filter(Boolean)
-            .join(" ") ||
+          state.innerSubCategoryTitle ||
+          state.subCategoryTitle ||
+          state.categoryTitle ||
           "Untitled draft",
       };
 
-      const { formData } = buildSmartListingFormData(draftState, { asDraft });
+      const { formData } = buildSmartListingFormData(draftState, {
+        asDraft,
+        requestPublish: !asDraft,
+      });
       const pid = state.productId || editProductId;
       const res = pid
         ? await updateProduct(pid, formData)
         : await addProduct(formData);
       if (res?.status === 1) {
         clearLocalDraft(stableId);
-        notifyOnSuccess(
-          asDraft
-            ? "Draft saved — find it under Products → Draft. You can add a new listing anytime."
-            : "Product listed successfully",
-        );
-        navigate(asDraft ? "/product?tab=draft" : "/product");
+        const session = bulkSession || getBulkSession();
+        const hasMoreBulk =
+          bulkMode &&
+          session &&
+          (session.completed || 0) + 1 < session.total;
+
+        if (hasMoreBulk) {
+          const next = advanceBulkSession({
+            listingType: state.listingType || "any",
+            productId: res?.data?.id || pid || null,
+            status: "saved",
+          });
+          setBulkSession(next);
+          resetForNextBulkListing();
+          const nextType = getPlannedType(next);
+          notifyOnSuccess(
+            asDraft
+              ? `Listing ${(next?.completed || 1)}/${next?.total} draft saved${
+                  nextType ? ` · next: ${typeLabel(nextType)}` : ""
+                }`
+              : `Listing ${(next?.completed || 1)}/${next?.total} sent for review${
+                  nextType ? ` · next: ${typeLabel(nextType)}` : ""
+                }`,
+          );
+        } else {
+          if (bulkMode) {
+            advanceBulkSession({
+              listingType: state.listingType || "any",
+              productId: res?.data?.id || pid || null,
+              status: "saved",
+            });
+            clearBulkSession();
+          }
+          notifyOnSuccess(
+            asDraft
+              ? bulkMode
+                ? "All bulk listings saved as draft."
+                : "Draft saved — find it under Products → Draft. You can add a new listing anytime."
+              : bulkMode
+                ? "All bulk listings submitted for review."
+                : "Publish request sent — Admin will review and publish.",
+          );
+          navigate(asDraft ? "/product?tab=draft" : "/product");
+        }
       } else {
         setBanner({
           type: "error",
@@ -929,10 +1111,54 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               Smart Product Listing
             </p>
             <h1 className="text-lg font-semibold text-gray-900">
-              {isEditMode ? "Edit listing" : phase === "basics" ? "Provide Basics" : "Review & Edit AI Generated Information"}
+              {bulkProgress
+                ? `Bulk ${bulkProgress.current} of ${bulkProgress.total}${
+                    bulkProgress.plannedType
+                      ? ` · ${bulkProgress.plannedLabel}`
+                      : " · pick any type"
+                  }`
+                : isEditMode
+                  ? "Edit listing"
+                  : phase === "basics"
+                    ? "Provide Basics"
+                    : "Review & Edit AI Generated Information"}
             </h1>
+            {bulkProgress ? (
+              <p className="text-xs text-gray-500 mt-0.5">
+                Mixed types OK · saved {bulkProgress.saved}
+                {bulkProgress.skipped ? ` · skipped ${bulkProgress.skipped}` : ""}
+                {Object.keys(bulkProgress.remainingByType || {}).length
+                  ? ` · left: ${Object.entries(bulkProgress.remainingByType)
+                      .map(([k, v]) => `${v} ${k === "any" ? "any" : typeLabel(k)}`)
+                      .join(", ")}`
+                  : ""}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-3 text-xs text-gray-500">
+            {bulkProgress ? (
+              <>
+                <button
+                  type="button"
+                  className="text-blue-700 hover:underline font-medium"
+                  onClick={skipBulkListing}
+                >
+                  Skip this
+                </button>
+                <button
+                  type="button"
+                  className="text-amber-700 hover:underline"
+                  onClick={() => {
+                    if (window.confirm("Stop bulk session? Progress is saved per listing already submitted.")) {
+                      clearBulkSession();
+                      navigate("/bulk-upload");
+                    }
+                  }}
+                >
+                  Exit bulk
+                </button>
+              </>
+            ) : null}
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
             <span>{saveHint}</span>
             <Link
@@ -975,7 +1201,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               patch={patch}
               fieldErrors={fieldErrors}
               categorySuggesting={categorySuggesting}
-              onSuggestCategory={runCategorySuggest}
               categories={categories}
               filteredSubs={filteredSubs}
               filteredInners={filteredInners}
@@ -1071,7 +1296,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
               >
                 {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                {isEditMode ? "Update Listing" : "Submit Listing"}
+                {isEditMode ? "Update & Request Publish" : "Request Publish"}
               </button>
             )}
           </div>
@@ -1088,7 +1313,6 @@ function BasicsPanel({
   patch,
   fieldErrors,
   categorySuggesting,
-  onSuggestCategory,
   categories,
   filteredSubs,
   filteredInners,
@@ -1236,10 +1460,14 @@ function BasicsPanel({
         <>
           <h2 className="font-semibold text-gray-900">Upload Product Images</h2>
           <p className="text-xs text-gray-500">
-            {state.listingType === "color_size" || state.listingType === "custom"
-              ? "Add cover photos first — category will be suggested from your image on the next step."
-              : "Upload front photo first — we will suggest category on the next step."}
+            Upload the front photo — category and subcategory auto-fill in the background.
           </p>
+          {categorySuggesting ? (
+            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Detecting category from your photo…
+            </p>
+          ) : null}
           <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
         </>
       ) : null}
@@ -1254,28 +1482,15 @@ function BasicsPanel({
             </p>
           ) : state.category_id ? (
             <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-              Category pre-filled from your image — adjust if incorrect.
-              {onSuggestCategory ? (
-                <button
-                  type="button"
-                  className="ml-2 underline text-emerald-800"
-                  onClick={onSuggestCategory}
-                >
-                  Re-detect
-                </button>
-              ) : null}
+              Category pre-filled from your image — adjust below if incorrect.
+            </p>
+          ) : state.files?.length ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+              Could not auto-detect category — please select manually below.
             </p>
           ) : (
             <p className="text-xs text-gray-500">
-              Select category manually or{" "}
-              {onSuggestCategory ? (
-                <button type="button" className="text-blue-600 underline" onClick={onSuggestCategory}>
-                  detect from photo
-                </button>
-              ) : (
-                "upload a clearer front photo on the previous step"
-              )}
-              .
+              Go back and upload a clear front photo for automatic category detection.
             </p>
           )}
           <div className="grid gap-3">

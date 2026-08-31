@@ -175,7 +175,7 @@ export function applyAutoListingPolicies(partial, context = {}) {
   };
 }
 
-export function buildSmartListingFormData(state, { asDraft = false } = {}) {
+export function buildSmartListingFormData(state, { asDraft = false, requestPublish = false } = {}) {
   const fd = new FormData();
   const settlement = calcSettlement({
     mrp: state.original_price,
@@ -186,11 +186,14 @@ export function buildSmartListingFormData(state, { asDraft = false } = {}) {
     freeShipping: state.free_shipping,
   });
 
-  const visibility = asDraft ? "Hidden" : state.visibility || "Hidden";
+  const visibility =
+    asDraft || requestPublish ? "Hidden" : state.visibility || "Hidden";
   const listing_status = asDraft
     ? "draft"
-    : state.listing_status ||
-      (visibility === "Published" ? "published" : "hidden");
+    : requestPublish
+      ? "pending_review"
+      : state.listing_status ||
+        (visibility === "Published" ? "published" : "hidden");
 
   const listing_meta = {
     stock_management_mode: state.stock_management_mode || "self",

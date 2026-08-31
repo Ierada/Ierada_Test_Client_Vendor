@@ -9,6 +9,7 @@ import {
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import { getApiErrorMessage } from "../../../utils/apiError";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
+import BulkSmartListingLauncher from "../../../components/Vendor/SmartListing/bulk/BulkSmartListingLauncher";
 import BulkProductImport from "../../../components/Vendor/Models/BulkProductImport";
 import { useAppContext } from "../../../context/AppContext";
 import {
@@ -77,7 +78,7 @@ function parseCsv(text) {
 export default function BulkListingManager({ mode = "vendor" }) {
   const { user } = useAppContext();
   const vendorId = mode === "vendor" ? user?.id : null;
-  const [tab, setTab] = useState("upload");
+  const [tab, setTab] = useState("create");
   const [paste, setPaste] = useState(
     "sku,name,hsn_code,gst,original_price,discounted_price,stock,visibility\n",
   );
@@ -129,7 +130,8 @@ export default function BulkListingManager({ mode = "vendor" }) {
 
   const tabs = useMemo(
     () => [
-      { id: "upload", label: "Create / Upload" },
+      { id: "create", label: "Bulk Create" },
+      { id: "excel", label: "Advanced Excel" },
       { id: "update", label: "Bulk Update" },
       { id: "export", label: "Export / Read" },
       { id: "archive", label: "Archive / Delete" },
@@ -137,6 +139,20 @@ export default function BulkListingManager({ mode = "vendor" }) {
     ],
     [],
   );
+
+  const onCreateJobComplete = (job) => {
+    setJobs(
+      pushJob({
+        id: `crt_${Date.now()}`,
+        type: job.type || "bulk_create",
+        at: new Date().toISOString(),
+        success: job.success,
+        failed: job.failed,
+        errors: job.errors || [],
+        vendor_id: job.vendor_id,
+      }),
+    );
+  };
 
   const runUpdate = async () => {
     const rows = parseCsv(paste);
@@ -320,9 +336,9 @@ export default function BulkListingManager({ mode = "vendor" }) {
       <div className="p-6 max-w-6xl mx-auto space-y-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Bulk listing</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Bulk Manager</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Excel create + full-field update. Path: Products → Bulk Manager.
+              Paste a sheet, add photos, save drafts or request publish. Path: Products → Bulk Manager.
             </p>
           </div>
           <Link
@@ -356,24 +372,25 @@ export default function BulkListingManager({ mode = "vendor" }) {
           </p>
         ) : null}
 
-        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-gray-700 space-y-2">
-          <p className="font-semibold text-gray-900">Bulk listing flow</p>
-          <ol className="list-decimal pl-5 space-y-1 text-xs sm:text-sm">
-            <li>This page: <strong>Products → Bulk Manager</strong>. One-by-one listing is Smart Listing.</li>
-            <li><strong>Create</strong> — download Import template, fill Products + Specifications (custom fields) + box + variations, upload.</li>
-            <li><strong>Update</strong> — download Update template for name, HSN, GST, prices, stock, specs, variations (not only stock/price).</li>
-            <li>Images via media / folder-pack manager.</li>
-          </ol>
-        </div>
+        {tab === "create" ? (
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <BulkSmartListingLauncher
+              vendorId={vendorId}
+              mode={mode}
+              onJobComplete={onCreateJobComplete}
+            />
+          </div>
+        ) : null}
 
-        {tab === "upload" ? (
+        {tab === "excel" ? (
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <p className="text-sm text-gray-600 max-w-xl">
-                Download a template, fill the Excel, then upload. Images go through the media / folder-pack manager.
+                Variations, combo packs, and custom spec columns — use the Excel import. For simple
+                single listings prefer <strong>Bulk Create</strong>.
               </p>
               <Link to="/bulk-upload/media" className="text-sm font-medium text-blue-600 shrink-0">
-                Open media manager
+                Media manager (folder pack)
               </Link>
             </div>
             <BulkProductImport vendorId={vendorId} user={user} compact />
@@ -384,7 +401,7 @@ export default function BulkListingManager({ mode = "vendor" }) {
           <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-sm text-gray-600">
               Quick CSV (header row). For custom spec fields / variations use the Excel{" "}
-              <strong>Update existing listings</strong> template on Create / Upload.
+              <strong>Update existing listings</strong> template on Advanced Excel.
             </p>
             <p className="text-xs text-gray-500 font-mono break-all">
               sku,name,hsn_code,gst,original_price,discounted_price,stock,visibility

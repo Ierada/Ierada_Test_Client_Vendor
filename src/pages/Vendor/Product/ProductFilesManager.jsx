@@ -34,11 +34,7 @@ import {
 import BulkProductImport from "../../../components/Vendor/Models/BulkProductImport";
 import { FiPackage } from "react-icons/fi";
 import { useAppContext } from "../../../context/AppContext";
-
-const chunkArray = (array, size) =>
-  Array.from({ length: Math.ceil(array.length / size) }, (_, index) =>
-    array.slice(index * size, (index + 1) * size)
-  );
+import { chunkFilesForUpload } from "../../../components/Vendor/SmartListing/utils/chunkUploadFiles";
 
 const ProductFilesManager = () => {
   const { user } = useAppContext();
@@ -327,11 +323,11 @@ const ProductFilesManager = () => {
     setIsUploading(true);
     setShowUploadModal(true);
     setUploadProgress(0);
-    const chunkSize = 100;
-    const fileChunks = chunkArray(selectedFiles, chunkSize);
+    const fileChunks = chunkFilesForUpload(selectedFiles);
     let uploadedCount = 0;
     let failedCount = 0;
     let allDuplicateFiles = [];
+    let batchErrors = [];
 
     try {
       for (let i = 0; i < fileChunks.length; i++) {
@@ -361,10 +357,8 @@ const ProductFilesManager = () => {
             allDuplicateFiles = [...allDuplicateFiles, ...duplicates];
           }
         } else {
-          notifyOnFail(response.message || "Error uploading files in batch");
-          setShowUploadModal(false);
-          setIsUploading(false);
-          return;
+          batchErrors.push(response.message || `Batch ${i + 1} failed`);
+          failedCount += chunk.length;
         }
 
         // Update progress after each chunk
@@ -379,8 +373,11 @@ const ProductFilesManager = () => {
       notifyOnSuccess(
         `Uploaded ${uploadedCount} files${
           failedCount > 0 ? ` (${failedCount} failed)` : ""
-        }`
+        }${fileChunks.length > 1 ? ` in ${fileChunks.length} batches` : ""}`,
       );
+      if (batchErrors.length) {
+        notifyOnFail(batchErrors.slice(0, 2).join(" · "));
+      }
 
       setSelectedFiles([]);
       loadFiles(1);

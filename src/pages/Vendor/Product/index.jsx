@@ -652,14 +652,28 @@ const Product = () => {
             );
           }
           const isDraft = String(product.listing_status || "").toLowerCase() === "draft";
+          const isPending =
+            String(product.listing_status || "").toLowerCase() === "pending_review";
           if (isDraft) {
             return (
               <div
                 className="flex items-center gap-1 p-1 rounded bg-amber-50 text-amber-800"
-                title="Draft — open Edit to continue or publish"
+                title="Draft — open Edit to continue or request publish"
               >
                 <span className="px-2 py-1 rounded-full text-sm font-medium">
                   Draft
+                </span>
+              </div>
+            );
+          }
+          if (isPending) {
+            return (
+              <div
+                className="flex items-center gap-1 p-1 rounded bg-orange-50 text-orange-800"
+                title="Waiting for Admin to publish"
+              >
+                <span className="px-2 py-1 rounded-full text-sm font-medium">
+                  Pending review
                 </span>
               </div>
             );
@@ -670,17 +684,12 @@ const Product = () => {
               : "bg-gray-100 text-gray-700";
           return (
             <div
-              className={`flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors ${badgeClass}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                startEditing(product.id, "visibility", product.visibility);
-              }}
-              title="Click to toggle Visibility"
+              className={`flex items-center gap-1 p-1 rounded ${badgeClass}`}
+              title="Publish status is managed by Admin"
             >
               <span className="px-2 py-1 rounded-full text-sm font-medium">
                 {product.visibility}
               </span>
-              <Pencil className="w-3 h-3 text-gray-500" />
             </div>
           );
         },

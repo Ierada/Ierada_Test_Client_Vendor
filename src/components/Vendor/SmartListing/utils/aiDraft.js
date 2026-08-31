@@ -32,15 +32,62 @@ export function resolveListingBrand(state, vendorContext = {}) {
   return "";
 }
 
-function buildDefaultProductName(state, brand) {
-  const type =
+function resolveListingColors(state) {
+  return (Array.isArray(state.colorGroups) ? state.colorGroups : [])
+    .map((g) => scrubPlatformBranding(g.color_name || g.colorName || ""))
+    .filter(Boolean);
+}
+
+function stripBrandFromName(name, brand) {
+  let n = scrubPlatformBranding(name || "");
+  if (!n || !brand?.trim()) return n;
+  const b = brand.trim();
+  const escaped = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  n = n.replace(new RegExp(`^${escaped}\\s*[-–—|:]?\\s*`, "i"), "");
+  n = n.replace(new RegExp(`\\s*[-–—|:]?\\s*${escaped}$`, "i"), "");
+  n = n.replace(new RegExp(`\\b${escaped}\\b`, "gi"), " ");
+  return n.replace(/\s{2,}/g, " ").trim();
+}
+
+function titleCaseWords(text) {
+  return String(text || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildDefaultProductName(state) {
+  const leaf =
     state.innerSubCategoryTitle ||
     state.subCategoryTitle ||
     state.categoryTitle ||
     "Product";
-  const cleanType = scrubPlatformBranding(type);
-  if (brand) return `${brand} ${cleanType}`.replace(/\s{2,}/g, " ").trim();
-  return cleanType;
+  const type = titleCaseWords(scrubPlatformBranding(leaf));
+  const colors = resolveListingColors(state).map(titleCaseWords);
+  if (colors.length === 1) {
+    return `${type} - ${colors[0]}`.replace(/\s{2,}/g, " ").trim();
+  }
+  if (colors.length > 1 && colors.length <= 3) {
+    return `${type} (${colors.join(" / ")})`.replace(/\s{2,}/g, " ").trim();
+  }
+  return type;
+}
+
+function polishProductName(name, state, brand) {
+  let n = stripBrandFromName(name, brand);
+  if (!n) n = buildDefaultProductName(state);
+  n = titleCaseWords(n.replace(/\s*[-–—]\s*/g, " - "));
+  const colors = resolveListingColors(state).map(titleCaseWords);
+  if (colors.length === 1 && !new RegExp(colors[0], "i").test(n)) {
+    n = `${n} - ${colors[0]}`;
+  } else if (colors.length > 1 && colors.length <= 3) {
+    const colorPart = colors.join(" / ");
+    if (!colors.some((c) => new RegExp(c, "i").test(n))) {
+      n = `${n} (${colorPart})`;
+    }
+  }
+  return scrubRestrictedText(n.replace(/\s{2,}/g, " ").trim());
 }
 
 function splitSentences(text) {
@@ -80,14 +127,13 @@ function ensureKeyFeatures(features, name, categoryPath) {
     .filter(Boolean);
   const cat = categoryPath || "general";
   const pads = [
-    `Category: ${cat}`,
-    `Product title: ${name}`,
-    `Country of origin as mentioned on the listing`,
-    `Material and finish as shown in product images`,
-    `Intended for regular consumer use — follow care instructions`,
-    `Check dimensions / size guidance before ordering`,
-    `Sold as a single listing unit unless variations are selected`,
-    `Inspect package contents on delivery and report issues promptly`,
+    `Designed for everyday ${cat.split(" › ").pop() || "use"}`,
+    `Material and finish as shown in listing photos`,
+    `Check size / fit guidance on the listing before ordering`,
+    `Packaged for safe dispatch across India`,
+    `Sold as one unit unless variations are selected`,
+    `Inspect contents on delivery and follow care instructions`,
+    `Refer to specifications for dimensions and compatibility`,
   ];
   const out = [...base];
   for (const line of pads) {
@@ -128,11 +174,10 @@ function ensureProductDescription(html, name, categoryPath, shortDescription) {
 export function applyListingContentRules(state, vendorContext = {}) {
   const categoryPath = categoryPathFrom(state);
   const brand = resolveListingBrand(state, vendorContext);
-  let name = scrubPlatformBranding(state.name?.trim() || "");
+  let name = polishProductName(state.name?.trim() || "", state, brand);
   if (!name || PLATFORM_BRAND_RE.test(state.name || "")) {
-    name = buildDefaultProductName({ ...state, brandType: state.brandType }, brand);
+    name = buildDefaultProductName(state);
   }
-  name = scrubRestrictedText(name);
 
   const shortDescription = ensureShortDescription(
     state.shortDescription,
@@ -213,8 +258,8 @@ export function localAiDraft(state, vendorContext = {}) {
   const cat = categoryPathFrom(state) || "product";
   const brand = resolveListingBrand(state, vendorContext);
   const name =
-    scrubPlatformBranding(state.name?.trim() || "") ||
-    buildDefaultProductName(state, brand);
+    polishProductName(state.name?.trim() || "", state, brand) ||
+    buildDefaultProductName(state);
 
   const keyFeatures = ensureKeyFeatures(
     [
@@ -408,6 +453,7 @@ export function buildListingAiPayload(state, vendorContext = {}) {
     original_price: state.original_price || "",
     discounted_price: state.discounted_price || "",
     mediaLabels: Array.isArray(state.mediaLabels) ? state.mediaLabels : [],
+    colorNames: resolveListingColors(state),
     vendorShopName:
       vendorContext.shop_name ||
       vendorContext.shopName ||

@@ -49,7 +49,7 @@ export const vendorMenuConfig = {
       ],
     },
     { text: "Products", icon: ShoppingCart, path: "/product" },
-    { text: "Bulk Upload", icon: FolderMinus, path: "/bulk-upload" },
+    { text: "Bulk Manager", icon: FolderMinus, path: "/bulk-upload" },
     {
       text: "Payments",
       icon: Wallet,

@@ -1,5 +1,6 @@
 import React from "react";
 import { ImagePlus, X } from "lucide-react";
+import { notifyOnFail } from "../../../utils/notification/toast";
 
 export const PHOTO_SLOTS = [
   { id: "front", label: "Front", required: true },
@@ -38,8 +39,14 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       patch({ files: nextFiles, mediaLabels: nextLabels });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) return;
-    if (!file.type.startsWith("image/")) return;
+    if (file.size > 5 * 1024 * 1024) {
+      notifyOnFail("Image must be 5 MB or smaller");
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      notifyOnFail("Only image files are allowed");
+      return;
+    }
     const entry = {
       label: slotId,
       alt_text: `${state.name || "Product"} — ${slotId}`,
@@ -48,7 +55,10 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       nextFiles[existingIdx] = file;
       nextLabels[existingIdx] = entry;
     } else {
-      if (nextFiles.length >= 8) return;
+      if (nextFiles.length >= 8) {
+        notifyOnFail("Maximum 8 photos per listing");
+        return;
+      }
       nextFiles.push(file);
       nextLabels.push(entry);
     }
