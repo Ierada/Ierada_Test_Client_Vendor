@@ -452,6 +452,7 @@ export function buildListingAiPayload(state, vendorContext = {}) {
     countryOfOrigin: state.countryOfOrigin || "India",
     original_price: state.original_price || "",
     discounted_price: state.discounted_price || "",
+    extraNotes: state.extraNotes || "",
     mediaLabels: Array.isArray(state.mediaLabels) ? state.mediaLabels : [],
     colorNames: resolveListingColors(state),
     vendorShopName:

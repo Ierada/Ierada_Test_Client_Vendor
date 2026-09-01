@@ -20,6 +20,12 @@ import { getShippingRates } from "../../../services/api.shippingRate";
 import { saveProductDraft } from "../../../services/api.productDraft";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import { getApiErrorMessage } from "../../../utils/apiError";
+import {
+  firstValidationError,
+  validateComboItems,
+  validateSingleListingPricing,
+  validateSmartListingState,
+} from "../../../components/Vendor/SmartListing/utils/listingFieldValidation";
 import { resolveCategoryGst } from "../../../services/api.categoryGst";
 import {
   newStableId,
@@ -831,6 +837,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     }
     if (step === "combo") {
       if (!(state.comboItems || []).length) err.combo = "Add at least one combo component";
+      else Object.assign(err, validateComboItems(state.comboItems));
+    }
+    if (
+      step === "category" &&
+      (state.listingType === "single" || state.listingType === "combo" || !state.listingType)
+    ) {
+      Object.assign(err, validateSingleListingPricing(state));
     }
     setFieldErrors(err);
     return Object.keys(err).length === 0;
@@ -838,6 +851,17 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const goNextBasics = () => {
     if (!validateBasicsStep()) return;
+    const pricingOnCategory =
+      step === "category" &&
+      (state.listingType === "single" || state.listingType === "combo" || !state.listingType);
+    if (pricingOnCategory) {
+      const pricingErr = validateSingleListingPricing(state);
+      if (Object.keys(pricingErr).length) {
+        setFieldErrors((p) => ({ ...p, ...pricingErr }));
+        setBanner({ type: "error", text: firstValidationError(pricingErr) });
+        return;
+      }
+    }
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
       setStep(steps[idx + 1]);
@@ -942,40 +966,22 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
-      if (!state.name?.trim() || !state.hsn_code || !state.discounted_price) {
-        setReviewSection("product_info");
-        setBanner({
-          type: "error",
-          text: "Name, HSN and selling price are required.",
-        });
-        return;
-      }
+      const vErr = validateSmartListingState(state);
       if (state.listingType === "single" && !state.files?.length) {
-        setBanner({ type: "error", text: "Add at least one image before submit." });
-        return;
-      }
-      if (state.listingType === "color_size") {
-        const ok = (state.colorGroups || []).some(
-          (g) => g.color_id && (g.sizes || []).some((s) => s.size_id),
-        );
-        if (!ok) {
-          setBanner({ type: "error", text: "Complete Color × Size matrix before submit." });
-          return;
-        }
-      }
-      if (state.listingType === "custom") {
-        const ok = (state.customRows || []).some((r) => r.enabled);
-        if (!ok) {
-          setBanner({ type: "error", text: "Enable at least one custom variation row." });
-          return;
-        }
-      }
-      if (state.listingType === "combo" && !(state.comboItems || []).length) {
-        setBanner({ type: "error", text: "Add combo components before submit." });
-        return;
+        vErr.files = "Add at least one image before submit";
       }
       if (state.listingType === "combo" && !state.files?.length) {
-        setBanner({ type: "error", text: "Add at least one cover image for the combo listing." });
+        vErr.files = "Add at least one cover image for the combo listing";
+      }
+      const firstErr = firstValidationError(vErr);
+      if (firstErr) {
+        if (vErr.name || vErr.hsn_code || vErr.original_price || vErr.discounted_price) {
+          setReviewSection("product_info");
+        } else if (vErr.stock || vErr.min_order_qty) {
+          setReviewSection("pricing");
+        }
+        setFieldErrors(vErr);
+        setBanner({ type: "error", text: firstErr });
         return;
       }
     }
@@ -1218,6 +1224,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               patchSection={patchSection}
               runAiGenerate={runAiGenerate}
               aiGenerating={aiGenerating}
+              fieldErrors={fieldErrors}
               hideSeo
               sizeChartUrl={
                 state.sizeChartUrl ||
@@ -1551,17 +1558,21 @@ function BasicsPanel({
                   onChange={(e) => patch({ gst: e.target.value })}
                 />
               </Field>
-              <Field label="MRP (₹)" required>
+              <Field label="MRP (₹)" required error={fieldErrors.original_price}>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   className={inputCls}
                   value={state.original_price}
                   onChange={(e) => patch({ original_price: e.target.value })}
                 />
               </Field>
-              <Field label="Selling price (₹)" required>
+              <Field label="Selling price (₹)" required error={fieldErrors.discounted_price}>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   className={inputCls}
                   value={state.discounted_price}
                   onChange={(e) => patch({ discounted_price: e.target.value })}
@@ -1575,7 +1586,7 @@ function BasicsPanel({
   );
 }
 
-function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, sizeChartUrl, hideSeo = false }) {
+function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, fieldErrors = {}, sizeChartUrl, hideSeo = false }) {
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
   const sections = hideSeo
@@ -1669,17 +1680,21 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                   onChange={(e) => patch({ gst: e.target.value })}
                 />
               </Field>
-              <Field label="MRP (₹)" required>
+              <Field label="MRP (₹)" required error={fieldErrors.original_price}>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   className={inputCls}
                   value={state.original_price}
                   onChange={(e) => patch({ original_price: e.target.value })}
                 />
               </Field>
-              <Field label="Selling price (₹)" required>
+              <Field label="Selling price (₹)" required error={fieldErrors.discounted_price}>
                 <input
                   type="number"
+                  min="0"
+                  step="0.01"
                   className={inputCls}
                   value={state.discounted_price}
                   onChange={(e) => patch({ discounted_price: e.target.value })}
@@ -1764,17 +1779,21 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
 
         {reviewSection === "pricing" ? (
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="MRP" required>
+            <Field label="MRP" required error={fieldErrors.original_price}>
               <input
                 type="number"
+                min="0"
+                step="0.01"
                 className={inputCls}
                 value={state.original_price}
                 onChange={(e) => patch({ original_price: e.target.value })}
               />
             </Field>
-            <Field label="Selling Price" required>
+            <Field label="Selling Price" required error={fieldErrors.discounted_price}>
               <input
                 type="number"
+                min="0"
+                step="0.01"
                 className={inputCls}
                 value={state.discounted_price}
                 onChange={(e) => patch({ discounted_price: e.target.value })}
@@ -1783,25 +1802,31 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             <Field label="SKU">
               <input className={inputCls} value={state.sku} onChange={(e) => patch({ sku: e.target.value })} />
             </Field>
-            <Field label="Stock" required>
+            <Field label="Stock" required error={fieldErrors.stock}>
               <input
                 type="number"
+                min="1"
+                step="1"
                 className={inputCls}
                 value={state.stock}
                 onChange={(e) => patch({ stock: e.target.value })}
               />
             </Field>
-            <Field label="Low Stock Alert">
+            <Field label="Low Stock Alert" error={fieldErrors.low_stock_threshold}>
               <input
                 type="number"
+                min="0"
+                step="1"
                 className={inputCls}
                 value={state.low_stock_threshold}
                 onChange={(e) => patch({ low_stock_threshold: e.target.value })}
               />
             </Field>
-            <Field label="Min Order Qty">
+            <Field label="Min Order Qty" error={fieldErrors.min_order_qty}>
               <input
                 type="number"
+                min="1"
+                step="1"
                 className={inputCls}
                 value={state.min_order_qty}
                 onChange={(e) => patch({ min_order_qty: e.target.value })}

@@ -31,10 +31,15 @@ import {
   notifyOnSuccess,
   notifyOnFail,
 } from "../../../utils/notification/toast";
+import { notifyApiError } from "../../../utils/notifyApiError";
 import BulkProductImport from "../../../components/Vendor/Models/BulkProductImport";
 import { FiPackage } from "react-icons/fi";
 import { useAppContext } from "../../../context/AppContext";
-import { chunkFilesForUpload } from "../../../components/Vendor/SmartListing/utils/chunkUploadFiles";
+import {
+  chunkFilesForBulkMedia,
+  validateBulkMediaFiles,
+  BULK_MEDIA_LIMITS,
+} from "../../../components/Vendor/SmartListing/utils/chunkUploadFiles";
 
 const ProductFilesManager = () => {
   const { user } = useAppContext();
@@ -315,19 +320,20 @@ const ProductFilesManager = () => {
   };
 
   const handleBulkUpload = async () => {
-    if (selectedFiles.length === 0) {
-      notifyOnFail("Please select files to upload");
+    const check = validateBulkMediaFiles(selectedFiles);
+    if (!check.ok) {
+      notifyOnFail(check.message);
       return;
     }
 
     setIsUploading(true);
     setShowUploadModal(true);
     setUploadProgress(0);
-    const fileChunks = chunkFilesForUpload(selectedFiles);
+    const fileChunks = chunkFilesForBulkMedia(check.files);
     let uploadedCount = 0;
     let failedCount = 0;
     let allDuplicateFiles = [];
-    let batchErrors = [];
+    const batchErrors = [];
 
     try {
       for (let i = 0; i < fileChunks.length; i++) {
@@ -345,23 +351,33 @@ const ProductFilesManager = () => {
           formData.append("variation_id", filters.variation_id);
         }
 
-        const response = await uploadBulkFiles(formData);
+        try {
+          const response = await uploadBulkFiles(formData);
 
-        if (response.status === 1) {
-          uploadedCount += response.data.uploadedFiles?.length || 0;
-          failedCount += response.data.failedFiles?.length || 0;
-          if (response.data.failedFiles?.length > 0) {
-            const duplicates = response.data.failedFiles.filter((f) =>
-              f.error?.includes("Duplicate file")
-            );
-            allDuplicateFiles = [...allDuplicateFiles, ...duplicates];
+          if (response.status === 1) {
+            uploadedCount += response.data.uploadedFiles?.length || 0;
+            failedCount += response.data.failedFiles?.length || 0;
+            if (response.data.failedFiles?.length > 0) {
+              const duplicates = response.data.failedFiles.filter((f) =>
+                f.error?.includes("Duplicate file"),
+              );
+              allDuplicateFiles = [...allDuplicateFiles, ...duplicates];
+              const otherFails = response.data.failedFiles.filter(
+                (f) => !f.error?.includes("Duplicate file"),
+              );
+              otherFails.slice(0, 3).forEach((f) => {
+                batchErrors.push(`${f.filename || "File"}: ${f.error || "Upload failed"}`);
+              });
+            }
+          } else {
+            batchErrors.push(response.message || `Batch ${i + 1} failed`);
+            failedCount += chunk.length;
           }
-        } else {
-          batchErrors.push(response.message || `Batch ${i + 1} failed`);
+        } catch (batchErr) {
+          notifyApiError(batchErr, `Batch ${i + 1} upload failed`);
           failedCount += chunk.length;
         }
 
-        // Update progress after each chunk
         setUploadProgress(((i + 1) / fileChunks.length) * 100);
       }
 
@@ -370,12 +386,20 @@ const ProductFilesManager = () => {
         setShowDuplicates(true);
       }
 
-      notifyOnSuccess(
-        `Uploaded ${uploadedCount} files${
-          failedCount > 0 ? ` (${failedCount} failed)` : ""
-        }${fileChunks.length > 1 ? ` in ${fileChunks.length} batches` : ""}`,
-      );
-      if (batchErrors.length) {
+      if (uploadedCount > 0) {
+        notifyOnSuccess(
+          `Uploaded ${uploadedCount} file(s)${
+            failedCount > 0 ? ` · ${failedCount} failed` : ""
+          }${fileChunks.length > 1 ? ` in ${fileChunks.length} batches` : ""}`,
+        );
+      } else if (failedCount > 0) {
+        notifyOnFail(
+          batchErrors[0] ||
+            `All ${failedCount} file(s) failed. Check size (max ${Math.round(BULK_MEDIA_LIMITS.maxPerFileBytes / (1024 * 1024))} MB each) and format.`,
+        );
+      }
+
+      if (batchErrors.length > 1) {
         notifyOnFail(batchErrors.slice(0, 2).join(" · "));
       }
 
@@ -383,8 +407,7 @@ const ProductFilesManager = () => {
       loadFiles(1);
       gotoPage(0);
     } catch (error) {
-      console.error("Error during batch upload:", error);
-      notifyOnFail("Failed to upload files. Please try again.");
+      notifyApiError(error, "Failed to upload files. Try a smaller batch.");
     } finally {
       setIsUploading(false);
       setShowUploadModal(false);
@@ -417,7 +440,12 @@ const ProductFilesManager = () => {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-2xl font-bold mb-6">Bulk Products & Files</h2>
+      <h2 className="text-2xl font-bold mb-2">Bulk Products & Files</h2>
+      <p className="text-sm text-gray-500 mb-6">
+        Up to {BULK_MEDIA_LIMITS.maxSessionFiles} images per session ·{" "}
+        {Math.round(BULK_MEDIA_LIMITS.maxPerFileBytes / (1024 * 1024))} MB max per image · uploaded in
+        small batches automatically
+      </p>
 
       <div className="mb-8">
         <div className="flex flex-col md:flex-row md:items-center space-y-4 md:space-y-0 md:space-x-4 mb-6">

@@ -25,10 +25,18 @@ export const getApiErrorMessage = (
   if (status === 400 || status === 422) {
     return serverMsg || "Please check the details and try again.";
   }
+  if (status === 413) {
+    return serverMsg || "File is too large for upload. Use a smaller file or upload in batches.";
+  }
   if (status >= 500) {
     return serverMsg || "Something went wrong on our end. Please try again in a moment.";
   }
   if (serverMsg) return serverMsg;
+
+  const clientMsg = String(error?.message || "");
+  if (/LIMIT_FILE_SIZE|File too large|entity too large/i.test(clientMsg)) {
+    return "File is too large. Compress images or upload in smaller batches via Media Manager.";
+  }
 
   // No response at all — network drop / timeout. Never surface the raw axios
   // message ("Network Error", "ECONNABORTED", etc.) to the user.

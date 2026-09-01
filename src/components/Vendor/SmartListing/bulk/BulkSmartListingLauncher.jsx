@@ -319,7 +319,7 @@ export default function BulkSmartListingLauncher({
           onClick={() => setShowQuick((v) => !v)}
           className="w-full flex items-center justify-between px-5 py-4 text-left text-sm font-medium text-gray-800 hover:bg-slate-50"
         >
-          <span>Quick bulk — simple singles only (paste sheet)</span>
+          <span>Quick bulk — single products (Excel template + AI)</span>
           {showQuick ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
         {showQuick ? (

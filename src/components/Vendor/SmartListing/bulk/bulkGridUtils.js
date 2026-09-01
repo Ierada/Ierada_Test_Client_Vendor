@@ -1,22 +1,76 @@
+import * as XLSX from "xlsx";
 import { suggestSku } from "../utils/settlementCalc";
+import {
+  validateMrpAndSelling,
+  validateNonNegativeOptional,
+  validateStockQty,
+} from "../utils/listingFieldValidation";
 
+/** Soft cap per quick-bulk session (matches template guidance). */
+export const BULK_MAX_ROWS = 500;
+
+/** Excel/TSV upload cap — must match server EXCEL_UPLOAD_FILE_SIZE_LIMIT (10 MB). */
+export const BULK_EXCEL_MAX_BYTES = 10 * 1024 * 1024;
+
+/** Manual input columns — same basics as single Smart Listing. */
 export const BULK_GRID_COLUMNS = [
-  { key: "name", label: "Product name", required: true },
-  { key: "audience", label: "Audience", hint: "Men / Women / Kids" },
-  { key: "color", label: "Color", hint: "Optional" },
-  { key: "category", label: "Category", required: true },
-  { key: "sub_category", label: "Sub category", required: true },
-  { key: "inner_sub_category", label: "Inner sub", hint: "Optional" },
-  { key: "hsn_code", label: "HSN", required: true },
-  { key: "gst", label: "GST %" },
-  { key: "original_price", label: "MRP ₹", required: true },
-  { key: "discounted_price", label: "Selling ₹", required: true },
-  { key: "stock", label: "Stock", required: true },
-  { key: "sku", label: "SKU", hint: "Auto if empty" },
-  { key: "brand", label: "Brand", hint: "Optional" },
+  { key: "name", label: "Product name", required: true, group: "manual" },
+  { key: "audience", label: "Audience", hint: "Men / Women / Kids / Unisex", group: "lookup" },
+  { key: "color", label: "Color", hint: "Optional — used in title + AI", group: "manual" },
+  { key: "category", label: "Category", required: true, group: "lookup" },
+  { key: "sub_category", label: "Sub category", required: true, group: "lookup" },
+  { key: "inner_sub_category", label: "Inner sub", hint: "Optional", group: "lookup" },
+  { key: "hsn_code", label: "HSN", required: true, group: "manual" },
+  { key: "gst", label: "GST %", group: "manual" },
+  { key: "original_price", label: "MRP ₹", required: true, group: "manual" },
+  { key: "discounted_price", label: "Selling ₹", required: true, group: "manual" },
+  { key: "stock", label: "Stock", required: true, group: "manual" },
+  { key: "sku", label: "SKU", hint: "Auto if empty", group: "manual" },
+  { key: "brand", label: "Brand", hint: "Seller brand — blank = generic", group: "manual" },
+  { key: "ai_enabled", label: "AI", hint: "Yes / No", group: "toggle" },
 ];
 
 export const BULK_PASTE_HEADER = BULK_GRID_COLUMNS.map((c) => c.key).join("\t");
+
+const HEADER_ALIASES = {
+  product_name: "name",
+  product: "name",
+  title: "name",
+  category_level_1: "category",
+  category_level_2: "sub_category",
+  category_level_3: "inner_sub_category",
+  subcategory: "sub_category",
+  inner_sub: "inner_sub_category",
+  mrp: "original_price",
+  selling_price: "discounted_price",
+  price: "discounted_price",
+  selling_price_inr: "discounted_price",
+  hsn: "hsn_code",
+  gst_percent: "gst",
+  gst_pct: "gst",
+  brand_name: "brand",
+  ai_mode: "ai_enabled",
+  ai: "ai_enabled",
+  qty: "stock",
+  quantity: "stock",
+};
+
+function normalizeHeader(cell) {
+  const raw = String(cell || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[₹()]/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+  return HEADER_ALIASES[raw] || raw;
+}
+
+function parseAiEnabled(val) {
+  const s = String(val ?? "").trim().toLowerCase();
+  if (!s || s === "yes" || s === "y" || s === "true" || s === "1") return true;
+  if (s === "no" || s === "n" || s === "false" || s === "0") return false;
+  return true;
+}
 
 export function newBulkRow(partial = {}) {
   return {
@@ -35,13 +89,24 @@ export function newBulkRow(partial = {}) {
     stock: partial.stock || "",
     sku: partial.sku || "",
     brand: partial.brand || "",
+    ai_enabled: partial.ai_enabled !== false && partial.ai_enabled !== "no",
     listingType: partial.listingType || "single",
     shortDescription: partial.shortDescription || "",
     keyFeatures: partial.keyFeatures || [],
     productDetails: partial.productDetails || "",
+    generalInfo: partial.generalInfo || "",
     specifications: partial.specifications || [],
     whatsInTheBox: partial.whatsInTheBox || [],
     benefits: partial.benefits || [],
+    metaTitle: partial.metaTitle || "",
+    metaDescription: partial.metaDescription || "",
+    metaKeywords: partial.metaKeywords || "",
+    tags: partial.tags || [],
+    warrantyType: partial.warrantyType || "",
+    warrantyPeriod: partial.warrantyPeriod || "",
+    shipsFrom: partial.shipsFrom || "",
+    shipsTo: partial.shipsTo || "",
+    deliveryTimeText: partial.deliveryTimeText || "",
     ai_done: partial.ai_done || false,
     files: partial.files || [],
     mediaLabels: partial.mediaLabels || [],
@@ -77,6 +142,33 @@ export function polishBulkName(row) {
   return base.replace(/\s{2,}/g, " ").trim();
 }
 
+function matrixToRows(matrix) {
+  const lines = (matrix || []).filter((row) =>
+    row.some((cell) => String(cell ?? "").trim()),
+  );
+  if (!lines.length) return [];
+
+  const headerRow = lines[0].map(normalizeHeader);
+  const headerKeys = BULK_GRID_COLUMNS.map((c) => c.key);
+  const hasHeader = headerRow.some((h) => headerKeys.includes(h));
+
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  const headers = hasHeader ? headerRow : headerKeys;
+
+  return dataLines.slice(0, BULK_MAX_ROWS).map((cells) => {
+    const row = newBulkRow();
+    headers.forEach((key, i) => {
+      if (!headerKeys.includes(key)) return;
+      const val = cells[i] ?? "";
+      if (key === "ai_enabled") row[key] = parseAiEnabled(val);
+      else row[key] = String(val ?? "").trim();
+    });
+    row.name = polishBulkName(row);
+    if (!row.sku?.trim()) row.sku = suggestSku(row.name, row.brand);
+    return row;
+  });
+}
+
 export function parseBulkPaste(text) {
   const lines = String(text || "")
     .split(/\r?\n/)
@@ -89,27 +181,18 @@ export function parseBulkPaste(text) {
     return line.split(",").map((p) => p.trim());
   };
 
-  const first = splitLine(lines[0]).map((h) => h.toLowerCase());
-  const headerKeys = BULK_GRID_COLUMNS.map((c) => c.key);
-  const hasHeader = first.some((h) => headerKeys.includes(h));
-  const start = hasHeader ? 1 : 0;
+  const matrix = lines.map(splitLine);
+  return matrixToRows(matrix);
+}
 
-  return lines.slice(start).map((line) => {
-    const parts = splitLine(line);
-    const row = newBulkRow();
-    if (hasHeader) {
-      first.forEach((key, i) => {
-        if (headerKeys.includes(key)) row[key] = parts[i] ?? "";
-      });
-    } else {
-      headerKeys.forEach((key, i) => {
-        row[key] = parts[i] ?? "";
-      });
-    }
-    row.name = polishBulkName(row);
-    if (!row.sku?.trim()) row.sku = suggestSku(row.name, row.brand);
-    return row;
-  });
+export async function parseBulkExcelFile(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const sheetName = wb.SheetNames[0];
+  if (!sheetName) return [];
+  const sheet = wb.Sheets[sheetName];
+  const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  return matrixToRows(matrix);
 }
 
 export function resolveCategoryIds(row, taxonomy) {
@@ -154,26 +237,36 @@ export function resolveCategoryIds(row, taxonomy) {
 
 export function validateBulkRow(row, taxonomy) {
   const errors = {};
-  if (!polishBulkName(row)) errors.name = "Name required";
-  if (!String(row.hsn_code || "").trim()) errors.hsn_code = "HSN required";
-  if (!Number(row.discounted_price) || Number(row.discounted_price) <= 0) {
-    errors.discounted_price = "Selling price required";
-  }
-  if (!Number(row.original_price) || Number(row.original_price) <= 0) {
-    errors.original_price = "MRP required";
-  }
-  if (Number(row.discounted_price) > Number(row.original_price)) {
-    errors.discounted_price = "Selling price cannot exceed MRP";
-  }
-  if (row.stock === "" || Number(row.stock) < 0) errors.stock = "Stock required";
+  if (!polishBulkName(row)) errors.name = "Product name is required";
+  if (!String(row.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
+
+  Object.assign(errors, validateMrpAndSelling(row.original_price, row.discounted_price));
+
+  const stockErr = validateStockQty(row.stock, "Stock");
+  if (stockErr) errors.stock = stockErr;
+
+  const gstErr = validateNonNegativeOptional(row.gst, "GST %");
+  if (gstErr) errors.gst = gstErr;
+
   Object.assign(errors, resolveCategoryIds(row, taxonomy).errors);
   return errors;
+}
+
+export function bulkExtraNotes(row) {
+  return [
+    row.audience && `Audience: ${row.audience}`,
+    row.color && `Colour: ${row.color}`,
+    row.brand && `Brand: ${row.brand}`,
+  ]
+    .filter(Boolean)
+    .join(". ");
 }
 
 export function rowToSmartListingState(row, taxonomy, vendorId) {
   const ids = resolveCategoryIds(row, taxonomy);
   const name = polishBulkName(row);
   const sku = row.sku?.trim() || suggestSku(name, row.brand);
+  const color = String(row.color || "").trim();
   return {
     vendor_id: vendorId,
     listingType: "single",
@@ -188,6 +281,7 @@ export function rowToSmartListingState(row, taxonomy, vendorId) {
     categoryTitle: ids.categoryTitle,
     subCategoryTitle: ids.subCategoryTitle,
     innerSubCategoryTitle: ids.innerSubCategoryTitle,
+    colorGroups: color ? [{ color_name: color }] : [],
     hsn_code: row.hsn_code,
     gst: row.gst || 0,
     original_price: row.original_price,
@@ -196,18 +290,54 @@ export function rowToSmartListingState(row, taxonomy, vendorId) {
     sku,
     files: row.files || [],
     mediaLabels: row.mediaLabels || [],
+    extraNotes: bulkExtraNotes(row),
     visibility: "Hidden",
     listing_status: "draft",
     countryOfOrigin: "India",
     shortDescription: row.shortDescription || "",
     keyFeatures: row.keyFeatures || [],
     productDetails: row.productDetails || "",
+    generalInfo: row.generalInfo || "",
     specifications: row.specifications || [],
     whatsInTheBox: row.whatsInTheBox || [],
     benefits: row.benefits || [],
+    metaTitle: row.metaTitle || "",
+    metaDescription: row.metaDescription || "",
+    metaKeywords: row.metaKeywords || "",
+    tags: row.tags || [],
+    warrantyType: row.warrantyType || "Manufacturer",
+    warrantyPeriod: row.warrantyPeriod || "As per brand policy",
+    shipsFrom: row.shipsFrom || "India",
+    shipsTo: row.shipsTo || "Pan India",
+    deliveryTimeText: row.deliveryTimeText || "3–7 business days",
     shipping_charges: 0,
     free_shipping: false,
     platformFee: 0,
+  };
+}
+
+/** Map merged Smart Listing state back onto a bulk grid row. */
+export function applyAiMergeToRow(row, merged) {
+  return {
+    name: merged.name || polishBulkName(row),
+    shortDescription: merged.shortDescription || "",
+    keyFeatures: merged.keyFeatures || [],
+    productDetails: merged.productDetails || "",
+    generalInfo: merged.generalInfo || "",
+    specifications: merged.specifications || [],
+    whatsInTheBox: merged.whatsInTheBox || [],
+    benefits: merged.benefits || [],
+    metaTitle: merged.metaTitle || "",
+    metaDescription: merged.metaDescription || "",
+    metaKeywords: merged.metaKeywords || "",
+    tags: merged.tags || [],
+    warrantyType: merged.warrantyType || "",
+    warrantyPeriod: merged.warrantyPeriod || "",
+    shipsFrom: merged.shipsFrom || "",
+    shipsTo: merged.shipsTo || "",
+    deliveryTimeText: merged.deliveryTimeText || "",
+    sku: merged.sku || row.sku,
+    ai_done: true,
   };
 }
 
@@ -228,15 +358,56 @@ export function downloadCsvTemplate() {
       "25",
       "",
       "",
+      "Yes",
     ].join("\t"),
   ].join("\n");
   const blob = new Blob([sample], { type: "text/tab-separated-values;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "bulk-listing-template.tsv";
+  a.download = "bulk-single-listing-template.tsv";
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadExcelTemplate() {
+  const headers = BULK_GRID_COLUMNS.map((c) => c.label);
+  const hints = BULK_GRID_COLUMNS.map(
+    (c) => c.hint || (c.required ? "Required" : "Optional"),
+  );
+  const sample = [
+    "Cotton Round Neck T-Shirt",
+    "Men",
+    "Navy Blue",
+    "Fashion",
+    "Men's Clothing",
+    "T-Shirts",
+    "61091000",
+    "5",
+    "999",
+    "599",
+    "25",
+    "",
+    "",
+    "Yes",
+  ];
+  const ws = XLSX.utils.aoa_to_sheet([headers, hints, sample]);
+  ws["!cols"] = headers.map(() => ({ wch: 18 }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Products");
+  const guide = XLSX.utils.aoa_to_sheet([
+    ["Quick bulk — how to use"],
+    [""],
+    ["1. Fill the Products sheet — one row per product (max 500)."],
+    ["2. Category names must match your catalog exactly."],
+    ["3. MRP and Selling price must be greater than 0; Selling ≤ MRP."],
+    ["4. Stock must be a whole number ≥ 1."],
+    ["5. Upload this file in Smart Bulk → then add front photos per row."],
+    ["6. Gallery images (up to 5 each): Product → Media Manager first."],
+    ["7. AI column: Yes / No — Yes fills descriptions & SEO automatically."],
+  ]);
+  XLSX.utils.book_append_sheet(wb, guide, "Instructions");
+  XLSX.writeFile(wb, "bulk-single-listing-template.xlsx");
 }
 
 export function downloadFailedRows(rows, filename = "bulk-create-failed.csv") {
@@ -291,4 +462,11 @@ export function loadBulkSession() {
 
 export function clearBulkSession() {
   localStorage.removeItem(STORAGE_KEY);
+}
+
+export function columnGroupClass(group) {
+  if (group === "manual") return "bg-orange-50 text-orange-900";
+  if (group === "lookup") return "bg-sky-50 text-sky-900";
+  if (group === "toggle") return "bg-violet-50 text-violet-900";
+  return "bg-slate-50 text-slate-700";
 }

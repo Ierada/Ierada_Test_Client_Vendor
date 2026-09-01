@@ -1,6 +1,7 @@
 import React from "react";
 import { ImagePlus, X } from "lucide-react";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import { LISTING_IMAGE_MAX_BYTES } from "./utils/chunkUploadFiles";
 
 export const PHOTO_SLOTS = [
   { id: "front", label: "Front", required: true },
@@ -39,8 +40,9 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       patch({ files: nextFiles, mediaLabels: nextLabels });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      notifyOnFail("Image must be 5 MB or smaller");
+    if (file.size > LISTING_IMAGE_MAX_BYTES) {
+      const mb = Math.round(LISTING_IMAGE_MAX_BYTES / (1024 * 1024));
+      notifyOnFail(`Image must be ${mb} MB or smaller`);
       return;
     }
     if (!file.type.startsWith("image/")) {

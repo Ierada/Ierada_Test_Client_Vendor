@@ -17,7 +17,11 @@ import {
   formatTime,
 } from "../../../utils/date&Time/dateAndTimeFormatter";
 import { updateOrderStatus } from "../../../services/api.order";
-import { getApiErrorMessage } from "../../../utils/apiError";
+import { notifyApiError } from "../../../utils/notifyApiError";
+import {
+  canVendorAcceptOrReject,
+  canVendorShowOrderActions,
+} from "../../../utils/orderStatus";
 import {
   downloadShippingLabel,
   manifestOrder,
@@ -189,21 +193,14 @@ const OrderActions = ({
       }
       onOrderUpdate?.();
     } catch (err) {
-      notifyOnFail(err?.response?.data?.message || "Error generating manifest");
+      notifyApiError(err, "Error generating manifest");
     } finally {
       setManifestLoading(false);
     }
   };
 
-  const showActions =
-    order.order_status !== "delivered" &&
-    order.order_status !== "cancelled" &&
-    order.order_status !== "rejected" &&
-    order.order_status !== "returned" &&
-    order.order_status !== "accepted" &&
-    order.order_status !== "packed" &&
-    order.order_status !== "shipped" &&
-    order.order_status !== "intransit";
+  const showActions = canVendorShowOrderActions(order.order_status);
+  const canAcceptReject = canVendorAcceptOrReject(order.order_status);
 
   // ── Accept ─────────────────────────────────────────────────────────────────
   const handleAccept = async () => {
@@ -220,7 +217,7 @@ const OrderActions = ({
         notifyOnFail(res?.message || "Failed to accept order");
       }
     } catch (err) {
-      notifyOnFail(err?.response?.data?.message || "Error accepting order");
+      notifyApiError(err, "Error accepting order");
     } finally {
       setIsSubmitting(false);
     }
@@ -244,7 +241,7 @@ const OrderActions = ({
         notifyOnFail(res?.message || "Failed to reject order");
       }
     } catch (err) {
-      notifyOnFail(getApiErrorMessage(err, "Error rejecting order"));
+      notifyApiError(err, "Error rejecting order");
     } finally {
       setIsSubmitting(false);
     }
@@ -307,7 +304,7 @@ const OrderActions = ({
                   openUpward ? "bottom-full mb-1" : "top-full mt-1"
                 }`}
               >
-                {order.order_status !== "accepted" && order.order_status !== "packed" && order.order_status !== "shipped" && order.order_status !== "intransit" && (
+                {canAcceptReject && (
                   <>
                     <button
                       onClick={() => {
