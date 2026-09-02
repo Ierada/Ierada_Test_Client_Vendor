@@ -1,4 +1,5 @@
 import { scrubRestrictedText } from "./restrictedClaims";
+import { fileToSuggestPayload } from "./fileToSuggestPayload";
 
 const PLATFORM_BRAND_RE = /\bierada\b/gi;
 
@@ -126,14 +127,15 @@ function ensureKeyFeatures(features, name, categoryPath) {
     .map((x) => scrubPlatformBranding(x))
     .filter(Boolean);
   const cat = categoryPath || "general";
+  if (base.length >= 5) return base.slice(0, 12);
   const pads = [
     `Designed for everyday ${cat.split(" › ").pop() || "use"}`,
-    `Material and finish as shown in listing photos`,
+    `Colour and finish as shown in listing photos`,
     `Check size / fit guidance on the listing before ordering`,
-    `Packaged for safe dispatch across India`,
-    `Sold as one unit unless variations are selected`,
+    `Packed for dispatch across India`,
+    `Sold as listed unless a variation is selected`,
     `Inspect contents on delivery and follow care instructions`,
-    `Refer to specifications for dimensions and compatibility`,
+    `Refer to specifications for material and compatibility`,
   ];
   const out = [...base];
   for (const line of pads) {
@@ -439,22 +441,81 @@ export function mergeAiDraft(
   return applyListingContentRules(next, vendorContext);
 }
 
-/** Payload for POST /api/ai/listing-draft */
-export function buildListingAiPayload(state, vendorContext = {}) {
-  return {
+function firstListingImageFile(state) {
+  for (const f of state.files || []) {
+    if (f instanceof File) return f;
+  }
+  for (const g of state.colorGroups || []) {
+    for (const m of g.media || []) {
+      if (m instanceof File) return m;
+      if (m?.file instanceof File) return m.file;
+    }
+  }
+  return null;
+}
+
+function mediaLabelNames(state) {
+  return (Array.isArray(state.mediaLabels) ? state.mediaLabels : [])
+    .map((l) => (typeof l === "string" ? l : l?.label || l?.alt_text || ""))
+    .filter(Boolean);
+}
+
+function sizeNamesFromState(state) {
+  return (state.colorGroups || [])
+    .flatMap((g) =>
+      (g.sizes || []).map((s) => s.size_name || s.sizeName || s.label || ""),
+    )
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+}
+
+function customAttributeLines(state) {
+  return (state.customRows || [])
+    .filter((r) => r.enabled)
+    .map((r) =>
+      (r.attributes || [])
+        .map((a) => a.value || a.label || "")
+        .filter(Boolean)
+        .join(" / "),
+    )
+    .filter(Boolean);
+}
+
+function comboItemNames(state) {
+  return (state.comboItems || [])
+    .map((i) => i.name || i.title || i.product_name || "")
+    .filter(Boolean);
+}
+
+/** Payload for POST /api/ai/listing-draft (includes compressed front photo when present). */
+export async function buildListingAiPayload(state, vendorContext = {}) {
+  const payload = {
     brandType: state.brandType || "",
     brand: state.brand || "",
     name: state.name || "",
     listingType: state.listingType || "single",
+    category_id: state.category_id || "",
+    sub_category_id: state.sub_category_id || "",
+    inner_sub_category_id: state.inner_sub_category_id || "",
     categoryTitle: state.categoryTitle || "",
     subCategoryTitle: state.subCategoryTitle || "",
     innerSubCategoryTitle: state.innerSubCategoryTitle || "",
     countryOfOrigin: state.countryOfOrigin || "India",
+    product_condition: state.product_condition || "",
+    hsn_code: state.hsn_code || "",
+    gst: state.gst ?? "",
     original_price: state.original_price || "",
     discounted_price: state.discounted_price || "",
+    package_length: state.package_length || "",
+    package_width: state.package_width || "",
+    package_height: state.package_height || "",
+    package_weight: state.package_weight || "",
     extraNotes: state.extraNotes || "",
-    mediaLabels: Array.isArray(state.mediaLabels) ? state.mediaLabels : [],
+    mediaLabels: mediaLabelNames(state),
     colorNames: resolveListingColors(state),
+    sizeNames: sizeNamesFromState(state),
+    customAttributes: customAttributeLines(state),
+    comboItemNames: comboItemNames(state),
     vendorShopName:
       vendorContext.shop_name ||
       vendorContext.shopName ||
@@ -462,4 +523,16 @@ export function buildListingAiPayload(state, vendorContext = {}) {
       "",
     vendorBrandName: vendorContext.brand_name || "",
   };
+
+  const file = firstListingImageFile(state);
+  if (file) {
+    try {
+      const img = await fileToSuggestPayload(file);
+      payload.image_base64 = img.image_base64;
+      payload.mime_type = img.mime_type;
+    } catch {
+      /* text-only draft if photo cannot be compressed */
+    }
+  }
+  return payload;
 }

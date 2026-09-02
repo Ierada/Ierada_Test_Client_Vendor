@@ -36,7 +36,7 @@ export async function createBulkListingJob(body) {
 export async function suggestListingCategory(payload) {
   try {
     const res = await apiClient.post("/ai/listing-category-suggest", payload, {
-      timeout: 60000,
+      timeout: 90000,
     });
     return res.data;
   } catch (error) {
@@ -48,7 +48,7 @@ export async function suggestListingCategory(payload) {
 export async function generateListingAiDraft(payload) {
   try {
     const res = await apiClient.post("/ai/listing-draft", payload, {
-      timeout: 90000,
+      timeout: 120000,
     });
     return res.data;
   } catch (error) {

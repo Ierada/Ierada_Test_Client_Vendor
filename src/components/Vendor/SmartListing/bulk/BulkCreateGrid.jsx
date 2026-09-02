@@ -222,7 +222,9 @@ export default function BulkCreateGrid({
         const base = rowToSmartListingState(row, taxonomy, vendorId);
         let draft = null;
         try {
-          const res = await generateListingAiDraft(buildListingAiPayload(base, user || {}));
+          const res = await generateListingAiDraft(
+            await buildListingAiPayload(base, user || {}),
+          );
           if (res?.status === 1 && res?.data?.draft) draft = res.data.draft;
         } catch {
           /* mergeAiDraft falls back to local template */

@@ -42,7 +42,7 @@ import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstB
 import { BRAND_AUTH_DOC_TYPES, BRAND_AUTH_SLA_BUSINESS_DAYS } from "../../../components/Vendor/SmartListing/utils/brandAuthConfig";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
 import { calcSettlement, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
-import { fileToBase64 } from "../../../components/Vendor/SmartListing/utils/fileToBase64";
+import { fileToSuggestPayload } from "../../../components/Vendor/SmartListing/utils/fileToSuggestPayload";
 import { buildSmartListingFormData, applyAutoListingPolicies } from "../../../components/Vendor/SmartListing/utils/buildFormData";
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
 import {
@@ -54,7 +54,6 @@ import SearchablePicker from "../../../components/Vendor/SmartListing/Searchable
 import ColorSizeMatrix from "../../../components/Vendor/SmartListing/ColorSizeMatrix";
 import CustomVariationMatrix from "../../../components/Vendor/SmartListing/CustomVariationMatrix";
 import ComboBuilder from "../../../components/Vendor/SmartListing/ComboBuilder";
-import ComplianceFields from "../../../components/Vendor/SmartListing/ComplianceFields";
 import LabeledPhotoBoxes from "../../../components/Vendor/SmartListing/LabeledPhotoBoxes";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
 import RequestSpecField from "../../../components/Vendor/SmartListing/RequestSpecField";
@@ -106,7 +105,6 @@ const STEP_LABELS = {
 const REVIEW_SECTIONS = [
   { id: "pricing", label: "Pricing & Inventory" },
   { id: "shipping", label: "Shipping Details" },
-  { id: "compliance", label: "India Compliance" },
   { id: "product_info", label: "Product Information" },
   { id: "key_features", label: "Key Features" },
   { id: "description", label: "Product Description" },
@@ -648,7 +646,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       });
       if (local.phase) setPhase(local.phase);
       if (local.step) setStep(local.step);
-      if (local.reviewSection) setReviewSection(local.reviewSection);
+      if (local.reviewSection && local.reviewSection !== "compliance") {
+        setReviewSection(local.reviewSection);
+      }
       setSaveHint("Restored local draft");
     }
   }, [stableId, editProductId, freshStart]);
@@ -936,16 +936,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     patch,
   ]);
 
-  const runCategorySuggest = useCallback(async () => {
+  const runCategorySuggest = useCallback(async ({ force = false } = {}) => {
     const file = firstListingImageFile(state);
     if (!file || !state.listingType) return;
+    if (!force && state.category_id) return;
     const token = ++categorySuggestToken.current;
     setCategorySuggesting(true);
     try {
-      const image_base64 = await fileToBase64(file);
+      const payload = await fileToSuggestPayload(file);
       const res = await suggestListingCategory({
-        image_base64,
-        mime_type: file.type || "image/jpeg",
+        ...payload,
         listing_type: state.listingType,
       });
       if (token !== categorySuggestToken.current) return;
@@ -984,7 +984,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     } finally {
       if (token === categorySuggestToken.current) setCategorySuggesting(false);
     }
-  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, patch]);
+  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, state.category_id, patch]);
 
   useEffect(() => {
     if (!state.listingType || state.category_id) return;
@@ -992,12 +992,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (!file) return;
     runCategorySuggest();
   }, [
+    step,
     state.listingType,
     state.category_id,
     state.files?.length,
     state.files?.[0]?.name,
     state.files?.[0]?.lastModified,
     state.mediaLabels,
+    state.colorGroups,
     runCategorySuggest,
   ]);
 
@@ -1101,15 +1103,22 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       let draft = null;
       let source = "local";
       try {
-        const res = await generateListingAiDraft(buildListingAiPayload(state, user));
+        const res = await generateListingAiDraft(
+          await buildListingAiPayload(state, user),
+        );
         if (runId !== runAiGenerate._seq) return;
         if (res?.status === 1 && res?.data?.draft) {
           draft = res.data.draft;
           source = res.data.source || "openai";
+        } else if (res?.message) {
+          notifyOnWarning(res.message);
         }
       } catch (apiErr) {
         if (runId !== runAiGenerate._seq) return;
         console.warn("Listing AI API failed, using local fallback:", apiErr);
+        notifyOnWarning(
+          getApiErrorMessage(apiErr, "Listing AI unavailable — filled a basic draft."),
+        );
       }
 
       if (runId !== runAiGenerate._seq) return;
@@ -1398,6 +1407,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               patch={patch}
               fieldErrors={fieldErrors}
               categorySuggesting={categorySuggesting}
+              onDetectCategory={() => runCategorySuggest({ force: true })}
               categories={categories}
               filteredSubs={filteredSubs}
               filteredInners={filteredInners}
@@ -1511,6 +1521,7 @@ function BasicsPanel({
   patch,
   fieldErrors,
   categorySuggesting,
+  onDetectCategory,
   categories,
   filteredSubs,
   filteredInners,
@@ -1666,12 +1677,12 @@ function BasicsPanel({
         <>
           <h2 className="font-semibold text-gray-900">Upload Product Images</h2>
           <p className="text-xs text-gray-500">
-            Upload the front photo — category and subcategory auto-fill in the background.
+            Upload the front photo — category, subcategory, and inner subcategory auto-fill in the background.
           </p>
           {categorySuggesting ? (
             <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Detecting category from your photo…
+              Detecting category and inner subcategory from your photo…
             </p>
           ) : null}
           <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
@@ -1684,7 +1695,7 @@ function BasicsPanel({
           {categorySuggesting ? (
             <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Detecting category from your photo…
+              Detecting category and inner subcategory from your photo…
             </p>
           ) : state.category_id ? (
             <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
@@ -1699,6 +1710,16 @@ function BasicsPanel({
               Go back and upload a clear front photo for automatic category detection.
             </p>
           )}
+          {state.files?.length ? (
+            <button
+              type="button"
+              disabled={categorySuggesting}
+              onClick={() => onDetectCategory?.()}
+              className="text-xs font-medium text-primary-100 hover:underline disabled:opacity-50"
+            >
+              {categorySuggesting ? "Detecting…" : "Detect category from photo"}
+            </button>
+          ) : null}
           <div className="grid gap-3">
             <Field label="Category" required error={fieldErrors.category_id}>
               <SearchablePicker
@@ -1782,7 +1803,8 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
     : REVIEW_SECTIONS;
 
   useEffect(() => {
-    if (hideSeo && reviewSection === "seo") setReviewSection("pricing");
+    if (reviewSection === "compliance") setReviewSection("shipping");
+    else if (hideSeo && reviewSection === "seo") setReviewSection("pricing");
   }, [hideSeo, reviewSection, setReviewSection]);
 
   return (
@@ -2025,10 +2047,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
           </div>
         ) : null}
 
-        {reviewSection === "compliance" ? (
-          <ComplianceFields state={state} patch={patch} />
-        ) : null}
-
         {reviewSection === "size_chart" ? (
           <SizeChartGuide
             sizeChartUrl={sizeChartUrl}
@@ -2080,8 +2098,18 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 onChange={(e) => patch({ package_weight: e.target.value })}
               />
             </Field>
-            <Field label="Volumetric (kg)">
-              <input className={inputCls} value={state.volumetric_weight} readOnly />
+            <Field
+              label="Volumetric (kg)"
+              optional={false}
+              hint="Auto-calculated from L × W × H ÷ 5000. Not editable."
+            >
+              <input
+                className={`${inputCls} bg-gray-100 text-gray-600 cursor-not-allowed`}
+                value={state.volumetric_weight}
+                readOnly
+                disabled
+                tabIndex={-1}
+              />
             </Field>
             {["package_length", "package_width", "package_height"].map((k) => (
               <Field key={k} label={k.replace("package_", "").toUpperCase() + " (cm)"}>
