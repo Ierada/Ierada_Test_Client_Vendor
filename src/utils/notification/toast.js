@@ -1,84 +1,162 @@
+import React from "react";
 import { toast } from "react-toastify";
 import { wasAuthSessionEndedRecently } from "../authSession";
 
-// Custom toast styling configuration
-const toastConfig = {
+const baseConfig = {
   position: "top-right",
-  autoClose: 3000,
+  autoClose: 4200,
   hideProgressBar: false,
   closeOnClick: true,
   pauseOnHover: true,
   draggable: true,
-  progress: undefined,
-  className: "ecommerce-toast",
+  className: "ierada-toast",
 };
 
-// Success notification with custom styling
-export const notifyOnSuccess = (message) => {
-  toast.success(message, {
-    ...toastConfig,
-    style: {
-      background: "#effaf5",
-      color: "#257953",
-      borderLeft: "4px solid #23d160",
-      boxShadow: "0 3px 10px rgba(0, 0, 0, 0.1)",
-    },
-    progressStyle: {
-      background: "#23d160",
-    },
-  });
+const TONE = {
+  success: {
+    icon: "✓",
+    iconBg: "#dcfce7",
+    iconColor: "#15803d",
+    border: "#22c55e",
+    progress: "#22c55e",
+    title: "#14532d",
+    body: "#166534",
+    bg: "linear-gradient(135deg, #f0fdf4 0%, #ffffff 70%)",
+    method: toast.success,
+    fallbackTitle: "Success",
+  },
+  error: {
+    icon: "!",
+    iconBg: "#fee2e2",
+    iconColor: "#b91c1c",
+    border: "#ef4444",
+    progress: "#ef4444",
+    title: "#7f1d1d",
+    body: "#991b1b",
+    bg: "linear-gradient(135deg, #fef2f2 0%, #ffffff 70%)",
+    method: toast.error,
+    fallbackTitle: "Something went wrong",
+  },
+  warning: {
+    icon: "!",
+    iconBg: "#fef3c7",
+    iconColor: "#b45309",
+    border: "#f59e0b",
+    progress: "#f59e0b",
+    title: "#78350f",
+    body: "#92400e",
+    bg: "linear-gradient(135deg, #fffbeb 0%, #ffffff 70%)",
+    method: toast.warning,
+    fallbackTitle: "Please check",
+  },
+  info: {
+    icon: "i",
+    iconBg: "#e0f2fe",
+    iconColor: "#0369a1",
+    border: "#0ea5e9",
+    progress: "#0ea5e9",
+    title: "#0c4a6e",
+    body: "#075985",
+    bg: "linear-gradient(135deg, #f0f9ff 0%, #ffffff 70%)",
+    method: toast.info,
+    fallbackTitle: "Info",
+  },
 };
 
-// Error notification with custom styling
-export const notifyOnFail = (message) => {
-  const text = String(message || "");
-  // After DEVICE_REVOKED / password-change, leftover catch() blocks must stay silent.
-  if (wasAuthSessionEndedRecently()) {
-    return;
+function ToastCard({ tone, title, message }) {
+  const t = TONE[tone] || TONE.info;
+  return React.createElement(
+    "div",
+    { style: { display: "flex", gap: 12, alignItems: "flex-start" } },
+    React.createElement(
+      "div",
+      {
+        style: {
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          background: t.iconBg,
+          color: t.iconColor,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 700,
+          fontSize: 14,
+          flexShrink: 0,
+        },
+      },
+      t.icon,
+    ),
+    React.createElement(
+      "div",
+      { style: { minWidth: 0 } },
+      title
+        ? React.createElement(
+            "div",
+            {
+              style: {
+                fontWeight: 700,
+                fontSize: 13,
+                color: t.title,
+                marginBottom: message ? 2 : 0,
+                lineHeight: 1.3,
+              },
+            },
+            title,
+          )
+        : null,
+      message
+        ? React.createElement(
+            "div",
+            {
+              style: {
+                fontSize: 12.5,
+                color: t.body,
+                lineHeight: 1.45,
+                whiteSpace: "pre-wrap",
+              },
+            },
+            message,
+          )
+        : null,
+    ),
+  );
+}
+
+function normalizePayload(input, fallbackTitle) {
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    return {
+      title: input.title || fallbackTitle,
+      message: input.message || input.msg || "",
+    };
   }
+  return { title: fallbackTitle, message: String(input || "") };
+}
 
-  toast.error(text, {
-    ...toastConfig,
+function showToast(tone, input) {
+  const cfg = TONE[tone] || TONE.info;
+  const { title, message } = normalizePayload(input, cfg.fallbackTitle);
+  cfg.method(React.createElement(ToastCard, { tone, title, message }), {
+    ...baseConfig,
     style: {
-      background: "#feecf0",
-      color: "#cc0f35",
-      borderLeft: "4px solid #f14668",
-      boxShadow: "0 3px 10px rgba(0, 0, 0, 0.1)",
+      background: cfg.bg,
+      borderLeft: `4px solid ${cfg.border}`,
+      borderRadius: 14,
+      boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+      padding: "12px 14px",
+      minHeight: 64,
     },
-    progressStyle: {
-      background: "#f14668",
-    },
+    progressStyle: { background: cfg.progress },
   });
+}
+
+export const notifyOnSuccess = (message) => showToast("success", message);
+
+export const notifyOnFail = (message) => {
+  if (wasAuthSessionEndedRecently()) return;
+  showToast("error", message);
 };
 
-// Warning notification with custom styling
-export const notifyOnWarning = (message) => {
-  toast.warning(message, {
-    ...toastConfig,
-    style: {
-      background: "#fff5eb",
-      color: "#945600",
-      borderLeft: "4px solid #ffdd57",
-      boxShadow: "0 3px 10px rgba(0, 0, 0, 0.1)",
-    },
-    progressStyle: {
-      background: "#ffdd57",
-    },
-  });
-};
+export const notifyOnWarning = (message) => showToast("warning", message);
 
-// Info notification with custom styling
-export const notifyInfo = (message) => {
-  toast.info(message, {
-    ...toastConfig,
-    style: {
-      background: "#ebf8ff",
-      color: "#2b6cb0",
-      borderLeft: "4px solid #3182ce",
-      boxShadow: "0 3px 10px rgba(0, 0, 0, 0.1)",
-    },
-    progressStyle: {
-      background: "#3182ce",
-    },
-  });
-};
+export const notifyInfo = (message) => showToast("info", message);

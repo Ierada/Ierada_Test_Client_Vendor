@@ -376,10 +376,10 @@ export default function BulkCreateGrid({
                 type="button"
                 disabled={uploadBusy}
                 onClick={() => fileRef.current?.click()}
-                className="w-full border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center hover:border-blue-300 hover:bg-blue-50/30 transition-colors"
+                className="w-full border-2 border-dashed border-orange-300 rounded-2xl p-8 text-center bg-orange-50/30 hover:border-primary-100 hover:bg-orange-50/60 transition-colors"
               >
                 {uploadBusy ? (
-                  <Loader2 className="w-8 h-8 mx-auto animate-spin text-blue-600" />
+                  <Loader2 className="w-8 h-8 mx-auto animate-spin text-primary-100" />
                 ) : (
                   <Upload className="w-8 h-8 mx-auto text-gray-400" />
                 )}
@@ -407,7 +407,7 @@ export default function BulkCreateGrid({
                 <button
                   type="button"
                   onClick={applyPaste}
-                  className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold"
+                  className="px-4 py-2 rounded-xl bg-primary-100 text-white text-sm font-semibold"
                 >
                   Load pasted rows
                 </button>
@@ -433,7 +433,7 @@ export default function BulkCreateGrid({
                       checked={globalAi}
                       onChange={(e) => setGlobalAi(e.target.checked)}
                     />
-                    <span className="w-11 h-6 bg-gray-300 peer-checked:bg-violet-600 rounded-full peer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5" />
+                    <span className="w-11 h-6 bg-gray-300 peer-checked:bg-primary-100 rounded-full peer after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5" />
                   </label>
                 </div>
                 <ul className="mt-3 text-[11px] text-violet-900 space-y-1 list-disc pl-4">
@@ -503,7 +503,7 @@ export default function BulkCreateGrid({
                   type="button"
                   onClick={goPhotos}
                   disabled={!validCount}
-                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-40"
+                  className="px-5 py-2.5 rounded-xl bg-primary-100 text-white text-sm font-semibold disabled:opacity-40"
                 >
                   Next: Add photos →
                 </button>
@@ -632,7 +632,7 @@ export default function BulkCreateGrid({
                 type="button"
                 disabled={disabled || !validCount}
                 onClick={goPhotos}
-                className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+                className="px-5 py-2.5 rounded-xl bg-primary-100 text-white text-sm font-semibold disabled:opacity-50"
               >
                 Next: Add photos
               </button>
@@ -648,7 +648,7 @@ export default function BulkCreateGrid({
             Add a <strong>front</strong> photo per product (labeled slots — same as single listing).
             AI uses photos + category for richer copy.
           </p>
-          <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+          <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-xl px-3 py-2">
             Need all gallery images (5 per product)? Upload them in{" "}
             <strong>Product → Media Manager</strong> first — up to 2,500 photos per session
             (20 MB each, auto-batched).
@@ -692,7 +692,7 @@ export default function BulkCreateGrid({
             <button
               type="button"
               onClick={() => (globalAi ? setStep("ai") : setStep("review"))}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold"
+              className="px-5 py-2.5 rounded-xl bg-primary-100 text-white text-sm font-semibold"
             >
               Next: {globalAi ? "AI content" : "Review"}
             </button>
@@ -713,7 +713,7 @@ export default function BulkCreateGrid({
             </p>
           </div>
           {progress ? (
-            <p className="text-sm text-blue-700 bg-blue-50 rounded-xl px-3 py-2">{progress}</p>
+            <p className="text-sm text-primary-100 bg-orange-50 rounded-xl px-3 py-2">{progress}</p>
           ) : null}
           <button
             type="button"
@@ -756,7 +756,7 @@ export default function BulkCreateGrid({
             <button
               type="button"
               onClick={() => setStep("submit")}
-              className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold"
+              className="px-5 py-2.5 rounded-xl bg-primary-100 text-white text-sm font-semibold"
             >
               Next: Save listings
             </button>
@@ -789,7 +789,7 @@ export default function BulkCreateGrid({
               </label>
             </div>
             {progress ? (
-              <p className="text-sm text-blue-700 bg-blue-50 rounded-xl px-3 py-2">{progress}</p>
+              <p className="text-sm text-primary-100 bg-orange-50 rounded-xl px-3 py-2">{progress}</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => setStep("review")} className="px-4 py-2 rounded-xl border text-sm font-medium">
@@ -951,15 +951,15 @@ function BulkStepper({ step }) {
         return (
           <li key={s.id} className="flex items-center">
             {idx > 0 ? (
-              <span className={`w-4 sm:w-6 h-px shrink-0 ${done ? "bg-blue-400" : "bg-gray-200"}`} />
+              <span className={`w-4 sm:w-6 h-px shrink-0 ${done ? "bg-primary-100" : "bg-gray-200"}`} />
             ) : null}
             <span
               title={s.hint}
               className={`inline-flex flex-col px-2 sm:px-3 py-1.5 rounded-xl border text-[10px] sm:text-xs whitespace-nowrap min-w-[72px] ${
                 active
-                  ? "bg-blue-600 text-white border-blue-600"
+                  ? "bg-primary-100 text-white border-primary-100"
                   : done
-                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    ? "bg-orange-50 text-primary-100 border-orange-200"
                     : "bg-white text-gray-400 border-gray-200"
               }`}
             >

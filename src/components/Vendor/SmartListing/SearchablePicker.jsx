@@ -55,7 +55,7 @@ export default function SearchablePicker({
         onClick={() => setOpen(true)}
         className={`w-full flex items-center gap-2 rounded-lg border bg-white text-left disabled:opacity-50 ${
           compact ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm"
-        } ${error ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-blue-500/30`}
+        } ${error ? "border-red-300" : "border-gray-200"} focus:outline-none focus:ring-2 focus:ring-primary-100/30`}
       >
         <span className={`flex-1 truncate ${selected ? "text-gray-900" : "text-gray-400"}`}>
           {selected?.label || placeholder}
@@ -106,7 +106,7 @@ export default function SearchablePicker({
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30"
                 />
               </div>
               <p className="text-[11px] text-gray-400 mt-2">
@@ -122,13 +122,13 @@ export default function SearchablePicker({
                     type="button"
                     onClick={() => pick(o.id)}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 ${
-                      on ? "bg-blue-50" : ""
+                      on ? "bg-orange-50" : ""
                     }`}
                   >
                     <span
                       className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
                         on
-                          ? "bg-blue-600 border-blue-600 text-white"
+                          ? "bg-primary-100 border-primary-100 text-white"
                           : "border-gray-300 bg-white"
                       }`}
                     >

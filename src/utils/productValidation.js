@@ -77,18 +77,47 @@ export const checkDuplicateSKUInVariations = (variations, variationMode) => {
 
 /**
  * Validate price logic
+ * MRP and selling must both be > 0, and selling must be strictly less than MRP.
  */
 export const validatePriceLogic = (originalPrice, discountedPrice) => {
-  const original = parseFloat(originalPrice) || 0;
-  const discounted = parseFloat(discountedPrice) || 0;
-  if (original === 0 || discounted === 0) return { valid: true };
+  const origEmpty = originalPrice === "" || originalPrice == null;
+  const sellEmpty = discountedPrice === "" || discountedPrice == null;
+  const original = parseFloat(originalPrice);
+  const discounted = parseFloat(discountedPrice);
+
+  if (origEmpty || !Number.isFinite(original) || original <= 0) {
+    return { valid: false, error: "MRP cannot be 0" };
+  }
+  if (sellEmpty || !Number.isFinite(discounted) || discounted <= 0) {
+    return { valid: false, error: "Selling price cannot be 0" };
+  }
   if (discounted >= original) {
     return {
       valid: false,
-      error: "Selling price must be lower than original price",
+      error: "MRP cannot be less than selling price. Selling price cannot be greater than MRP.",
     };
   }
+
   return { valid: true };
+};
+
+/** Live field hint — empty fields stay quiet until a value is typed. */
+export const livePriceLogicError = (originalPrice, discountedPrice) => {
+  const origEmpty = originalPrice === "" || originalPrice == null;
+  const sellEmpty = discountedPrice === "" || discountedPrice == null;
+  if (origEmpty && sellEmpty) return "";
+  const original = parseFloat(originalPrice);
+  const discounted = parseFloat(discountedPrice);
+  if (!origEmpty && (!Number.isFinite(original) || original <= 0)) {
+    return "MRP cannot be 0";
+  }
+  if (!sellEmpty && (!Number.isFinite(discounted) || discounted <= 0)) {
+    return "Selling price cannot be 0";
+  }
+  if (!origEmpty && !sellEmpty && discounted >= original) {
+    return "MRP cannot be less than selling price. Selling price cannot be greater than MRP.";
+  }
+  return "";
 };
 
 /**

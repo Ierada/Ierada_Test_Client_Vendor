@@ -3,9 +3,14 @@ import { AlertTriangle, ImagePlus, Plus, Trash2 } from "lucide-react";
 import { getAllAttributes } from "../../../services/api.attribute";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { cartesianCustomRows, suggestVariantSku } from "./utils/variationHelpers";
+import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
+
+function inputClsErr(error) {
+  return error ? `${inputCls} border-red-400 bg-red-50` : inputCls;
+}
 
 const emptyAttr = () => ({ attribute_id: "", name: "", valuesText: "" });
 
@@ -87,7 +92,7 @@ export default function CustomVariationMatrix({ state, patch }) {
         <button
           type="button"
           onClick={generate}
-          className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white"
+          className="text-xs px-3 py-1.5 rounded-lg bg-primary-100 text-white"
         >
           Generate matrix
         </button>
@@ -150,7 +155,7 @@ export default function CustomVariationMatrix({ state, patch }) {
       {attrs.length < 4 ? (
         <button
           type="button"
-          className="text-xs text-blue-600 inline-flex items-center gap-1"
+          className="text-xs text-primary-100 inline-flex items-center gap-1"
           onClick={() => setAttrs([...attrs, emptyAttr()])}
         >
           <Plus className="w-3.5 h-3.5" /> Attribute
@@ -179,7 +184,16 @@ export default function CustomVariationMatrix({ state, patch }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, ri) => (
+              {rows.map((r, ri) => {
+                const mrpSell = r.enabled
+                  ? validateMrpAndSelling(r.original_price, r.discounted_price)
+                  : {};
+                const mrpErr = r.enabled ? liveFieldError(mrpSell.original_price, r.original_price) : null;
+                const sellErr = r.enabled ? liveFieldError(mrpSell.discounted_price, r.discounted_price) : null;
+                const stockErr = r.enabled
+                  ? liveFieldError(validateStockQty(r.stock, "Stock"), r.stock)
+                  : null;
+                return (
                 <tr key={ri} className={`border-b ${r.enabled ? "" : "opacity-50"}`}>
                   <td className="p-2 text-center">
                     <input
@@ -193,33 +207,42 @@ export default function CustomVariationMatrix({ state, patch }) {
                       .map((a) => a.attribute_value)
                       .join(" / ")}
                   </td>
-                  <td className="p-1">
+                  <td className="p-1 align-top">
                     <input
                       type="number"
-                      className={inputCls}
+                      min="1"
+                      step="0.01"
+                      className={inputClsErr(mrpErr)}
                       value={r.original_price}
                       onChange={(e) =>
                         updateRow(ri, { original_price: e.target.value })
                       }
                     />
+                    {mrpErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{mrpErr}</p> : null}
                   </td>
-                  <td className="p-1">
+                  <td className="p-1 align-top">
                     <input
                       type="number"
-                      className={inputCls}
+                      min="1"
+                      step="0.01"
+                      className={inputClsErr(sellErr)}
                       value={r.discounted_price}
                       onChange={(e) =>
                         updateRow(ri, { discounted_price: e.target.value })
                       }
                     />
+                    {sellErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{sellErr}</p> : null}
                   </td>
-                  <td className="p-1">
+                  <td className="p-1 align-top">
                     <input
                       type="number"
-                      className={inputCls}
+                      min="1"
+                      step="1"
+                      className={inputClsErr(stockErr)}
                       value={r.stock}
                       onChange={(e) => updateRow(ri, { stock: e.target.value })}
                     />
+                    {stockErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{stockErr}</p> : null}
                   </td>
                   <td className="p-1">
                     <input
@@ -229,7 +252,7 @@ export default function CustomVariationMatrix({ state, patch }) {
                     />
                   </td>
                   <td className="p-1">
-                    <label className="inline-flex items-center gap-1 text-xs text-blue-600 cursor-pointer">
+                    <label className="inline-flex items-center gap-1 text-xs text-primary-100 cursor-pointer">
                       <ImagePlus className="w-3.5 h-3.5" />
                       {(r.media || []).length || 0}
                       <input
@@ -252,7 +275,8 @@ export default function CustomVariationMatrix({ state, patch }) {
                     </label>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

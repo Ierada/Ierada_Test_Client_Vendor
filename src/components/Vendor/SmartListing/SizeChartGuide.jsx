@@ -71,7 +71,7 @@ export default function SizeChartGuide({ sizeChartUrl, categoryHint = "" }) {
           <div
             key={key}
             className={`rounded-lg border bg-white px-3 py-2 ${
-              fallbackKey === key ? "ring-2 ring-blue-400" : ""
+              fallbackKey === key ? "ring-2 ring-primary-100" : ""
             }`}
           >
             <p className="font-medium text-gray-800 capitalize mb-1">

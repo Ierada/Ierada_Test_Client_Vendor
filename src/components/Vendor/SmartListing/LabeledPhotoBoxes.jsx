@@ -80,7 +80,11 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
           return (
             <div
               key={slot.id}
-              className="border rounded-xl overflow-hidden bg-slate-50 relative aspect-square"
+              className={`overflow-hidden bg-white relative aspect-square ${
+                preview
+                  ? "border border-orange-100 rounded-xl"
+                  : "border-2 border-dashed border-orange-300 rounded-xl bg-orange-50/40"
+              }`}
             >
               {preview ? (
                 <>
@@ -94,8 +98,9 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
                   </button>
                 </>
               ) : (
-                <label className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer text-gray-400 hover:bg-white">
+                <label className="w-full h-full flex flex-col items-center justify-center gap-1 cursor-pointer text-primary-100 hover:bg-orange-50">
                   <ImagePlus className="w-6 h-6" />
+                  <span className="text-[10px] font-medium">Add image</span>
                   <input
                     type="file"
                     accept="image/*"

@@ -35,6 +35,7 @@ import {
   validateSKUFormat,
   checkDuplicateSKUInVariations,
   validatePriceLogic,
+  livePriceLogicError,
   validateMainProductFields,
   validateVariationsData,
   validateMediaRequirements,
@@ -624,28 +625,13 @@ const AddEditProduct = () => {
         [name]: isNaN(threshold) ? "" : threshold,
       }));
     } else if (name === "original_price" || name === "discounted_price") {
-      const newValue = parseFloat(value) || 0;
       setFormData((prev) => ({ ...prev, [name]: value }));
-      const originalPrice =
-        name === "original_price"
-          ? newValue
-          : parseFloat(formData.original_price) || 0;
-      const discountedPrice =
-        name === "discounted_price"
-          ? newValue
-          : parseFloat(formData.discounted_price) || 0;
-      if (
-        discountedPrice >= originalPrice &&
-        originalPrice !== 0 &&
-        discountedPrice !== 0
-      ) {
-        setPriceErrors((prev) => ({
-          ...prev,
-          main: "Selling price must be lower than original price",
-        }));
-      } else {
-        setPriceErrors((prev) => ({ ...prev, main: "" }));
-      }
+      const originalPrice = name === "original_price" ? value : formData.original_price;
+      const discountedPrice = name === "discounted_price" ? value : formData.discounted_price;
+      setPriceErrors((prev) => ({
+        ...prev,
+        main: livePriceLogicError(originalPrice, discountedPrice),
+      }));
     } else {
       setFormData((prev) => ({
         ...prev,
@@ -678,17 +664,12 @@ const AddEditProduct = () => {
         setFormData((fd) => ({ ...fd, [field]: value }));
       }
       if (["original_price", "discounted_price"].includes(field)) {
-        const op =
-          parseFloat(updated[varIdx].sizes[sizeIdx].original_price) || 0;
-        const dp =
-          parseFloat(updated[varIdx].sizes[sizeIdx].discounted_price) || 0;
+        const op = updated[varIdx].sizes[sizeIdx].original_price;
+        const dp = updated[varIdx].sizes[sizeIdx].discounted_price;
         setPriceErrors((prev) => {
           const newErrs = [...(prev.variations || [])];
           newErrs[varIdx] = newErrs[varIdx] || { sizes: [] };
-          newErrs[varIdx].sizes[sizeIdx] =
-            dp >= op && op > 0 && dp > 0
-              ? "Selling price must be lower than original price"
-              : "";
+          newErrs[varIdx].sizes[sizeIdx] = livePriceLogicError(op, dp);
           return { ...prev, variations: newErrs };
         });
       }
@@ -2677,9 +2658,14 @@ const AddEditProduct = () => {
                 name="original_price"
                 value={formData.original_price}
                 onChange={handleInputChange}
-                min={0}
-                className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm"
+                min={1}
+                className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm ${
+                  priceErrors.main ? "border-red-500" : ""
+                }`}
               />
+              {priceErrors.main ? (
+                <p className="mt-1 text-sm text-red-600">{priceErrors.main}</p>
+              ) : null}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 flex items-center gap-1">
@@ -2692,7 +2678,7 @@ const AddEditProduct = () => {
                 name="discounted_price"
                 value={formData.discounted_price}
                 onChange={handleInputChange}
-                min={0}
+                min={1}
                 className={`mt-1 block w-full rounded-2xl border-gray-300 shadow-sm ${priceErrors.main ? "border-red-500" : ""
                   }`}
               />
@@ -2710,7 +2696,7 @@ const AddEditProduct = () => {
                 name="stock"
                 value={formData.stock}
                 onChange={handleInputChange}
-                min={0}
+                min={1}
                 className="mt-1 block w-full rounded-2xl border-gray-300 shadow-sm"
               />
             </div>

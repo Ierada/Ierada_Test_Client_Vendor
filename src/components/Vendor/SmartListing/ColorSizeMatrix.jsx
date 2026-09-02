@@ -5,9 +5,14 @@ import { getAllSizes, addSize } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { suggestVariantSku } from "./utils/variationHelpers";
 import SearchablePicker from "./SearchablePicker";
+import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+  "w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
+
+function inputClsErr(error) {
+  return error ? `${inputCls} border-red-400 bg-red-50` : inputCls;
+}
 
 function emptySizeRow(defaults = {}) {
   return {
@@ -174,7 +179,7 @@ export default function ColorSizeMatrix({ state, patch }) {
                 }),
               ])
             }
-            className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white inline-flex items-center gap-1"
+            className="text-xs px-3 py-1.5 rounded-lg bg-primary-100 text-white inline-flex items-center gap-1"
           >
             <Plus className="w-3.5 h-3.5" /> Color
           </button>
@@ -296,7 +301,12 @@ export default function ColorSizeMatrix({ state, patch }) {
                 </tr>
               </thead>
               <tbody>
-                {(g.sizes || []).map((s, si) => (
+                {(g.sizes || []).map((s, si) => {
+                  const mrpSell = validateMrpAndSelling(s.original_price, s.discounted_price);
+                  const mrpErr = liveFieldError(mrpSell.original_price, s.original_price);
+                  const sellErr = liveFieldError(mrpSell.discounted_price, s.discounted_price);
+                  const stockErr = liveFieldError(validateStockQty(s.stock, "Stock"), s.stock);
+                  return (
                   <tr key={si} className="border-b border-gray-100">
                     <td className="py-1.5 pr-2 min-w-[140px]">
                       <SearchablePicker
@@ -308,33 +318,42 @@ export default function ColorSizeMatrix({ state, patch }) {
                         options={sizes.map((z) => ({ id: z.id, label: z.name }))}
                       />
                     </td>
-                    <td className="py-1.5 pr-2">
+                    <td className="py-1.5 pr-2 align-top">
                       <input
                         type="number"
-                        className={inputCls}
+                        min="1"
+                        step="0.01"
+                        className={inputClsErr(mrpErr)}
                         value={s.original_price}
                         onChange={(e) =>
                           updateSize(gi, si, { original_price: e.target.value })
                         }
                       />
+                      {mrpErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{mrpErr}</p> : null}
                     </td>
-                    <td className="py-1.5 pr-2">
+                    <td className="py-1.5 pr-2 align-top">
                       <input
                         type="number"
-                        className={inputCls}
+                        min="1"
+                        step="0.01"
+                        className={inputClsErr(sellErr)}
                         value={s.discounted_price}
                         onChange={(e) =>
                           updateSize(gi, si, { discounted_price: e.target.value })
                         }
                       />
+                      {sellErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{sellErr}</p> : null}
                     </td>
-                    <td className="py-1.5 pr-2">
+                    <td className="py-1.5 pr-2 align-top">
                       <input
                         type="number"
-                        className={inputCls}
+                        min="1"
+                        step="1"
+                        className={inputClsErr(stockErr)}
                         value={s.stock}
                         onChange={(e) => updateSize(gi, si, { stock: e.target.value })}
                       />
+                      {stockErr ? <p className="text-[10px] text-red-600 mt-0.5 leading-tight">{stockErr}</p> : null}
                     </td>
                     <td className="py-1.5 pr-2">
                       <input
@@ -359,12 +378,13 @@ export default function ColorSizeMatrix({ state, patch }) {
                       ) : null}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             <button
               type="button"
-              className="mt-2 text-xs text-blue-600"
+              className="mt-2 text-xs text-primary-100"
               onClick={() =>
                 updateGroup(gi, {
                   sizes: [

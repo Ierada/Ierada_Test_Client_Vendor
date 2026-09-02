@@ -32,7 +32,7 @@ export default class ListingErrorBoundary extends React.Component {
           <div className="flex gap-3">
             <button
               type="button"
-              className="px-4 py-2 rounded-xl bg-blue-600 text-white text-sm"
+              className="px-4 py-2 rounded-xl bg-primary-100 text-white text-sm"
               onClick={() => this.setState({ hasError: false, message: "" })}
             >
               Try again

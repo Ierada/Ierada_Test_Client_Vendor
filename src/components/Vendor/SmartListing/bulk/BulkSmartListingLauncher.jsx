@@ -161,9 +161,9 @@ export default function BulkSmartListingLauncher({
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6 shadow-sm space-y-5">
+      <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 via-white to-orange-50 p-6 shadow-sm space-y-5">
         <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-blue-600 text-white p-2.5 shrink-0">
+          <div className="rounded-xl bg-primary-100 text-white p-2.5 shrink-0">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
@@ -182,7 +182,7 @@ export default function BulkSmartListingLauncher({
             onClick={() => setPlanMode("planned")}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
               planMode === "planned"
-                ? "bg-blue-600 text-white border-blue-600"
+                ? "bg-primary-100 text-white border-primary-100"
                 : "bg-white text-gray-600 border-gray-200"
             }`}
           >
@@ -193,7 +193,7 @@ export default function BulkSmartListingLauncher({
             onClick={() => setPlanMode("flexible")}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
               planMode === "flexible"
-                ? "bg-blue-600 text-white border-blue-600"
+                ? "bg-primary-100 text-white border-primary-100"
                 : "bg-white text-gray-600 border-gray-200"
             }`}
           >
@@ -265,7 +265,7 @@ export default function BulkSmartListingLauncher({
           </p>
           <ol className="list-decimal pl-4 space-y-1">
             <li>
-              Pehle <Link className="text-blue-600 font-medium" to="/bulk-upload/media">Media Manager</Link>{" "}
+              Pehle <Link className="text-primary-100 font-medium" to="/bulk-upload/media">Media Manager</Link>{" "}
               me images upload karo (chunked — 100s OK).
             </li>
             <li>
@@ -288,7 +288,7 @@ export default function BulkSmartListingLauncher({
             type="button"
             disabled={disabled || (planMode === "planned" && !plannedTotal)}
             onClick={startSmartBulk}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-100 text-white text-sm font-semibold disabled:opacity-50"
           >
             <Layers className="w-4 h-4" />
             Start Smart Bulk
@@ -296,11 +296,11 @@ export default function BulkSmartListingLauncher({
           </button>
           <Link
             to="/bulk-upload/media"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-primary-100"
           >
             <ImagePlus className="w-4 h-4" /> Upload images first
           </Link>
-          <Link to="/product/add" className="text-sm font-medium text-gray-500 hover:text-blue-600">
+          <Link to="/product/add" className="text-sm font-medium text-gray-500 hover:text-primary-100">
             Single listing only →
           </Link>
           <button

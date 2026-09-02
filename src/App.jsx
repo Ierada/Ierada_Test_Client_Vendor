@@ -19,7 +19,16 @@ const App = () => {
   return (
     <AuthProvider>
       <AppProvider>
-        <ToastContainer />
+        <ToastContainer
+          position="top-right"
+          autoClose={4200}
+          newestOnTop
+          closeOnClick
+          pauseOnHover
+          draggable
+          limit={4}
+          toastClassName="ierada-toast"
+        />
         <SessionGuard />
         <HelmetProvider>
           <ErrorBoundary key={location.pathname}>

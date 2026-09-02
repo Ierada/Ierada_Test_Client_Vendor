@@ -18,11 +18,15 @@ import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory } fr
 import { getSettings } from "../../../services/api.settings";
 import { getShippingRates } from "../../../services/api.shippingRate";
 import { saveProductDraft } from "../../../services/api.productDraft";
-import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
+import { notifyOnFail, notifyOnSuccess, notifyOnWarning } from "../../../utils/notification/toast";
 import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   firstValidationError,
+  firstVariationMatrixError,
+  formatPriceValidationToast,
+  validateCategoryStepPricing,
   validateComboItems,
+  validateMrpAndSelling,
   validateSingleListingPricing,
   validateSmartListingState,
 } from "../../../components/Vendor/SmartListing/utils/listingFieldValidation";
@@ -210,7 +214,30 @@ const emptyState = () => ({
   },
 });
 
-function Field({ label, required, optional, children, error }) {
+function FieldError({ error, compact = false }) {
+  if (!error) return null;
+  return (
+    <span
+      className={`flex items-start gap-2 rounded-lg ${compact ? "px-1.5 py-1 text-[10px]" : "px-2.5 py-1.5 text-xs"} leading-snug`}
+      style={{
+        background: "linear-gradient(135deg, #fef2f2 0%, #ffffff 70%)",
+        borderLeft: "4px solid #ef4444",
+        color: "#991b1b",
+        boxShadow: "0 4px 12px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <span
+        className={`${compact ? "h-3.5 w-3.5 text-[9px]" : "h-4 w-4 text-[10px]"} mt-0.5 inline-flex shrink-0 items-center justify-center rounded-full font-bold`}
+        style={{ background: "#fee2e2", color: "#b91c1c" }}
+      >
+        !
+      </span>
+      <span>{error}</span>
+    </span>
+  );
+}
+
+function Field({ label, required, optional, children, error, hint }) {
   const showOptional = optional ?? !required;
   return (
     <label className="block space-y-1.5">
@@ -222,13 +249,163 @@ function Field({ label, required, optional, children, error }) {
         ) : null}
       </span>
       {children}
-      {error ? <span className="text-xs text-red-600">{error}</span> : null}
+      {error ? <FieldError error={error} /> : hint ? (
+        <span className="text-xs text-gray-500">{hint}</span>
+      ) : null}
     </label>
   );
 }
 
+function ListingBanner({ banner, onClose }) {
+  if (!banner) return null;
+  const isErr = banner.type === "error";
+  return (
+    <div className="max-w-7xl mx-auto mt-4 px-4">
+      <div
+        className="flex items-start gap-3 rounded-xl py-3 px-4 text-sm"
+        style={
+          isErr
+            ? {
+                background: "linear-gradient(135deg, #fef2f2 0%, #ffffff 70%)",
+                borderLeft: "4px solid #ef4444",
+                color: "#991b1b",
+                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+              }
+            : {
+                background: "linear-gradient(135deg, #fffbeb 0%, #ffffff 70%)",
+                borderLeft: "4px solid #f59e0b",
+                color: "#92400e",
+              }
+        }
+      >
+        <span
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+          style={
+            isErr
+              ? { background: "#fee2e2", color: "#b91c1c" }
+              : { background: "#fef3c7", color: "#b45309" }
+          }
+        >
+          !
+        </span>
+        <span className="pt-0.5 flex-1 font-medium">{banner.text}</span>
+        <button type="button" className="ml-auto opacity-55 hover:opacity-80" onClick={onClose}>
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500";
+  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30 focus:border-primary-100";
+
+function inputClsErr(error) {
+  return error
+    ? `${inputCls} border-red-500 bg-red-50 focus:ring-red-500/25 focus:border-red-500`
+    : inputCls;
+}
+
+function sellMaxAttr(mrp) {
+  const n = Number(mrp);
+  if (!Number.isFinite(n) || n <= 1) return undefined;
+  return String(Math.round((n - 0.01) * 100) / 100);
+}
+
+function mrpMinAttr(sell) {
+  const n = Number(sell);
+  if (!Number.isFinite(n) || n <= 0) return "1";
+  return String(Math.max(1, Math.round((n + 0.01) * 100) / 100));
+}
+
+function PriceRuleChip({ error, okText }) {
+  const isErr = !!error;
+  return (
+    <span
+      className="flex items-start gap-2 rounded-lg px-2.5 py-1.5 text-xs leading-snug"
+      style={
+        isErr
+          ? {
+              background: "linear-gradient(135deg, #fef2f2 0%, #ffffff 70%)",
+              borderLeft: "4px solid #ef4444",
+              color: "#991b1b",
+            }
+          : {
+              background: "linear-gradient(135deg, #fff7ed 0%, #ffffff 70%)",
+              borderLeft: "4px solid #F56C43",
+              color: "#9a3412",
+            }
+      }
+    >
+      <span
+        className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+        style={
+          isErr
+            ? { background: "#fee2e2", color: "#b91c1c" }
+            : { background: "#ffedd5", color: "#F56C43" }
+        }
+      >
+        {isErr ? "!" : "i"}
+      </span>
+      <span>{error || okText}</span>
+    </span>
+  );
+}
+
+function PricePairFields({ state, patch, mrpErr, sellErr, mrpLabel = "MRP (₹)", sellLabel = "Selling price (₹)" }) {
+  return (
+    <div className="sm:col-span-2 space-y-2">
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label={mrpLabel} required>
+          <input
+            type="number"
+            min={mrpMinAttr(state.discounted_price)}
+            step="0.01"
+            className={inputClsErr(mrpErr)}
+            value={state.original_price}
+            onChange={(e) => patch({ original_price: e.target.value })}
+          />
+        </Field>
+        <Field label={sellLabel} required>
+          <input
+            type="number"
+            min="1"
+            max={sellMaxAttr(state.original_price)}
+            step="0.01"
+            className={inputClsErr(sellErr)}
+            value={state.discounted_price}
+            onChange={(e) => patch({ discounted_price: e.target.value })}
+          />
+        </Field>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <PriceRuleChip error={mrpErr} okText="MRP cannot be less than selling price" />
+        <PriceRuleChip error={sellErr} okText="Selling price cannot be greater than MRP" />
+      </div>
+    </div>
+  );
+}
+
+function showPriceErr(liveErr, submitErr, value) {
+  if (value !== "" && value != null) return liveErr || submitErr;
+  return submitErr || null;
+}
+
+function livePriceErr(state, fieldErrors) {
+  const live = validateSingleListingPricing(state);
+  return {
+    original_price: showPriceErr(live.original_price, fieldErrors.original_price, state.original_price),
+    discounted_price: showPriceErr(live.discounted_price, fieldErrors.discounted_price, state.discounted_price),
+    stock: showPriceErr(live.stock, fieldErrors.stock, state.stock),
+    gst: showPriceErr(live.gst, fieldErrors.gst, state.gst),
+    low_stock_threshold: showPriceErr(
+      live.low_stock_threshold,
+      fieldErrors.low_stock_threshold,
+      state.low_stock_threshold,
+    ),
+    min_order_qty: showPriceErr(live.min_order_qty, fieldErrors.min_order_qty, state.min_order_qty),
+  };
+}
 
 export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp = null }) {
   const navigate = useNavigate();
@@ -265,6 +442,28 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [banner, setBanner] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const autosaveTimer = useRef(null);
+  const priceToastKey = useRef("");
+
+  useEffect(() => {
+    const bothFilled =
+      state.original_price !== "" &&
+      state.original_price != null &&
+      state.discounted_price !== "" &&
+      state.discounted_price != null;
+    if (!bothFilled) {
+      priceToastKey.current = "";
+      return;
+    }
+    const live = validateMrpAndSelling(state.original_price, state.discounted_price);
+    const msg = formatPriceValidationToast(live);
+    if (!msg) {
+      priceToastKey.current = "";
+      return;
+    }
+    if (priceToastKey.current === msg) return;
+    priceToastKey.current = msg;
+    notifyOnWarning({ title: "Please check prices", message: msg });
+  }, [state.original_price, state.discounted_price]);
 
   const patch = useCallback((partial) => {
     setState((prev) => {
@@ -812,6 +1011,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (step === "category") {
       if (!state.category_id) err.category_id = "Required";
       if (!state.sub_category_id) err.sub_category_id = "Required";
+      Object.assign(err, validateCategoryStepPricing(state));
     }
     if (step === "images") {
       const needsParentImages =
@@ -828,40 +1028,41 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           (g.media || []).length,
       );
       if (!ok) err.matrix = "Add color, size rows, and at least one image per color";
+      else {
+        const matrixPriceErr = firstVariationMatrixError(state);
+        if (matrixPriceErr) err.matrix = matrixPriceErr;
+      }
     }
     if (step === "matrix" && state.listingType === "custom") {
       const ok = (state.customRows || []).some(
         (r) => r.enabled && r.attributes?.length,
       );
       if (!ok) err.matrix = "Generate custom matrix and keep at least one row enabled";
+      else {
+        const matrixPriceErr = firstVariationMatrixError(state);
+        if (matrixPriceErr) err.matrix = matrixPriceErr;
+      }
     }
     if (step === "combo") {
       if (!(state.comboItems || []).length) err.combo = "Add at least one combo component";
       else Object.assign(err, validateComboItems(state.comboItems));
     }
-    if (
-      step === "category" &&
-      (state.listingType === "single" || state.listingType === "combo" || !state.listingType)
-    ) {
-      Object.assign(err, validateSingleListingPricing(state));
-    }
     setFieldErrors(err);
-    return Object.keys(err).length === 0;
+    return err;
   };
 
   const goNextBasics = () => {
-    if (!validateBasicsStep()) return;
-    const pricingOnCategory =
-      step === "category" &&
-      (state.listingType === "single" || state.listingType === "combo" || !state.listingType);
-    if (pricingOnCategory) {
-      const pricingErr = validateSingleListingPricing(state);
-      if (Object.keys(pricingErr).length) {
-        setFieldErrors((p) => ({ ...p, ...pricingErr }));
-        setBanner({ type: "error", text: firstValidationError(pricingErr) });
-        return;
-      }
+    const err = validateBasicsStep();
+    if (Object.keys(err).length) {
+      const text =
+        formatPriceValidationToast(err) ||
+        firstValidationError(err) ||
+        "Please fix the highlighted fields before continuing.";
+      setBanner({ type: "error", text });
+      notifyOnFail({ title: "Please check", message: text });
+      return;
     }
+    setBanner(null);
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
       setStep(steps[idx + 1]);
@@ -980,8 +1181,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         } else if (vErr.stock || vErr.min_order_qty) {
           setReviewSection("pricing");
         }
+        const text = formatPriceValidationToast(vErr) || firstErr;
         setFieldErrors(vErr);
-        setBanner({ type: "error", text: firstErr });
+        setBanner({ type: "error", text });
+        notifyOnFail({ title: "Please check", message: text });
         return;
       }
     }
@@ -1093,13 +1296,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         <p className="text-sm text-gray-600">{loadError}</p>
         <button
           type="button"
-          className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-semibold"
+          className="px-4 py-2 bg-primary-100 text-white rounded-xl text-sm font-semibold"
           onClick={() => window.location.reload()}
         >
           Retry
         </button>
         <div>
-          <Link to="/product" className="text-sm text-blue-600">
+          <Link to="/product" className="text-sm text-primary-100">
             Back to products
           </Link>
         </div>
@@ -1110,10 +1313,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   return (
     <ListingErrorBoundary>
     <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="border-b bg-white px-4 py-3 sticky top-0 z-20">
+      <div className="border-b bg-white px-4 py-3 sticky top-0 z-20 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-blue-600 font-semibold">
+          <div className="pl-3 border-l-4 border-primary-100">
+            <p className="text-xs uppercase tracking-wide text-primary-100 font-semibold">
               Smart Product Listing
             </p>
             <h1 className="text-lg font-semibold text-gray-900">
@@ -1146,7 +1349,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               <>
                 <button
                   type="button"
-                  className="text-blue-700 hover:underline font-medium"
+                  className="text-primary-100 hover:underline font-medium"
                   onClick={skipBulkListing}
                 >
                   Skip this
@@ -1173,7 +1376,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                   ? `/product/edit-classic/${editProductId}`
                   : "/product/add-classic"
               }
-              className="text-blue-600 hover:underline"
+              className="text-primary-100 hover:underline"
             >
               Classic form
             </Link>
@@ -1184,19 +1387,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         ) : null}
       </div>
 
-      {banner ? (
-        <div
-          className={`max-w-7xl mx-auto mt-4 px-4 ${
-            banner.type === "error" ? "text-red-700 bg-red-50" : "text-amber-800 bg-amber-50"
-          } border rounded-xl py-3 px-4 text-sm flex gap-2`}
-        >
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{banner.text}</span>
-          <button type="button" className="ml-auto" onClick={() => setBanner(null)}>
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      ) : null}
+      {banner ? <ListingBanner banner={banner} onClose={() => setBanner(null)} /> : null}
 
       <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-4">
@@ -1279,7 +1470,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 type="button"
                 disabled={aiGenerating}
                 onClick={goNextBasics}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-semibold disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-100 text-white text-sm font-semibold disabled:opacity-50"
               >
                 {aiGenerating ? (
                   <>
@@ -1326,6 +1517,10 @@ function BasicsPanel({
   vendorId,
   onBrandTypeSelected,
 }) {
+  const catPriceErr = validateCategoryStepPricing(state);
+  const mrpErr = showPriceErr(catPriceErr.original_price, fieldErrors.original_price, state.original_price);
+  const sellErr = showPriceErr(catPriceErr.discounted_price, fieldErrors.discounted_price, state.discounted_price);
+  const gstErr = showPriceErr(catPriceErr.gst, fieldErrors.gst, state.gst);
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-5">
       {step === "brand" ? (
@@ -1340,8 +1535,10 @@ function BasicsPanel({
                   patch({ brandType: t });
                   onBrandTypeSelected?.(t);
                 }}
-                className={`text-left rounded-xl border p-4 ${
-                  state.brandType === t ? "border-blue-500 bg-blue-50" : "border-gray-200"
+                className={`text-left rounded-2xl border-2 p-4 transition-colors ${
+                  state.brandType === t
+                    ? "border-primary-100 bg-orange-50 shadow-sm"
+                    : "border-gray-200 hover:border-orange-200"
                 }`}
               >
                 <div className="font-medium capitalize">{t} Product</div>
@@ -1367,7 +1564,7 @@ function BasicsPanel({
             </div>
           ) : null}
           {state.brandType === "branded" ? (
-            <div className="space-y-2 border rounded-xl p-4 bg-slate-50">
+            <div className="space-y-2 border border-dashed border-orange-200 rounded-2xl p-4 bg-orange-50/40">
               <p className="text-sm font-medium">Brand Authorization</p>
               <p className="text-xs text-gray-500">
                 Upload one allowed proof. Publish is blocked until Admin approves
@@ -1426,8 +1623,10 @@ function BasicsPanel({
                 key={t.id}
                 type="button"
                 onClick={() => patch({ listingType: t.id })}
-                className={`text-left rounded-xl border p-4 ${
-                  state.listingType === t.id ? "border-blue-500 bg-blue-50" : "border-gray-200"
+                className={`text-left rounded-2xl border-2 p-4 transition-colors ${
+                  state.listingType === t.id
+                    ? "border-primary-100 bg-orange-50 shadow-sm"
+                    : "border-gray-200 hover:border-orange-200"
                 }`}
               >
                 <div className="font-medium">{t.title}</div>
@@ -1470,7 +1669,7 @@ function BasicsPanel({
             Upload the front photo — category and subcategory auto-fill in the background.
           </p>
           {categorySuggesting ? (
-            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+            <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               Detecting category from your photo…
             </p>
@@ -1483,7 +1682,7 @@ function BasicsPanel({
         <>
           <h2 className="font-semibold text-gray-900">Category & pricing</h2>
           {categorySuggesting ? (
-            <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+            <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
               Detecting category from your photo…
             </p>
@@ -1550,34 +1749,22 @@ function BasicsPanel({
                   placeholder="Autofill after category, or type"
                 />
               </Field>
-              <Field label="GST %" optional>
+              <Field label="GST %" optional error={gstErr}>
                 <input
                   type="number"
-                  className={inputCls}
+                  min="0"
+                  step="0.01"
+                  className={inputClsErr(gstErr)}
                   value={state.gst}
                   onChange={(e) => patch({ gst: e.target.value })}
                 />
               </Field>
-              <Field label="MRP (₹)" required error={fieldErrors.original_price}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className={inputCls}
-                  value={state.original_price}
-                  onChange={(e) => patch({ original_price: e.target.value })}
-                />
-              </Field>
-              <Field label="Selling price (₹)" required error={fieldErrors.discounted_price}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className={inputCls}
-                  value={state.discounted_price}
-                  onChange={(e) => patch({ discounted_price: e.target.value })}
-                />
-              </Field>
+              <PricePairFields
+                state={state}
+                patch={patch}
+                mrpErr={mrpErr}
+                sellErr={sellErr}
+              />
             </div>
           </div>
         </>
@@ -1589,6 +1776,7 @@ function BasicsPanel({
 function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, fieldErrors = {}, sizeChartUrl, hideSeo = false }) {
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
+  const priceErr = livePriceErr(state, fieldErrors);
   const sections = hideSeo
     ? REVIEW_SECTIONS.filter((s) => s.id !== "seo")
     : REVIEW_SECTIONS;
@@ -1606,7 +1794,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             type="button"
             onClick={() => setReviewSection(s.id)}
             className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between ${
-              reviewSection === s.id ? "bg-blue-50 text-blue-800 font-medium" : "hover:bg-gray-50"
+              reviewSection === s.id
+                ? "bg-orange-50 text-primary-100 font-semibold border border-orange-100"
+                : "hover:bg-orange-50/50 border border-transparent"
             }`}
           >
             {s.label}
@@ -1672,34 +1862,22 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               <Field label="HSN Code" required>
                 <input className={inputCls} value={state.hsn_code} onChange={(e) => patch({ hsn_code: e.target.value })} />
               </Field>
-              <Field label="GST %">
+              <Field label="GST %" error={priceErr.gst}>
                 <input
                   type="number"
-                  className={inputCls}
+                  min="0"
+                  step="0.01"
+                  className={inputClsErr(priceErr.gst)}
                   value={state.gst}
                   onChange={(e) => patch({ gst: e.target.value })}
                 />
               </Field>
-              <Field label="MRP (₹)" required error={fieldErrors.original_price}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className={inputCls}
-                  value={state.original_price}
-                  onChange={(e) => patch({ original_price: e.target.value })}
-                />
-              </Field>
-              <Field label="Selling price (₹)" required error={fieldErrors.discounted_price}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className={inputCls}
-                  value={state.discounted_price}
-                  onChange={(e) => patch({ discounted_price: e.target.value })}
-                />
-              </Field>
+              <PricePairFields
+                state={state}
+                patch={patch}
+                mrpErr={priceErr.original_price}
+                sellErr={priceErr.discounted_price}
+              />
               {state.gst_mixed ? (
                 <p className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Mixed GST ({state.gst_raw || "multi-slab"}): rate follows sale price vs ₹1000 slab (textile 5%/12%, footwear 12%/18%). Current applied: {state.gst}%.
@@ -1779,55 +1957,43 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
 
         {reviewSection === "pricing" ? (
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="MRP" required error={fieldErrors.original_price}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={inputCls}
-                value={state.original_price}
-                onChange={(e) => patch({ original_price: e.target.value })}
-              />
-            </Field>
-            <Field label="Selling Price" required error={fieldErrors.discounted_price}>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className={inputCls}
-                value={state.discounted_price}
-                onChange={(e) => patch({ discounted_price: e.target.value })}
-              />
-            </Field>
+            <PricePairFields
+              state={state}
+              patch={patch}
+              mrpErr={priceErr.original_price}
+              sellErr={priceErr.discounted_price}
+              mrpLabel="MRP"
+              sellLabel="Selling Price"
+            />
             <Field label="SKU">
               <input className={inputCls} value={state.sku} onChange={(e) => patch({ sku: e.target.value })} />
             </Field>
-            <Field label="Stock" required error={fieldErrors.stock}>
+            <Field label="Stock" required error={priceErr.stock}>
               <input
                 type="number"
                 min="1"
                 step="1"
-                className={inputCls}
+                className={inputClsErr(priceErr.stock)}
                 value={state.stock}
                 onChange={(e) => patch({ stock: e.target.value })}
               />
             </Field>
-            <Field label="Low Stock Alert" error={fieldErrors.low_stock_threshold}>
+            <Field label="Low Stock Alert" error={priceErr.low_stock_threshold}>
               <input
                 type="number"
                 min="0"
                 step="1"
-                className={inputCls}
+                className={inputClsErr(priceErr.low_stock_threshold)}
                 value={state.low_stock_threshold}
                 onChange={(e) => patch({ low_stock_threshold: e.target.value })}
               />
             </Field>
-            <Field label="Min Order Qty" error={fieldErrors.min_order_qty}>
+            <Field label="Min Order Qty" error={priceErr.min_order_qty}>
               <input
                 type="number"
                 min="1"
                 step="1"
-                className={inputCls}
+                className={inputClsErr(priceErr.min_order_qty)}
                 value={state.min_order_qty}
                 onChange={(e) => patch({ min_order_qty: e.target.value })}
               />
@@ -1967,7 +2133,7 @@ function ListEditor({ label, values, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-blue-600"
+        className="text-sm text-primary-100"
         onClick={() => onChange([...list, ""])}
       >
         + Add
@@ -2006,7 +2172,7 @@ function SpecEditor({ specs, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-blue-600"
+        className="text-sm text-primary-100"
         onClick={() => onChange([...list, { feature: "", specification: "" }])}
       >
         + Add row
@@ -2045,7 +2211,7 @@ function BoxEditor({ items, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-blue-600"
+        className="text-sm text-primary-100"
         onClick={() => onChange([...list, { title: "", details: "" }])}
       >
         + Add item
@@ -2070,16 +2236,16 @@ function ListingStepper({ phase, step, steps }) {
             <li key={id} className="flex items-center">
               {idx > 0 ? (
                 <span
-                  className={`w-5 sm:w-8 h-px shrink-0 ${done ? "bg-blue-400" : "bg-gray-200"}`}
+                  className={`w-6 sm:w-10 h-0.5 shrink-0 ${done ? "bg-primary-100" : "bg-gray-200"}`}
                   aria-hidden
                 />
               ) : null}
               <span
                 className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border text-[11px] sm:text-xs whitespace-nowrap ${
                   active
-                    ? "bg-blue-600 text-white border-blue-600 font-medium"
+                    ? "bg-primary-100 text-white border-primary-100 font-medium"
                     : done
-                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                      ? "bg-orange-50 text-primary-100 border-orange-200"
                       : "bg-white text-gray-400 border-gray-200"
                 }`}
               >
@@ -2088,7 +2254,7 @@ function ListingStepper({ phase, step, steps }) {
                     active
                       ? "bg-white/25 text-white"
                       : done
-                        ? "bg-blue-600 text-white"
+                        ? "bg-primary-100 text-white"
                         : "bg-gray-100 text-gray-500"
                   }`}
                 >
@@ -2108,8 +2274,8 @@ function RightRail({ state, settlement, previewUrl }) {
   const off = settlement.discountPct > 0 ? `${settlement.discountPct}% OFF` : null;
   return (
     <>
-      <div className="bg-white rounded-2xl border p-3 space-y-2">
-        <h3 className="font-semibold text-sm flex items-center gap-2">
+      <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-3 space-y-2">
+        <h3 className="font-semibold text-sm flex items-center gap-2 text-primary-100">
           <Package className="w-4 h-4" /> Preview on IERADA
         </h3>
         <div className="relative h-36 sm:h-40 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
@@ -2123,7 +2289,7 @@ function RightRail({ state, settlement, previewUrl }) {
             <Upload className="w-8 h-8 text-gray-300" />
           )}
           {off ? (
-            <span className="absolute top-2 left-2 bg-rose-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded">
+            <span className="absolute top-2 left-2 bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">
               {off}
             </span>
           ) : null}
@@ -2132,7 +2298,7 @@ function RightRail({ state, settlement, previewUrl }) {
         <p className="font-medium text-sm line-clamp-2">{state.name || "Product name"}</p>
         <p className="text-xs text-gray-500 line-clamp-2">{state.shortDescription || "Short description"}</p>
         <p className="text-sm">
-          <span className="font-semibold text-emerald-700">
+          <span className="font-bold text-primary-100 text-base">
             ₹{settlement.sale || "—"}
           </span>{" "}
           {settlement.mrp > settlement.sale ? (
@@ -2149,7 +2315,9 @@ function RightRail({ state, settlement, previewUrl }) {
         <Row k="TDS (2%)" v={settlement.tds} />
         <Row k="Shipping (seller)" v={settlement.shipping} />
         <Row k="Platform fee" v={settlement.platformFee} />
-        <Row k="You Earn" v={settlement.youEarn} strong />
+        <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+          <Row k="You Earn" v={settlement.youEarn} strong />
+        </div>
         <p className="text-[11px] text-gray-400 pt-1">
           Rates are provisional until Ops confirms commission/TDS rules.
         </p>

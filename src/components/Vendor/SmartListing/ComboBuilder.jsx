@@ -4,7 +4,7 @@ import { getProductById, getProductsByVendorId } from "../../../services/api.pro
 import { notifyOnFail } from "../../../utils/notification/toast";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
 
 export default function ComboBuilder({ state, patch, vendorId }) {
   const [q, setQ] = useState("");
@@ -147,7 +147,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
           type="button"
           disabled={busy}
           onClick={runSearch}
-          className="px-3 rounded-lg bg-blue-600 text-white text-sm inline-flex items-center gap-1 disabled:opacity-50"
+          className="px-3 rounded-lg bg-primary-100 text-white text-sm inline-flex items-center gap-1 disabled:opacity-50"
         >
           <Search className="w-4 h-4" /> Search
         </button>
@@ -160,7 +160,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
               <span className="truncate pr-2">{p.name}</span>
               <button
                 type="button"
-                className="text-blue-600 inline-flex items-center gap-1 text-xs"
+                className="text-primary-100 inline-flex items-center gap-1 text-xs"
                 onClick={() => addProduct(p)}
               >
                 <Plus className="w-3.5 h-3.5" /> Add

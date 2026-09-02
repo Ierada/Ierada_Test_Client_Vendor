@@ -13,7 +13,7 @@ export function validatePositivePrice(val, label, { required = true } = {}) {
   }
   const n = toNum(val);
   if (!Number.isFinite(n)) return `${label} must be a valid number`;
-  if (n <= 0) return `${label} must be greater than 0`;
+  if (n <= 0) return `${label} cannot be 0`;
   return null;
 }
 
@@ -47,10 +47,21 @@ export function validateMrpAndSelling(mrpVal, sellVal) {
   if (!mrpErr && !sellErr) {
     const mrp = toNum(mrpVal);
     const sell = toNum(sellVal);
-    if (sell > mrp) {
-      errors.discounted_price = "Selling price cannot be higher than MRP";
+    if (sell >= mrp) {
+      errors.discounted_price = "Selling price cannot be greater than MRP";
+      errors.original_price = "MRP cannot be less than selling price";
     }
   }
+  return errors;
+}
+
+/** Category-step fields only (MRP / selling / GST) — stock lives on Review. */
+export function validateCategoryStepPricing(state) {
+  const errors = {
+    ...validateMrpAndSelling(state.original_price, state.discounted_price),
+  };
+  const gstErr = validateNonNegativeOptional(state.gst, "GST %");
+  if (gstErr) errors.gst = gstErr;
   return errors;
 }
 
@@ -166,4 +177,46 @@ export function validateSmartListingState(state) {
 export function firstValidationError(errors) {
   const vals = Object.values(errors || {}).filter(Boolean);
   return vals[0] || null;
+}
+
+/** Both price-rule lines for toast (MRP vs selling). */
+export function formatPriceValidationToast(errors = {}) {
+  const parts = [];
+  if (errors.original_price) parts.push(errors.original_price);
+  if (errors.discounted_price && errors.discounted_price !== errors.original_price) {
+    parts.push(errors.discounted_price);
+  }
+  return parts.join("\n");
+}
+
+/** Show numeric errors as soon as the field has a value (0, equal MRP, etc.). */
+export function liveFieldError(err, value) {
+  if (value === "" || value == null) return null;
+  return err || null;
+}
+
+/** First MRP / selling / stock error on Color×Size or custom rows. */
+export function firstVariationMatrixError(state) {
+  if (state.listingType === "color_size") {
+    const groups = state.colorGroups || [];
+    for (let gi = 0; gi < groups.length; gi++) {
+      const sizes = groups[gi].sizes || [];
+      for (let si = 0; si < sizes.length; si++) {
+        const s = sizes[si];
+        if (!s.size_id) continue;
+        const msg = firstValidationError(
+          validateVariationRow(s, `Color ${gi + 1} / size ${si + 1}`),
+        );
+        if (msg) return msg;
+      }
+    }
+  }
+  if (state.listingType === "custom") {
+    const rows = (state.customRows || []).filter((r) => r.enabled);
+    for (let i = 0; i < rows.length; i++) {
+      const msg = firstValidationError(validateVariationRow(rows[i], `Variation ${i + 1}`));
+      if (msg) return msg;
+    }
+  }
+  return null;
 }

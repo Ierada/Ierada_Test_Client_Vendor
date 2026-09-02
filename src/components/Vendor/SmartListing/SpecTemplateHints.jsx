@@ -35,8 +35,8 @@ export default function SpecTemplateHints({ categoryId, subCategoryId, innerSubC
   if (!missing.length) return null;
 
   return (
-    <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 space-y-2">
-      <p className="text-xs text-blue-900 font-medium">Suggested fields for this category</p>
+    <div className="rounded-xl border border-orange-100 bg-orange-50/70 p-3 space-y-2">
+      <p className="text-xs text-[#9a3412] font-medium">Suggested fields for this category</p>
       <div className="flex flex-wrap gap-2">
         {missing.map((t) => (
           <button

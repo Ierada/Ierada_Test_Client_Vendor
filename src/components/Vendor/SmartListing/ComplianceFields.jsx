@@ -1,7 +1,7 @@
 import React from "react";
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
 
 function Field({ label, children }) {
   return (
