@@ -269,7 +269,7 @@ export default function BulkCreateGrid({
         try {
           const state = rowToSmartListingState(row, taxonomy, vendorId);
           if (mode === "admin" && requestPublish) {
-            state.visibility = "Public";
+            state.visibility = "Published";
             state.listing_status = "published";
           }
           const { formData } = buildSmartListingFormData(state, {

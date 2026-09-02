@@ -6,7 +6,7 @@ const MAX_B64_CHARS = 900000;
 
 /**
  * Shrink a listing photo before category-vision API.
- * Raw 20MB phone photos as base64 exceed the server JSON body limit (2mb).
+ * Raw 20MB phone photos as base64 exceed the server JSON body limit.
  */
 export async function fileToSuggestPayload(file) {
   const fromFile = async (source, mimeType) => {

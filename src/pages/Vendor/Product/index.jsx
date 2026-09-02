@@ -260,11 +260,9 @@ const Product = () => {
         return false;
       }
     } else if (column === "visibility") {
-      if (!["Hidden", "Published"].includes(value)) {
-        errorRef.current = "Visibility must be 'Hidden' or 'Published'";
-        forceRender();
-        return false;
-      }
+      errorRef.current = "Only Admin can publish products";
+      forceRender();
+      return false;
     }
     errorRef.current = null;
     forceRender();
@@ -621,7 +619,6 @@ const Product = () => {
                   className="px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-orange-500"
                 >
                   <option value="Hidden">Hidden</option>
-                  <option value="Published">Published</option>
                 </select>
                 <button
                   onClick={(e) => {

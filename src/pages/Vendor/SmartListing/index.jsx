@@ -418,6 +418,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [step, setStep] = useState("brand");
   const [reviewSection, setReviewSection] = useState("pricing");
   const [state, setState] = useState(emptyState);
+  const isPublishedLive =
+    String(state.listing_status || "").toLowerCase() === "published" ||
+    String(state.visibility || "").toLowerCase() === "published";
   const [bulkSession, setBulkSession] = useState(() =>
     bulkMode && !editProductId ? getBulkSession() : null,
   );
@@ -965,7 +968,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           type: "info",
           text: `Category auto-selected: ${[d.categoryTitle, d.subCategoryTitle, d.innerSubCategoryTitle].filter(Boolean).join(" › ")}`,
         });
-      } else {
+      } else if (force) {
         setBanner({
           type: "error",
           text:
@@ -974,13 +977,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         });
       }
     } catch (e) {
-      setBanner({
-        type: "error",
-        text: getApiErrorMessage(
-          e,
-          "Could not detect category from photo — pick category manually.",
-        ),
-      });
+      if (force) {
+        setBanner({
+          type: "error",
+          text: getApiErrorMessage(
+            e,
+            "Could not detect category from photo — pick category manually.",
+          ),
+        });
+      }
     } finally {
       if (token === categorySuggestToken.current) setCategorySuggesting(false);
     }
@@ -1133,11 +1138,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       setPhase("review");
       setReviewSection("pricing");
       notifyOnSuccess(
-        source === "openai"
-          ? confirmedOverwrite
+        source === "local"
+          ? "Basic draft ready (AI unavailable — review carefully)"
+          : confirmedOverwrite
             ? "AI regenerated all sections (high quality)"
-            : "AI draft ready — edited sections were kept"
-          : "Basic draft ready (AI unavailable — review carefully)",
+            : "AI draft ready — edited sections were kept",
       );
     } catch (e) {
       if (runId !== runAiGenerate._seq) return;
@@ -1228,8 +1233,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       };
 
       const { formData } = buildSmartListingFormData(draftState, {
-        asDraft,
-        requestPublish: !asDraft,
+        asDraft: isPublishedLive ? false : asDraft,
+        requestPublish: isPublishedLive ? false : !asDraft,
       });
       const pid = state.productId || editProductId;
       const res = pid
@@ -1271,15 +1276,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             clearBulkSession();
           }
           notifyOnSuccess(
-            asDraft
-              ? bulkMode
-                ? "All bulk listings saved as draft."
-                : "Draft saved — find it under Products → Draft. You can add a new listing anytime."
-              : bulkMode
-                ? "All bulk listings submitted for review."
-                : "Publish request sent — Admin will review and publish.",
+            isPublishedLive
+              ? "Listing updated. Publish status stays with Admin."
+              : asDraft
+                ? bulkMode
+                  ? "All bulk listings saved as draft."
+                  : "Draft saved — find it under Products → Draft. You can add a new listing anytime."
+                : bulkMode
+                  ? "All bulk listings submitted for review."
+                  : "Publish request sent — Admin will review and publish.",
           );
-          navigate(asDraft ? "/product?tab=draft" : "/product");
+          navigate(
+            isPublishedLive || !asDraft ? "/product" : "/product?tab=draft",
+          );
         }
       } else {
         setBanner({
@@ -1453,11 +1462,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             <ArrowLeft className="w-4 h-4" /> Back
           </button>
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {(isEditMode ||
-              state.productId ||
-              phase === "review" ||
-              state.files?.length ||
-              state.category_id) && (
+            {!isPublishedLive &&
+              (isEditMode ||
+                state.productId ||
+                phase === "review" ||
+                state.files?.length ||
+                state.category_id) && (
               <button
                 type="button"
                 disabled={submitting}
@@ -1467,14 +1477,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 Discard draft
               </button>
             )}
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => submitListing({ asDraft: true })}
-              className="px-4 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
-            >
-              Save as Draft
-            </button>
+            {!isPublishedLive ? (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => submitListing({ asDraft: true })}
+                className="px-4 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
+              >
+                Save as Draft
+              </button>
+            ) : null}
             {phase === "basics" ? (
               <button
                 type="button"
@@ -1495,6 +1507,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                     Next <ArrowRight className="w-4 h-4" />
                   </>
                 )}
+              </button>
+            ) : isPublishedLive ? (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => submitListing({ asDraft: false })}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Save changes
               </button>
             ) : (
               <button
