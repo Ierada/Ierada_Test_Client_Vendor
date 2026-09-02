@@ -703,7 +703,7 @@ export default function BulkCreateGrid({
       {step === "ai" ? (
         <>
           <div className="bg-violet-50 border border-violet-100 rounded-2xl p-4 text-sm text-violet-950">
-            <p className="font-semibold">GPT-4o listing AI</p>
+            <p className="font-semibold">GPT-5.6 Terra listing AI</p>
             <p className="text-xs mt-1">
               Generates full ecommerce listing copy per row: descriptions, 7+ key features,
               specifications, benefits, what&apos;s in the box, SEO meta, warranty & delivery text.
