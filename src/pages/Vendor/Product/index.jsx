@@ -925,6 +925,9 @@ const Product = () => {
                 Draft ({stats.draftProducts})
               </button>
             </div>
+            <p className="text-xs text-gray-500 w-full sm:w-auto sm:self-center">
+              Request publish to send to Admin.
+            </p>
             <div className="flex-1 relative w-full sm:w-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input

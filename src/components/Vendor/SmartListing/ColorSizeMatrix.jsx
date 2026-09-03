@@ -3,7 +3,13 @@ import { ImagePlus, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { getAllColors, addColor } from "../../../services/api.color";
 import { getAllSizes, addSize } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
-import { suggestVariantSku } from "./utils/variationHelpers";
+import {
+  suggestVariantSku,
+  sizeQueryFromListing,
+  splitContextualSizes,
+  sizePickerOptions,
+  hasRealSizeRow,
+} from "./utils/variationHelpers";
 import SearchablePicker from "./SearchablePicker";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 
@@ -39,7 +45,12 @@ function emptyColorGroup(defaults = {}) {
  */
 export default function ColorSizeMatrix({ state, patch }) {
   const [colors, setColors] = useState([]);
-  const [sizes, setSizes] = useState([]);
+  const [sizeSplit, setSizeSplit] = useState({
+    all: [],
+    contextual: [],
+    rest: [],
+    totalContextual: 0,
+  });
   const [newColor, setNewColor] = useState("");
   const [newSize, setNewSize] = useState("");
   const [loading, setLoading] = useState(true);
@@ -49,15 +60,27 @@ export default function ColorSizeMatrix({ state, patch }) {
     : [emptyColorGroup({ original_price: state.original_price, discounted_price: state.discounted_price, stock: state.stock })];
 
   const setGroups = (colorGroups) => patch({ colorGroups });
+  const sizes = sizeSplit.all;
+  const sizeOptions = useMemo(() => sizePickerOptions(sizeSplit), [sizeSplit]);
+  const showNoCategorySizesHint =
+    Boolean(state.category_id) &&
+    sizeSplit.totalContextual === 0 &&
+    !hasRealSizeRow(groups);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const [cRes, sRes] = await Promise.all([getAllColors(), getAllSizes()]);
+        const [cRes, sRes] = await Promise.all([
+          getAllColors(),
+          getAllSizes(sizeQueryFromListing(state)),
+        ]);
         if (cancelled) return;
         setColors(cRes?.data || []);
-        setSizes(sRes?.data || []);
+        setSizeSplit(
+          splitContextualSizes(sRes?.data || [], sRes?.meta, state),
+        );
       } catch {
         notifyOnFail("Could not load colors/sizes");
       } finally {
@@ -67,12 +90,12 @@ export default function ColorSizeMatrix({ state, patch }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
 
   const rowCount = useMemo(
     () =>
       groups.reduce(
-        (n, g) => n + (g.sizes || []).filter((s) => s.size_id).length,
+        (n, g) => n + (g.sizes || []).filter((s) => s.size_id || s.size?.id).length,
         0,
       ),
     [groups],
@@ -114,7 +137,11 @@ export default function ColorSizeMatrix({ state, patch }) {
     try {
       const res = await addSize({ name, type: "general" });
       if (res?.status === 1 && res?.data) {
-        setSizes((prev) => [...prev, res.data]);
+        setSizeSplit((prev) => ({
+          ...prev,
+          all: [...prev.all, res.data],
+          rest: [...prev.rest, res.data],
+        }));
         setNewSize("");
       }
     } catch {
@@ -133,7 +160,7 @@ export default function ColorSizeMatrix({ state, patch }) {
         ...g,
         sizes: (g.sizes || []).map((s) => {
           const sizeName =
-            sizes.find((z) => String(z.id) === String(s.size_id))?.name || "";
+            sizes.find((z) => String(z.id) === String(s.size_id || s.size?.id))?.name || "";
           return {
             ...s,
             sku: s.sku || suggestVariantSku(base, [colorName, sizeName]),
@@ -156,7 +183,7 @@ export default function ColorSizeMatrix({ state, patch }) {
         <div>
           <h2 className="font-semibold text-gray-900">Color × Size matrix</h2>
           <p className="text-xs text-gray-500">
-            Images attach per color and apply to all sizes of that color.
+            Images attach per color and apply to all sizes of that color. Category sizes are listed first — you can still add, change, or remove any row.
           </p>
         </div>
         <div className="flex gap-2">
@@ -185,6 +212,13 @@ export default function ColorSizeMatrix({ state, patch }) {
           </button>
         </div>
       </div>
+
+      {showNoCategorySizesHint ? (
+        <div className="flex gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          This category has no sizes. Add them in Size & Color, pick a size below, or use a Single listing.
+        </div>
+      ) : null}
 
       {rowCount > 100 ? (
         <div className="flex gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs">
@@ -225,7 +259,7 @@ export default function ColorSizeMatrix({ state, patch }) {
               <span className="text-xs font-medium text-gray-600">Color</span>
               <SearchablePicker
                 compact
-                value={g.color_id}
+                value={g.color_id || g.color?.id || ""}
                 onChange={(id) => {
                   const c = colors.find((x) => String(x.id) === String(id));
                   updateGroup(gi, { color_id: id, color_name: c?.name || "" });
@@ -311,11 +345,11 @@ export default function ColorSizeMatrix({ state, patch }) {
                     <td className="py-1.5 pr-2 min-w-[140px]">
                       <SearchablePicker
                         compact
-                        value={s.size_id}
+                        value={s.size_id || s.size?.id || ""}
                         onChange={(id) => updateSize(gi, si, { size_id: id })}
                         placeholder="Size"
                         searchPlaceholder="Search size…"
-                        options={sizes.map((z) => ({ id: z.id, label: z.name }))}
+                        options={sizeOptions}
                       />
                     </td>
                     <td className="py-1.5 pr-2 align-top">
@@ -363,13 +397,22 @@ export default function ColorSizeMatrix({ state, patch }) {
                       />
                     </td>
                     <td className="py-1.5">
-                      {(g.sizes || []).length > 1 ? (
+                      {(g.sizes || []).length > 1 || s.size_id || s.size?.id ? (
                         <button
                           type="button"
                           className="text-red-500"
                           onClick={() =>
                             updateGroup(gi, {
-                              sizes: g.sizes.filter((_, i) => i !== si),
+                              sizes:
+                                (g.sizes || []).length > 1
+                                  ? g.sizes.filter((_, i) => i !== si)
+                                  : [
+                                      emptySizeRow({
+                                        original_price: state.original_price,
+                                        discounted_price: state.discounted_price,
+                                        stock: state.stock,
+                                      }),
+                                    ],
                             })
                           }
                         >

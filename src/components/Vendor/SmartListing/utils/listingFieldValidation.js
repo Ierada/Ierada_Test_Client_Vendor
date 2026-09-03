@@ -112,10 +112,10 @@ export function validateVariationRow(row, prefix = "") {
   const p = prefix ? `${prefix}: ` : "";
   const mrpSell = validateMrpAndSelling(row.original_price, row.discounted_price);
   Object.entries(mrpSell).forEach(([k, v]) => {
-    errors[k] = p + v;
+    errors[`${prefix}_${k}`] = p + v;
   });
   const stockErr = validateStockQty(row.stock, "Stock");
-  if (stockErr) errors.stock = p + stockErr;
+  if (stockErr) errors[`${prefix}_stock`] = p + stockErr;
   return errors;
 }
 
@@ -132,6 +132,10 @@ export function validateComboItems(comboItems = []) {
     }
   });
   return errors;
+}
+
+function sizeRowId(s) {
+  return s?.size_id || s?.size?.id || "";
 }
 
 export function validateSmartListingState(state) {
@@ -153,13 +157,16 @@ export function validateSmartListingState(state) {
     let anyRow = false;
     groups.forEach((g, gi) => {
       (g.sizes || []).forEach((s, si) => {
-        if (!s.size_id) return;
+        if (!sizeRowId(s)) return;
         anyRow = true;
         const rowErr = validateVariationRow(s, `Color ${gi + 1} / size ${si + 1}`);
         Object.assign(errors, rowErr);
       });
     });
-    if (!anyRow) errors.matrix = "Add at least one size row with price and stock";
+    if (!anyRow) {
+      errors.matrix =
+        "Color × Size listing: add at least one size (S/M/L…) with MRP, selling price and stock on the Variations step. The prices on Product Information are only defaults.";
+    }
   }
 
   if (state.listingType === "custom") {
@@ -203,7 +210,7 @@ export function firstVariationMatrixError(state) {
       const sizes = groups[gi].sizes || [];
       for (let si = 0; si < sizes.length; si++) {
         const s = sizes[si];
-        if (!s.size_id) continue;
+        if (!sizeRowId(s)) continue;
         const msg = firstValidationError(
           validateVariationRow(s, `Color ${gi + 1} / size ${si + 1}`),
         );

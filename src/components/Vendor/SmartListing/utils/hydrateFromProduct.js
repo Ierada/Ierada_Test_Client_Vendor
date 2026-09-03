@@ -26,12 +26,12 @@ function resolveListingType(p) {
 
 function hydrateColorGroups(variations) {
   return (variations || []).map((g) => ({
-    color_id: g.color_id || "",
+    color_id: g.color_id || g.color?.id || "",
     color_name: g.color?.name || g.color_name || "",
     media: [],
     existingMedia: g.media || [],
     sizes: (g.sizes || []).map((s) => ({
-      size_id: s.size_id || "",
+      size_id: s.size_id || s.size?.id || "",
       stock: s.stock ?? "",
       original_price: s.original_price ?? "",
       discounted_price: s.discounted_price ?? "",

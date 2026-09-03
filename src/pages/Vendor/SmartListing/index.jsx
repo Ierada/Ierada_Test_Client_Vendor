@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getCategories, getSubCategories, getInnerSubCategories } from "../../../services/api.category";
 import { addProduct, updateProduct, deleteProduct } from "../../../services/api.product";
+import { getAllSizes } from "../../../services/api.size";
 import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
 import { getShippingRates } from "../../../services/api.shippingRate";
@@ -45,6 +46,13 @@ import { calcSettlement, suggestSku } from "../../../components/Vendor/SmartList
 import { fileToSuggestPayload } from "../../../components/Vendor/SmartListing/utils/fileToSuggestPayload";
 import { buildSmartListingFormData, applyAutoListingPolicies } from "../../../components/Vendor/SmartListing/utils/buildFormData";
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
+import {
+  hasRealSizeRow,
+  sizeQueryFromListing,
+  prefillColorGroupsFromCategorySizes,
+  prefillColorGroupsFromSuggestedNames,
+  applyParentDefaultsToEmptySizeRows,
+} from "../../../components/Vendor/SmartListing/utils/variationHelpers";
 import {
   stashListingMedia,
   stripFilesForDraft,
@@ -377,9 +385,14 @@ function PricePairFields({ state, patch, mrpErr, sellErr, mrpLabel = "MRP (₹)"
         </Field>
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
-        <PriceRuleChip error={mrpErr} okText="MRP cannot be less than selling price" />
-        <PriceRuleChip error={sellErr} okText="Selling price cannot be greater than MRP" />
+        <PriceRuleChip error={mrpErr} okText="Must be greater than selling price" />
+        <PriceRuleChip error={sellErr} okText="Must be less than MRP" />
       </div>
+      {state.listingType === "color_size" ? (
+        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          Color × Size listing: publish uses each size row&apos;s MRP, selling price and stock (Variations step). These two fields are defaults only.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -390,18 +403,35 @@ function showPriceErr(liveErr, submitErr, value) {
 }
 
 function livePriceErr(state, fieldErrors) {
-  const live = validateSingleListingPricing(state);
+  const isMatrix =
+    state.listingType === "color_size" || state.listingType === "custom";
+  const hasMrp = state.original_price !== "" && state.original_price != null;
+  const hasSell = state.discounted_price !== "" && state.discounted_price != null;
+  const live = isMatrix
+    ? hasMrp || hasSell
+      ? validateMrpAndSelling(state.original_price, state.discounted_price)
+      : {}
+    : validateSingleListingPricing(state);
+  const leaked = isMatrix ? {} : fieldErrors;
   return {
-    original_price: showPriceErr(live.original_price, fieldErrors.original_price, state.original_price),
-    discounted_price: showPriceErr(live.discounted_price, fieldErrors.discounted_price, state.discounted_price),
-    stock: showPriceErr(live.stock, fieldErrors.stock, state.stock),
-    gst: showPriceErr(live.gst, fieldErrors.gst, state.gst),
+    original_price: showPriceErr(
+      live.original_price,
+      leaked.original_price,
+      state.original_price,
+    ),
+    discounted_price: showPriceErr(
+      live.discounted_price,
+      leaked.discounted_price,
+      state.discounted_price,
+    ),
+    stock: showPriceErr(live.stock, leaked.stock, state.stock),
+    gst: showPriceErr(live.gst, leaked.gst ?? fieldErrors.gst, state.gst),
     low_stock_threshold: showPriceErr(
       live.low_stock_threshold,
-      fieldErrors.low_stock_threshold,
+      leaked.low_stock_threshold,
       state.low_stock_threshold,
     ),
-    min_order_qty: showPriceErr(live.min_order_qty, fieldErrors.min_order_qty, state.min_order_qty),
+    min_order_qty: showPriceErr(live.min_order_qty, leaked.min_order_qty, state.min_order_qty),
   };
 }
 
@@ -439,6 +469,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [aiGenerating, setAiGenerating] = useState(false);
   const [categorySuggesting, setCategorySuggesting] = useState(false);
   const categorySuggestToken = useRef(0);
+  const sizePrefillKeyRef = useRef("");
   const [saveHint, setSaveHint] = useState("Ready");
   const [banner, setBanner] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -473,6 +504,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return next;
     });
   }, [stableId]);
+
+  const applyColorSizePrefill = useCallback(async (fromState, { suggestedNames } = {}) => {
+    if (fromState.listingType !== "color_size") return null;
+    if (hasRealSizeRow(fromState.colorGroups)) return null;
+    if (!fromState.category_id) return null;
+    const res = await getAllSizes(sizeQueryFromListing(fromState));
+    if (!res || res.status !== 1) return false;
+    const data = res.data || [];
+    const meta = res.meta || {};
+    let groups = prefillColorGroupsFromCategorySizes(data, fromState, meta);
+    if (!groups && suggestedNames?.length) {
+      groups = prefillColorGroupsFromSuggestedNames(suggestedNames, data, fromState);
+    }
+    return groups;
+  }, []);
 
   const patchSection = useCallback((section, partial) => {
     setState((prev) => ({
@@ -954,7 +1000,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       if (token !== categorySuggestToken.current) return;
       if (res?.status === 1 && res?.data) {
         const d = res.data;
-        patch({
+        const catPatch = {
           category_id: String(d.category_id),
           sub_category_id: String(d.sub_category_id),
           inner_sub_category_id: d.inner_sub_category_id
@@ -963,6 +1009,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           categoryTitle: d.categoryTitle || "",
           subCategoryTitle: d.subCategoryTitle || "",
           innerSubCategoryTitle: d.innerSubCategoryTitle || "",
+        };
+        const nextState = { ...state, ...catPatch };
+        let colorGroups;
+        try {
+          colorGroups = await applyColorSizePrefill(nextState);
+          if (colorGroups === false) colorGroups = undefined;
+        } catch {
+          /* effect retries */
+        }
+        patch({
+          ...catPatch,
+          ...(colorGroups ? { colorGroups } : {}),
         });
         setBanner({
           type: "info",
@@ -989,7 +1047,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     } finally {
       if (token === categorySuggestToken.current) setCategorySuggesting(false);
     }
-  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, state.category_id, patch]);
+  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, state.category_id, patch, applyColorSizePrefill]);
 
   useEffect(() => {
     if (!state.listingType || state.category_id) return;
@@ -1006,6 +1064,63 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     state.mediaLabels,
     state.colorGroups,
     runCategorySuggest,
+  ]);
+
+  const hasSizeIds = useMemo(
+    () => hasRealSizeRow(state.colorGroups),
+    [state.colorGroups],
+  );
+
+  useEffect(() => {
+    if (state.listingType !== "color_size") return;
+    if (!state.category_id) return;
+    const prefillKey = [
+      state.category_id,
+      state.sub_category_id || "",
+      state.inner_sub_category_id || "",
+    ].join("|");
+    if (hasSizeIds) {
+      sizePrefillKeyRef.current = prefillKey;
+      const filled = applyParentDefaultsToEmptySizeRows(state.colorGroups, state);
+      if (filled) patch({ colorGroups: filled });
+      return;
+    }
+    if (sizePrefillKeyRef.current === prefillKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const groups = await applyColorSizePrefill({
+          listingType: state.listingType,
+          category_id: state.category_id,
+          sub_category_id: state.sub_category_id,
+          inner_sub_category_id: state.inner_sub_category_id,
+          original_price: state.original_price,
+          discounted_price: state.discounted_price,
+          stock: state.stock,
+          colorGroups: state.colorGroups,
+        });
+        if (cancelled) return;
+        if (groups === false) return;
+        sizePrefillKeyRef.current = prefillKey;
+        if (groups) patch({ colorGroups: groups });
+      } catch {
+        /* soft */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    state.listingType,
+    state.category_id,
+    state.sub_category_id,
+    state.inner_sub_category_id,
+    state.original_price,
+    state.discounted_price,
+    state.stock,
+    hasSizeIds,
+    applyColorSizePrefill,
+    patch,
   ]);
 
   const validateBasicsStep = () => {
@@ -1030,9 +1145,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (step === "matrix" && state.listingType === "color_size") {
       const ok = (state.colorGroups || []).some(
         (g) =>
-          g.color_id &&
-          (g.sizes || []).some((s) => s.size_id) &&
-          (g.media || []).length,
+          (g.color_id || g.color?.id) &&
+          (g.sizes || []).some((s) => s.size_id || s.size?.id) &&
+          ((g.media || []).length || (g.existingMedia || []).length),
       );
       if (!ok) err.matrix = "Add color, size rows, and at least one image per color";
       else {
@@ -1134,6 +1249,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         vendorContext: user || {},
       });
       if (!merged.sku) merged.sku = suggestSku(merged.name, merged.brand);
+      try {
+        const groups = await applyColorSizePrefill(merged, {
+          suggestedNames: draft?.suggestedSizes,
+        });
+        if (groups && groups !== false) merged.colorGroups = groups;
+      } catch {
+        /* category effect still prefills */
+      }
       setState(merged);
       setPhase("review");
       setReviewSection("pricing");
@@ -1190,12 +1313,26 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       }
       const firstErr = firstValidationError(vErr);
       if (firstErr) {
-        if (vErr.name || vErr.hsn_code || vErr.original_price || vErr.discounted_price) {
+        if (vErr.matrix) {
+          setPhase("basics");
+          setStep(
+            state.listingType === "combo"
+              ? "combo"
+              : "matrix",
+          );
+        } else if (vErr.name || vErr.hsn_code) {
           setReviewSection("product_info");
-        } else if (vErr.stock || vErr.min_order_qty) {
+        } else if (
+          vErr.original_price ||
+          vErr.discounted_price ||
+          vErr.stock ||
+          vErr.min_order_qty
+        ) {
           setReviewSection("pricing");
         }
-        const text = formatPriceValidationToast(vErr) || firstErr;
+        const text = vErr.matrix
+          ? vErr.matrix
+          : formatPriceValidationToast(vErr) || firstErr;
         setFieldErrors(vErr);
         setBanner({ type: "error", text });
         notifyOnFail({ title: "Please check", message: text });
@@ -1400,9 +1537,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             </Link>
           </div>
         </div>
-        {!isEditMode ? (
-          <ListingStepper phase={phase} step={step} steps={steps} />
-        ) : null}
+        <ListingStepper
+          phase={phase}
+          step={step}
+          steps={steps}
+          onSelect={(id) => {
+            if (id === "review") {
+              setPhase("review");
+              return;
+            }
+            setPhase("basics");
+            setStep(id);
+          }}
+        />
       </div>
 
       {banner ? <ListingBanner banner={banner} onClose={() => setBanner(null)} /> : null}
@@ -2270,7 +2417,7 @@ function BoxEditor({ items, onChange }) {
   );
 }
 
-function ListingStepper({ phase, step, steps }) {
+function ListingStepper({ phase, step, steps, onSelect }) {
   const flowSteps = [...steps, "review"];
   const activeId = phase === "review" ? "review" : step;
   const activeIdx = Math.max(0, flowSteps.indexOf(activeId));
@@ -2290,7 +2437,9 @@ function ListingStepper({ phase, step, steps }) {
                   aria-hidden
                 />
               ) : null}
-              <span
+              <button
+                type="button"
+                onClick={() => onSelect?.(id)}
                 className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border text-[11px] sm:text-xs whitespace-nowrap ${
                   active
                     ? "bg-primary-100 text-white border-primary-100 font-medium"
@@ -2311,7 +2460,7 @@ function ListingStepper({ phase, step, steps }) {
                   {done ? "✓" : idx + 1}
                 </span>
                 {label}
-              </span>
+              </button>
             </li>
           );
         })}
