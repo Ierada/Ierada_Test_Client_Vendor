@@ -1,5 +1,5 @@
-import { SectionHub } from "../../components/Vendor/SectionHub";
-import { VENDOR_PRODUCT_SECTION_ITEMS } from "../../config/productSection";
+import { SectionHub } from "../../../components/Vendor/SectionHub";
+import { VENDOR_PRODUCT_SECTION_ITEMS } from "../../../config/productSection";
 
 const ProductHub = () => (
   <div className="px-4 py-6">
