@@ -13,7 +13,6 @@ import {
   RotateCcw,
   Map,
   Bell,
-  FolderMinus,
   Wallet,
   FileText,
   CreditCard,
@@ -48,8 +47,7 @@ export const vendorMenuConfig = {
         { text: "Logistics Intel", icon: Map, path: "/orders/logistics" },
       ],
     },
-    { text: "Products", icon: ShoppingCart, path: "/product" },
-    { text: "Bulk Manager", icon: FolderMinus, path: "/bulk-upload" },
+    { text: "Products", icon: ShoppingCart, path: "/product", sectionPrefixes: ["/product", "/bulk-upload"] },
     {
       text: "Payments",
       icon: Wallet,

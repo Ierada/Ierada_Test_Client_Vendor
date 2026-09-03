@@ -1203,7 +1203,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     }
     const idx = steps.indexOf(step);
     if (idx > 0) setStep(steps[idx - 1]);
-    else navigate("/product");
+    else navigate("/product/list");
   };
 
   const runAiGenerate = async (opts = {}) => {
@@ -1296,7 +1296,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       }
       clearLocalDraft(stableId);
       notifyOnSuccess(savedId ? "Draft discarded" : "Listing progress cleared");
-      navigate("/product?tab=draft");
+      navigate("/product/list?tab=draft");
     } catch (e) {
       notifyOnFail(getApiErrorMessage(e, "Could not discard draft"));
     }

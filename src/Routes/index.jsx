@@ -13,6 +13,7 @@ import NotFoundPage from "../pages/NotFound/index.jsx";
 
 import Dashboard from "../pages/Vendor/Dashboard";
 import Product from "../pages/Vendor/Product";
+import ProductHub from "../pages/Vendor/Product/ProductHub.jsx";
 import AddEditProduct from "../pages/Vendor/AddProduct";
 import SmartListing from "../pages/Vendor/SmartListing";
 import Setting from "../pages/Vendor/Setting";
@@ -170,7 +171,8 @@ const VendorRoutes = () => {
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: "/dashboard", element: <Dashboard /> },
-        { path: "/product", element: <Product /> },
+        { path: "/product", element: <ProductHub /> },
+        { path: "/product/list", element: <Product /> },
         { path: "/product/add", element: <SmartListing mode="vendor" /> },
         { path: "/product/add-classic", element: <AddEditProduct /> },
         { path: "/product/edit/:id", element: <SmartListing mode="vendor" /> },

@@ -4,6 +4,13 @@ import VendorHeader from "../components/Vendor/Header";
 import VendorSidebar from "../components/Vendor/Sidebar";
 import { Menu, X } from "lucide-react";
 import { Outlet } from "react-router-dom";
+import { SectionPills } from "../components/Vendor/SectionHub";
+import {
+  VENDOR_PRODUCT_HUB_PATH,
+  VENDOR_PRODUCT_SECTION_ITEMS,
+  isVendorProductSectionPath,
+  isVendorProductWizardPath,
+} from "../config/productSection";
 
 const VendorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -47,6 +54,14 @@ const VendorLayout = () => {
 
         <main className="flex-grow mt-20">
           <div className="mx-auto max-w-screen-2xl">
+            {isVendorProductSectionPath(location.pathname) &&
+            !isVendorProductWizardPath(location.pathname) ? (
+              <SectionPills
+                hubPath={VENDOR_PRODUCT_HUB_PATH}
+                hubLabel="Products"
+                items={VENDOR_PRODUCT_SECTION_ITEMS}
+              />
+            ) : null}
             <Outlet />
           </div>
         </main>

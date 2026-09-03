@@ -169,9 +169,10 @@ export default function BulkSmartListingLauncher({
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Smart Bulk Listing</h2>
             <p className="text-sm text-gray-600 mt-1 max-w-2xl">
-              <strong>Haan — mixed types ek saath:</strong> ek session me Single + Combo + Color×Size
-              + Custom variation mix kar sakte ho. Har listing pe full Smart Listing (photos, AI,
-              review). Next listing auto khulega.
+              <strong>Mix listing types in one session:</strong> Single, Combo,
+              Color × Size, and Custom variation. Each listing gets the full
+              Smart Listing flow (photos, AI, review). The next listing opens
+              automatically.
             </p>
           </div>
         </div>
@@ -241,7 +242,7 @@ export default function BulkSmartListingLauncher({
         ) : (
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
-              <span className="font-medium text-gray-700 block mb-1">Kitni listings?</span>
+              <span className="font-medium text-gray-700 block mb-1">How many listings?</span>
               <input
                 type="number"
                 min={1}
@@ -253,7 +254,7 @@ export default function BulkSmartListingLauncher({
               />
             </label>
             <p className="text-xs text-gray-500 pb-2">
-              Har listing pe type choose karoge — Single / Combo / Variation / Custom.
+              You choose the type on each listing — Single / Combo / Variation / Custom.
             </p>
           </div>
         )}
@@ -265,16 +266,17 @@ export default function BulkSmartListingLauncher({
           </p>
           <ol className="list-decimal pl-4 space-y-1">
             <li>
-              Pehle <Link className="text-primary-100 font-medium" to="/bulk-upload/media">Media Manager</Link>{" "}
-              me images upload karo (chunked — 100s OK).
+              First upload images in{" "}
+              <Link className="text-primary-100 font-medium" to="/bulk-upload/media">Media Manager</Link>{" "}
+              (chunked — hundreds are OK).
             </li>
             <li>
-              Smart Bulk me <strong>mixed types</strong> chalega, lekin guided AI flow hai — practical
-              batches: <strong>20–50</strong> per session (max {BULK_SESSION_MAX}/session).
+              Smart Bulk supports <strong>mixed types</strong>, but it is a guided AI flow.
+              Practical batches: <strong>20–50</strong> per session (max {BULK_SESSION_MAX}/session).
             </li>
             <li>
-              <strong>Combo</strong> last me banao — pehle single/variation products exist hone
-              chahiye jo combo me bundle honge.
+              Create <strong>combos last</strong> — the single/variation products you bundle
+              must already exist.
             </li>
             <li>
               1000+ simple singles / Excel variations:{" "}

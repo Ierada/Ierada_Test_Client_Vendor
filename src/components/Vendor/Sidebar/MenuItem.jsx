@@ -13,7 +13,13 @@ const MenuItem = ({ item, counts, openSubMenus, toggleSubMenu, hoveredSubMenu, s
     return item.subItems?.some(sub => location.pathname === sub.path);
   }, [item.subItems, location.pathname]);
 
-  const active = location.pathname.includes(item.path) || hasActiveSub;
+  const active =
+    item.sectionPrefixes?.some(
+      (prefix) =>
+        location.pathname === prefix || location.pathname.startsWith(`${prefix}/`),
+    ) ||
+    location.pathname.includes(item.path) ||
+    hasActiveSub;
   const isExpanded = openSubMenus[item.text] || hoveredSubMenu === item.text || hasActiveSub;
 
   const getBadge = () => {
@@ -58,7 +64,7 @@ const MenuItem = ({ item, counts, openSubMenus, toggleSubMenu, hoveredSubMenu, s
           </div>
         </div>
       ) : (
-        <NavLink to={item.path} className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${isActive ? "bg-[#EEF2F6] text-[#0164CE] font-semibold" : "text-[#475467] hover:bg-gray-50 hover:text-gray-950"}`} onClick={handleNavigation}>
+        <NavLink to={item.path} className={() => `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 ${active ? "bg-[#EEF2F6] text-[#0164CE] font-semibold" : "text-[#475467] hover:bg-gray-50 hover:text-gray-950"}`} onClick={handleNavigation}>
           <div className="flex items-center gap-3 flex-1">
             <Icon className={`w-5 h-5 transition-colors ${active ? "text-[#0164CE]" : "text-[#475467] group-hover:text-gray-950"}`} />
             <span className="text-[14px] font-medium">{item.text}</span>
