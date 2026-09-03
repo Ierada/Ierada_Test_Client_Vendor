@@ -4,55 +4,55 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { jwtDecode } from "jwt-decode";
 import VendorSignIn from "../pages/Vendor/Authentication/SignIn";
 import VendorForgotPassword from "../pages/Vendor/ForgotPassword/index";
 import VendorLayout from "../layout/DefaultLayout.jsx";
 import NotFoundPage from "../pages/NotFound/index.jsx";
-
-import Dashboard from "../pages/Vendor/Dashboard";
-import Product from "../pages/Vendor/Product";
-import ProductHub from "../pages/Vendor/Product/ProductHub.jsx";
-import AddEditProduct from "../pages/Vendor/AddProduct";
-import SmartListing from "../pages/Vendor/SmartListing";
-import Setting from "../pages/Vendor/Setting";
-import Order from "../pages/Vendor/Order";
-import OrderPipeline from "../pages/Vendor/Order/OrderPipeline.jsx";
-import SelfShip from "../pages/Vendor/Order/SelfShip.jsx";
-import Returns from "../pages/Vendor/Order/Returns.jsx";
-import OrderDetail from "../pages/Vendor/Order/OrderDetail/index.jsx";
-import Invoice from "../pages/Vendor/Invoice";
-import Coupons from "../pages/Vendor/Coupons";
-import ReportNew from "../pages/Vendor/ReportNew";
-import Profile from "../pages/Vendor/Profile";
-import TrackCustomerOrders from "../pages/Vendor/TrackOrder";
-import CreateCampaign from "../components/Vendor/CreateCampaign";
-import Review from "../pages/Vendor/Review";
-import Subcriptions from "../pages/Vendor/Subcriptions";
-import ManageInfluencer from "../pages/Vendor/ManageInfluencer";
-import ChatLayout from "../pages/Vendor/Chat";
-import TutorialPage from "../pages/Vendor/Tutorial/index.jsx";
-import SupportPage from "../pages/Vendor/Support/index.jsx";
-import VendorNotification from "../pages/Vendor/Notification/index.jsx";
-import VendorLogoutPage from "../pages/Vendor/Logout/index.jsx";
-import VendorAdlist from "../pages/Vendor/AdList/index.jsx";
-import CreateAdPage from "../pages/Vendor/AddAdvertisement/index.jsx";
-import ProductFilesManager from "../pages/Vendor/Product/ProductFilesManager.jsx";
-import BulkListingManager from "../pages/Vendor/BulkListingManager";
 import AuthHandoff from "../pages/Vendor/AuthHandoff/index.jsx";
-import PaymentOverview from "../pages/Vendor/Payments/payment-overview/index.jsx";
-import Settlements from "../pages/Vendor/Payments/settlements/index.jsx";
-import Transactions from "../pages/Vendor/Payments/transactions/index.jsx";
-import PaymentAdvice from "../pages/Vendor/Payments/payment-advice/index.jsx";
-import GstTaxCenter from "../pages/Vendor/Payments/gst-center/index.jsx";
-import PickupVerification from "../pages/Vendor/PickupVerification/index.jsx";
+
+// --- Lazy imports ---
+const Dashboard          = lazy(() => import("../pages/Vendor/Dashboard"));
+const Product            = lazy(() => import("../pages/Vendor/Product"));
+const ProductHub         = lazy(() => import("../pages/Vendor/Product/ProductHub.jsx"));
+const AddEditProduct     = lazy(() => import("../pages/Vendor/AddProduct"));
+const SmartListing       = lazy(() => import("../pages/Vendor/SmartListing"));
+const Setting            = lazy(() => import("../pages/Vendor/Setting"));
+const Order              = lazy(() => import("../pages/Vendor/Order"));
+const OrderPipeline      = lazy(() => import("../pages/Vendor/Order/OrderPipeline.jsx"));
+const SelfShip           = lazy(() => import("../pages/Vendor/Order/SelfShip.jsx"));
+const Returns            = lazy(() => import("../pages/Vendor/Order/Returns.jsx"));
+const OrderDetail        = lazy(() => import("../pages/Vendor/Order/OrderDetail/index.jsx"));
+const Invoice            = lazy(() => import("../pages/Vendor/Invoice"));
+const Coupons            = lazy(() => import("../pages/Vendor/Coupons"));
+const ReportNew          = lazy(() => import("../pages/Vendor/ReportNew"));
+const Profile            = lazy(() => import("../pages/Vendor/Profile"));
+const SupportPage        = lazy(() => import("../pages/Vendor/Support/index.jsx"));
+const VendorNotification = lazy(() => import("../pages/Vendor/Notification/index.jsx"));
+const VendorLogoutPage   = lazy(() => import("../pages/Vendor/Logout/index.jsx"));
+const ProductFilesManager = lazy(() => import("../pages/Vendor/Product/ProductFilesManager.jsx"));
+const BulkListingManager = lazy(() => import("../pages/Vendor/BulkListingManager"));
+const PaymentOverview    = lazy(() => import("../pages/Vendor/Payments/payment-overview/index.jsx"));
+const Settlements        = lazy(() => import("../pages/Vendor/Payments/settlements/index.jsx"));
+const Transactions       = lazy(() => import("../pages/Vendor/Payments/transactions/index.jsx"));
+const PaymentAdvice      = lazy(() => import("../pages/Vendor/Payments/payment-advice/index.jsx"));
+const GstTaxCenter       = lazy(() => import("../pages/Vendor/Payments/gst-center/index.jsx"));
+const PickupVerification = lazy(() => import("../pages/Vendor/PickupVerification/index.jsx"));
+
 import {
   setUserCookie,
   clearUserSession,
   getUserToken,
 } from "../utils/userIdentifier";
 import { toast } from "react-toastify";
+
+// Suspense fallback
+const PageLoader = () => (
+  <div className="flex items-center justify-center min-h-[60vh]">
+    <div className="w-8 h-8 border-4 border-orange-400 border-t-transparent rounded-full animate-spin" />
+  </div>
+);
 
 // import CreateInvoice from "../pages/Vendor/Invoice/Create.jsx";
 
@@ -170,45 +170,45 @@ const VendorRoutes = () => {
       ),
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
-        { path: "/dashboard", element: <Dashboard /> },
-        { path: "/product", element: <ProductHub /> },
-        { path: "/product/list", element: <Product /> },
-        { path: "/product/add", element: <SmartListing mode="vendor" /> },
-        { path: "/product/add-classic", element: <AddEditProduct /> },
-        { path: "/product/edit/:id", element: <SmartListing mode="vendor" /> },
-        { path: "/product/edit-classic/:id", element: <AddEditProduct /> },
-        { path: "/bulk-upload", element: <BulkListingManager mode="vendor" /> },
-        { path: "/bulk-upload/media", element: <ProductFilesManager /> },
-        { path: "/settings", element: <Setting /> },
-        { path: "/pickup-verification", element: <PickupVerification /> },
-        { path: "/orders", element: <Order /> },
-        { path: "/orders/pipeline", element: <OrderPipeline /> },
-        { path: "/orders/self-ship", element: <SelfShip /> },
-        { path: "/orders/returns", element: <Returns /> },
-        { path: "/orders/logistics", element: <Order /> },
-        { path: "/orders/:id", element: <OrderDetail /> },
-        { path: "/invoice", element: <Invoice /> },
-        // { path: "/invoice/create", element: <CreateInvoice /> },
-        { path: "/coupons", element: <Coupons /> },
-        { path: "/report", element: <ReportNew /> },
-        { path: "/chat", element: <ChatLayout /> },
-        { path: "/influencer", element: <ManageInfluencer /> },
-        { path: "/profile", element: <Profile /> },
-        { path: "/payments", element: <PaymentOverview /> },
-        { path: "/payments/settlements", element: <Settlements /> },
-        { path: "/payments/transactions", element: <Transactions /> },
-        { path: "/payments/payment-advice", element: <PaymentAdvice /> },
-        { path: "/payments/gst-center", element: <GstTaxCenter /> },
-        { path: "/trackorders", element: <TrackCustomerOrders /> },
-        { path: "/influencer/campaign/create", element: <CreateCampaign /> },
-        { path: "/subcription", element: <Subcriptions /> },
-        { path: "/review", element: <Review /> },
-        { path: "/support", element: <SupportPage /> },
-        { path: "/training", element: <TutorialPage /> },
-        { path: "/notifications", element: <VendorNotification /> },
-        { path: "/logout", element: <VendorLogoutPage /> },
-        { path: "/ads/history", element: <VendorAdlist /> },
-        { path: "/ads/add", element: <CreateAdPage /> },
+        { path: "/dashboard", element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
+        { path: "/product", element: <Suspense fallback={<PageLoader />}><ProductHub /></Suspense> },
+        { path: "/product/list", element: <Suspense fallback={<PageLoader />}><Product /></Suspense> },
+        { path: "/product/add", element: <Suspense fallback={<PageLoader />}><SmartListing mode="vendor" /></Suspense> },
+        { path: "/product/add-classic", element: <Suspense fallback={<PageLoader />}><AddEditProduct /></Suspense> },
+        { path: "/product/edit/:id", element: <Suspense fallback={<PageLoader />}><SmartListing mode="vendor" /></Suspense> },
+        { path: "/product/edit-classic/:id", element: <Suspense fallback={<PageLoader />}><AddEditProduct /></Suspense> },
+        { path: "/bulk-upload", element: <Suspense fallback={<PageLoader />}><BulkListingManager mode="vendor" /></Suspense> },
+        { path: "/bulk-upload/media", element: <Suspense fallback={<PageLoader />}><ProductFilesManager /></Suspense> },
+        { path: "/settings", element: <Suspense fallback={<PageLoader />}><Setting /></Suspense> },
+        { path: "/pickup-verification", element: <Suspense fallback={<PageLoader />}><PickupVerification /></Suspense> },
+        { path: "/orders", element: <Suspense fallback={<PageLoader />}><Order /></Suspense> },
+        { path: "/orders/pipeline", element: <Suspense fallback={<PageLoader />}><OrderPipeline /></Suspense> },
+        { path: "/orders/self-ship", element: <Suspense fallback={<PageLoader />}><SelfShip /></Suspense> },
+        { path: "/orders/returns", element: <Suspense fallback={<PageLoader />}><Returns /></Suspense> },
+        { path: "/orders/:id", element: <Suspense fallback={<PageLoader />}><OrderDetail /></Suspense> },
+        { path: "/invoice", element: <Suspense fallback={<PageLoader />}><Invoice /></Suspense> },
+        // { path: "/invoice/create", element: <Suspense fallback={<PageLoader />}><CreateInvoice /></Suspense> },
+        { path: "/coupons", element: <Suspense fallback={<PageLoader />}><Coupons /></Suspense> },
+        { path: "/report", element: <Suspense fallback={<PageLoader />}><ReportNew /></Suspense> },
+        { path: "/profile", element: <Suspense fallback={<PageLoader />}><Profile /></Suspense> },
+        { path: "/payments", element: <Suspense fallback={<PageLoader />}><PaymentOverview /></Suspense> },
+        { path: "/payments/settlements", element: <Suspense fallback={<PageLoader />}><Settlements /></Suspense> },
+        { path: "/payments/transactions", element: <Suspense fallback={<PageLoader />}><Transactions /></Suspense> },
+        { path: "/payments/payment-advice", element: <Suspense fallback={<PageLoader />}><PaymentAdvice /></Suspense> },
+        { path: "/payments/gst-center", element: <Suspense fallback={<PageLoader />}><GstTaxCenter /></Suspense> },
+        { path: "/support", element: <Suspense fallback={<PageLoader />}><SupportPage /></Suspense> },
+        { path: "/notifications", element: <Suspense fallback={<PageLoader />}><VendorNotification /></Suspense> },
+        { path: "/logout", element: <Suspense fallback={<PageLoader />}><VendorLogoutPage /></Suspense> },
+        { path: "/chat", element: <Navigate to="/support" replace /> },
+        { path: "/influencer", element: <Navigate to="/dashboard" replace /> },
+        { path: "/influencer/campaign/create", element: <Navigate to="/dashboard" replace /> },
+        { path: "/trackorders", element: <Navigate to="/orders" replace /> },
+        { path: "/subcription", element: <Navigate to="/settings" replace /> },
+        { path: "/review", element: <Navigate to="/dashboard" replace /> },
+        { path: "/training", element: <Navigate to="/dashboard" replace /> },
+        { path: "/ads/history", element: <Navigate to="/dashboard" replace /> },
+        { path: "/ads/add", element: <Navigate to="/dashboard" replace /> },
+        { path: "/orders/logistics", element: <Navigate to="/orders" replace /> },
       ],
     },
     { path: "*", element: <NotFoundPage /> },

@@ -5,15 +5,17 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
-    include: ["@canvasjs/react-charts", "@canvasjs/charts"], // Pre-bundle these dependencies
+    include: ["@canvasjs/react-charts", "@canvasjs/charts"],
   },
   build: {
+    // esbuild is 10-20x faster than default Terser minifier
+    minify: "esbuild",
+    target: "es2015",
     commonjsOptions: {
-      include: [/node_modules/], // Ensure all CommonJS modules in node_modules are included
+      include: [/node_modules/],
     },
   },
   server: {
-    // port: 5190,
     proxy: {
       '/api/assets': {
         target: 'https://vendor-internal-testing.ierada.com',
@@ -25,5 +27,4 @@ export default defineConfig({
       }
     }
   },
-  // base: '',
 });
