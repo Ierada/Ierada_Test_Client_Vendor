@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Calendar,
   Download,
@@ -13,12 +14,16 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  FileText,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   getSettlements,
   getSettlementSummary,
 } from "../../../../services/api.settlement";
+import {
+  getPaymentAdviceBySettlement,
+} from "../../../../services/api.paymentAdvice";
 
 
 // ---------------------------------------------------------------------------
@@ -67,6 +72,7 @@ const Sparkline = ({ trend }) => {
 };
 
 const Settlements = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("all");
   const [selectedSettlement, setSelectedSettlement] = useState(null);
   const [search, setSearch] = useState("");
@@ -81,11 +87,22 @@ const Settlements = () => {
     total: 0,
     total_pages: 0,
   });
+  const [filters, setFilters] = useState({
+    dateFrom: "",
+    dateTo: "",
+    status: "all",
+    cycle: "all",
+    bankName: "all",
+    paymentMode: "all",
+  });
 
   useEffect(() => {
     fetchSettlements();
+  }, [activeTab, search, filters, pagination.current_page, pagination.per_page]);
+
+  useEffect(() => {
     fetchSummary();
-  }, [activeTab, search]);
+  }, []);
 
   const fetchSettlements = async () => {
     try {
@@ -96,6 +113,12 @@ const Settlements = () => {
         page: pagination.current_page,
         limit: pagination.per_page,
       };
+      if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+      if (filters.dateTo) params.dateTo = filters.dateTo;
+      if (filters.status !== "all") params.status = filters.status;
+      if (filters.cycle !== "all") params.cycle = filters.cycle;
+      if (filters.bankName !== "all") params.bankName = filters.bankName;
+      if (filters.paymentMode !== "all") params.paymentMode = filters.paymentMode;
       const response = await getSettlements(params);
       if (response.status === 1) {
         setSettlements(response.data.settlements);
@@ -230,7 +253,9 @@ const Settlements = () => {
           <div className="flex items-center gap-2">
             <button className={secondaryBtn}>
               <Calendar className="w-4 h-4" />
-              01 Aug 2026 - 15 Aug 2026
+              {filters.dateFrom && filters.dateTo
+                ? `${new Date(filters.dateFrom).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date(filters.dateTo).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}`
+                : "All Dates"}
             </button>
             <button 
               onClick={handleExport}
@@ -271,64 +296,87 @@ const Settlements = () => {
               ))}
             </div>
 
-            {/* Search */}
-            <div className={`${card} p-2.5 mb-3`}>
-              <div className="relative">
-                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by Settlement ID, UTR, Bank Name, Payment Mode"
-                  className="w-full pl-9 pr-3 py-2 text-sm text-gray-700 outline-none placeholder:text-gray-400"
-                />
-              </div>
-            </div>
-
             {/* Filters row */}
-            <div className={`${card} p-4 mb-4`}>
+            <div className={`${card} p-4 mb-3`}>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Date Range</label>
-                  <input readOnly value="01 Aug 2026 - 15 Aug 2026" className={inputBase} />
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">From Date</label>
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value })}
+                    className={inputBase}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1.5">To Date</label>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) => setFilters({ ...filters, dateTo: e.target.value })}
+                    className={inputBase}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Settlement Status</label>
-                  <select className={inputBase}>
-                    <option>All Status</option>
-                    <option>Paid</option>
-                    <option>Processing</option>
-                    <option>Failed</option>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                    className={inputBase}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Failed">Failed</option>
+                    <option value="On Hold">On Hold</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Settlement Cycle</label>
-                  <select className={inputBase}>
-                    <option>All</option>
-                    <option>SET-2508-001</option>
-                    <option>SET-2507-002</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Bank Name</label>
-                  <select className={inputBase}>
-                    <option>All</option>
-                    <option>HDFC Bank</option>
+                  <select
+                    value={filters.cycle}
+                    onChange={(e) => setFilters({ ...filters, cycle: e.target.value })}
+                    className={inputBase}
+                  >
+                    <option value="all">All Cycles</option>
+                    <option value="1">Cycle 1 (1st-15th)</option>
+                    <option value="2">Cycle 2 (16th-EOM)</option>
                   </select>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">Payment Mode</label>
-                    <select className={inputBase}>
-                      <option>All</option>
-                      <option>NEFT</option>
-                      <option>IMPS</option>
+                    <select
+                      value={filters.paymentMode}
+                      onChange={(e) => setFilters({ ...filters, paymentMode: e.target.value })}
+                      className={inputBase}
+                    >
+                      <option value="all">All</option>
+                      <option value="NEFT">NEFT</option>
+                      <option value="IMPS">IMPS</option>
                     </select>
                   </div>
-                  <button className="mb-0.5 self-end inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800">
+                  <button
+                    onClick={() => setFilters({ dateFrom: "", dateTo: "", status: "all", cycle: "all", bankName: "all", paymentMode: "all" })}
+                    className="mb-0.5 self-end inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                  >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Reset
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className={`${card} p-2.5 mb-4`}>
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by Settlement ID, UTR, UTR2, Invoice No, Bank Name, Payment Mode"
+                  className="w-full pl-9 pr-3 py-2 text-sm text-gray-700 outline-none placeholder:text-gray-400"
+                />
               </div>
             </div>
 
@@ -575,6 +623,25 @@ const Settlements = () => {
               </div>
 
               <div className="p-4 border-t border-gray-100 space-y-2">
+                <button
+                  onClick={async () => {
+                    if (!selectedSettlement?.id) return;
+                    try {
+                      const res = await getPaymentAdviceBySettlement(selectedSettlement.id);
+                      if (res.status === 1 && res.data?.id) {
+                        navigate(`/payments/payment-advice/${res.data.id}`);
+                      } else {
+                        alert("No payment advice found for this settlement");
+                      }
+                    } catch {
+                      alert("No payment advice found for this settlement");
+                    }
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors"
+                >
+                  <FileText className="w-4 h-4" />
+                  View Payment Advice
+                </button>
                 <button className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                   <Download className="w-4 h-4" />
                   Download Advice
@@ -583,7 +650,7 @@ const Settlements = () => {
                   <Download className="w-4 h-4" />
                   Download Invoice
                 </button>
-                <button className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors">
+                <button className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                   <AlertTriangle className="w-4 h-4" />
                   Raise Settlement Query
                 </button>

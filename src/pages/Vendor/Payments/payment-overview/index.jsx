@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -20,7 +20,18 @@ import {
   Receipt,
   Banknote,
   Info,
+  Calendar,
 } from "lucide-react";
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
+const CYCLES = [
+  { value: 1, label: "Cycle 1 (1st–15th)" },
+  { value: 2, label: "Cycle 2 (16th–EOM)" },
+];
+const CURRENT_MONTH = new Date().getMonth() + 1;
+const CURRENT_CYCLE = new Date().getDate() <= 15 ? 1 : 2;
 
 const ORANGE = "#F97350";
 
@@ -77,23 +88,25 @@ const Card = ({ title, subtitle, right, children, className = "" }) => (
 export default function PaymentsDashboard() {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(CURRENT_MONTH);
+  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [selectedCycle, setSelectedCycle] = useState(CURRENT_CYCLE);
+
+  const fetchDashboardData = async () => {
+    try {
+      setLoading(true);
+      const data = await getPaymentsDashboardData({ month: selectedMonth, year: selectedYear, cycle: selectedCycle });
+      if (data) setDashboardData(data);
+    } catch (error) {
+      console.error("Error fetching dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const data = await getPaymentsDashboardData();
-        if (data) {
-          setDashboardData(data);
-        }
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchDashboardData();
-  }, []);
+  }, [selectedMonth, selectedYear, selectedCycle]);
 
   // Use dynamic data from API, fall back to zeros
   const cycleInfo = dashboardData?.cycleInfo || {
@@ -165,32 +178,79 @@ export default function PaymentsDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 lg:px-6 py-4">
         {/* Cycle summary */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-8">
-            <div>
-              <p className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">Active Cycle</p>
-              <p className="text-sm font-semibold text-gray-800 mt-1">{cycleInfo.currentCycle}</p>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3 mb-4 flex items-center justify-between gap-6">
+          {/* Left: Cycle selectors */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="text-sm font-medium text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer"
+              >
+                {MONTHS.map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="text-sm font-medium text-gray-700 bg-transparent border-none focus:ring-0 cursor-pointer"
+              >
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
             </div>
-            <div>
-              <p className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">Next Settlement</p>
-              <p className="text-sm font-semibold text-gray-800 mt-1 flex items-center gap-2">
-                {cycleInfo.nextSettlement}
-                <span className="text-[10px] font-medium bg-green-50 text-green-600 px-2 py-0.5 rounded-full">
-                  in 2 days
-                </span>
-              </p>
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">Status</p>
-              <p className="text-sm font-semibold text-gray-800 mt-1 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                {cycleInfo.status}
-              </p>
+            <div className="flex items-center bg-gray-50 rounded-full p-0.5 border border-gray-100">
+              {CYCLES.map((c) => (
+                <button
+                  key={c.value}
+                  onClick={() => setSelectedCycle(c.value)}
+                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all duration-200 ${
+                    selectedCycle === c.value
+                      ? "bg-orange-500 text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-[11px] font-semibold tracking-wide text-gray-400 uppercase">Last Settlement</p>
-            <p className="text-lg font-semibold text-green-600 mt-1">{cycleInfo.lastSettlementAmount}</p>
+
+          {/* Right: Info items */}
+          <div className="flex items-center gap-8">
+            <div>
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Active Cycle</p>
+              <p className="text-sm font-semibold text-gray-800 mt-0.5">{cycleInfo.currentCycle}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Next Settlement</p>
+              <p className="text-sm font-semibold text-gray-800 mt-0.5">{cycleInfo.nextSettlement}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Status</p>
+              <span className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                cycleInfo.status === "Paid" ? "bg-green-50 text-green-600" :
+                cycleInfo.status === "Processing" ? "bg-orange-50 text-orange-600" :
+                cycleInfo.status === "On Hold" ? "bg-yellow-50 text-yellow-600" :
+                cycleInfo.status === "No Payments" ? "bg-gray-100 text-gray-500" :
+                "bg-blue-50 text-blue-600"
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  cycleInfo.status === "Paid" ? "bg-green-500" :
+                  cycleInfo.status === "Processing" ? "bg-orange-500" :
+                  cycleInfo.status === "On Hold" ? "bg-yellow-500" :
+                  cycleInfo.status === "No Payments" ? "bg-gray-400" : "bg-blue-500"
+                }`} />
+                {cycleInfo.status}
+              </span>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] font-semibold tracking-wider text-gray-400 uppercase">Last Settlement</p>
+              <p className="text-sm font-semibold text-green-600 mt-0.5">{cycleInfo.lastSettlementAmount}</p>
+            </div>
           </div>
         </div>
 

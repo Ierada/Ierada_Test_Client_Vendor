@@ -4,9 +4,9 @@ import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 /**
  * Get payments dashboard data for the current vendor
  */
-export const getPaymentsDashboardData = async () => {
+export const getPaymentsDashboardData = async (params = {}) => {
   try {
-    const res = await apiClient.get("/payments-dashboard/dashboard");
+    const res = await apiClient.get("/payments-dashboard/dashboard", { params });
     
     if (res.data.status === 1) {
       return res.data.data;

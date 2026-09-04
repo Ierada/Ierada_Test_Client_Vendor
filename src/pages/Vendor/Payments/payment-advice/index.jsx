@@ -61,6 +61,8 @@ const PaymentAdvice = () => {
   const [orderSummary, setOrderSummary] = useState({});
   const [search, setSearch] = useState("");
   const [error, setError] = useState(null);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ current_page: 1, per_page: 10, total: 0, total_pages: 0 });
 
   useEffect(() => {
     if (id) {
@@ -75,7 +77,7 @@ const PaymentAdvice = () => {
     if (paymentAdvice && id) {
       fetchOrderDetails();
     }
-  }, [paymentAdvice, search, id]);
+  }, [paymentAdvice, search, id, page]);
 
   const fetchPaymentAdvice = async () => {
     try {
@@ -96,10 +98,13 @@ const PaymentAdvice = () => {
 
   const fetchOrderDetails = async () => {
     try {
-      const response = await getOrderWiseDetails(id, { search });
+      const response = await getOrderWiseDetails(id, { search, page, limit: 10 });
       if (response.status === 1) {
         setOrderDetails(response.data.orderDetails);
         setOrderSummary(response.data.summary);
+        if (response.data.pagination) {
+          setPagination(response.data.pagination);
+        }
       }
     } catch (err) {
       console.error("Error fetching order details:", err);
@@ -117,7 +122,21 @@ const PaymentAdvice = () => {
   if (error || !paymentAdvice) {
     return (
       <div className="min-h-screen bg-[#FBF3EC] flex items-center justify-center">
-        <div className="text-red-500">{error || "Payment advice not found"}</div>
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-8 h-8 text-orange-400" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">No Payment Advice Found</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            {error || "Payment advice has not been generated for this settlement yet. Please check back later or contact support."}
+          </p>
+          <button
+            onClick={() => window.history.back()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
       </div>
     );
   }
@@ -205,6 +224,20 @@ const PaymentAdvice = () => {
     status: detail.order?.vendor_payment_status || detail.vendor_payment_status || detail.order_status || "Pending",
   }));
 
+  const ORDER_TOTALS = ORDER_ROWS.reduce(
+    (acc, r) => ({
+      orders: acc.orders + 1,
+      orderValue: acc.orderValue + r.value,
+      commission: acc.commission + r.comm,
+      shipping: acc.shipping + r.shipping,
+      adjustments: acc.adjustments + r.adj,
+      tds: acc.tds + r.tds,
+      gst: acc.gst + r.gst,
+      netPaid: acc.netPaid + r.net,
+    }),
+    { orders: 0, orderValue: 0, commission: 0, shipping: 0, adjustments: 0, tds: 0, gst: 0, netPaid: 0 }
+  );
+
   return (
     <div className="min-h-screen bg-[#FBF3EC]">
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-5">
@@ -263,7 +296,13 @@ const PaymentAdvice = () => {
             </div>
             <div>
               <p className="text-[11px] text-gray-400 mb-0.5">Payment Status</p>
-              <span className="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-600">
+              <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                HEADER.status === "Paid" ? "bg-green-50 text-green-600" :
+                HEADER.status === "Processing" ? "bg-blue-50 text-blue-600" :
+                HEADER.status === "Pending" ? "bg-yellow-50 text-yellow-600" :
+                HEADER.status === "Failed" ? "bg-red-50 text-red-600" :
+                "bg-gray-100 text-gray-600"
+              }`}>
                 {HEADER.status}
               </span>
             </div>
@@ -378,7 +417,7 @@ const PaymentAdvice = () => {
                 ))}
                 <div className="flex items-center justify-between font-semibold text-gray-900 pt-1.5 mt-1.5 border-t border-gray-100">
                   <span>Total GST</span>
-                  <span>3,850.00</span>
+                  <span>{(GST_SUMMARY.reduce((s, r) => s + r.amount, 0)).toLocaleString("en-IN")}.00</span>
                 </div>
               </div>
             </div>
@@ -524,28 +563,40 @@ const PaymentAdvice = () => {
             </div>
 
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-              <p className="text-xs text-gray-500">Showing 1 to 5 of 152 entries</p>
+              <p className="text-xs text-gray-500">
+                Showing {((pagination.current_page - 1) * pagination.per_page) + 1}-{Math.min(pagination.current_page * pagination.per_page, pagination.total || 0)} of {pagination.total || 0} entries
+              </p>
               <div className="flex items-center gap-1">
-                <button className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
-                {[1, 2, 3].map((p) => (
-                  <button
-                    key={p}
-                    className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-medium ${
-                      p === 1
-                        ? "bg-orange-500 text-white"
-                        : "text-gray-600 hover:bg-gray-50 border border-gray-200"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <span className="px-1 text-gray-400">...</span>
-                <button className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-                  31
-                </button>
-                <button className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50">
+                {Array.from({ length: Math.min(5, pagination.total_pages || 1) }, (_, i) => {
+                  const start = Math.max(1, page - 2);
+                  const p = start + i;
+                  if (p > (pagination.total_pages || 1)) return null;
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => setPage(p)}
+                      className={`w-8 h-8 flex items-center justify-center rounded-md text-sm font-medium ${
+                        p === page
+                          ? "bg-orange-500 text-white"
+                          : "text-gray-600 hover:bg-gray-50 border border-gray-200"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setPage((p) => Math.min(pagination.total_pages || 1, p + 1))}
+                  disabled={page >= (pagination.total_pages || 1)}
+                  className="w-8 h-8 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-40"
+                >
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>

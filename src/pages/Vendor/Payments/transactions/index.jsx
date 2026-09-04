@@ -74,6 +74,12 @@ const Transactions = () => {
   const [summaryCards, setSummaryCards] = useState([]);
   const [tabs, setTabs] = useState([]);
   const [totals, setTotals] = useState({});
+  const [filters, setFilters] = useState({
+    status: "all",
+    settlementId: "all",
+    bankName: "all",
+    paymentMode: "all",
+  });
   const [pagination, setPagination] = useState({
     current_page: 1,
     per_page: 10,
@@ -83,8 +89,11 @@ const Transactions = () => {
 
   useEffect(() => {
     fetchTransactions();
+  }, [activeTab, search, filters, pagination.current_page, pagination.per_page]);
+
+  useEffect(() => {
     fetchSummary();
-  }, [activeTab, search]);
+  }, []);
 
   const fetchTransactions = async () => {
     try {
@@ -95,6 +104,10 @@ const Transactions = () => {
         page: pagination.current_page,
         limit: pagination.per_page,
       };
+      if (filters.status !== "all") params.status = filters.status;
+      if (filters.settlementId !== "all") params.settlement_id = filters.settlementId;
+      if (filters.bankName !== "all") params.bank_name = filters.bankName;
+      if (filters.paymentMode !== "all") params.payment_mode = filters.paymentMode;
       const response = await getTransactions(params);
       if (response.status === 1) {
         setTransactions(response.data.transactions);
@@ -286,43 +299,66 @@ const Transactions = () => {
             <div className={`${card} p-4 mb-4`}>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1.5">Date Range</label>
-                  <input readOnly value="01 Aug 2026 - 15 Aug 2026" className={inputBase} />
-                </div>
-                <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Payment Status</label>
-                  <select className={inputBase}>
-                    <option>All Status</option>
-                    <option>Paid</option>
-                    <option>Processing</option>
-                    <option>Failed</option>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => { setFilters((f) => ({ ...f, status: e.target.value })); setPagination((p) => ({ ...p, current_page: 1 })); }}
+                    className={inputBase}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Failed">Failed</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Settlement ID</label>
-                  <select className={inputBase}>
-                    <option>All</option>
-                    <option>SET-2508-001</option>
-                    <option>SET-2508-002</option>
+                  <select
+                    value={filters.settlementId}
+                    onChange={(e) => { setFilters((f) => ({ ...f, settlementId: e.target.value })); setPagination((p) => ({ ...p, current_page: 1 })); }}
+                    className={inputBase}
+                  >
+                    <option value="all">All</option>
+                    {[...new Set(transactions.map((t) => t.settlement_id).filter(Boolean))].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1.5">Bank Name</label>
-                  <select className={inputBase}>
-                    <option>All</option>
-                    <option>HDFC Bank</option>
+                  <select
+                    value={filters.bankName}
+                    onChange={(e) => { setFilters((f) => ({ ...f, bankName: e.target.value })); setPagination((p) => ({ ...p, current_page: 1 })); }}
+                    className={inputBase}
+                  >
+                    <option value="all">All</option>
+                    {[...new Set(transactions.map((t) => t.bank_name).filter(Boolean))].map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
                     <label className="block text-xs font-medium text-gray-500 mb-1.5">Payment Mode</label>
-                    <select className={inputBase}>
-                      <option>All</option>
-                      <option>NEFT</option>
-                      <option>IMPS</option>
+                    <select
+                      value={filters.paymentMode}
+                      onChange={(e) => { setFilters((f) => ({ ...f, paymentMode: e.target.value })); setPagination((p) => ({ ...p, current_page: 1 })); }}
+                      className={inputBase}
+                    >
+                      <option value="all">All</option>
+                      <option value="NEFT">NEFT</option>
+                      <option value="IMPS">IMPS</option>
+                      <option value="RTGS">RTGS</option>
                     </select>
                   </div>
-                  <button className="mb-0.5 self-end inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800">
+                  <button
+                    onClick={() => {
+                      setFilters({ status: "all", settlementId: "all", bankName: "all", paymentMode: "all" });
+                      setSearch("");
+                      setPagination((p) => ({ ...p, current_page: 1 }));
+                    }}
+                    className="mb-0.5 self-end inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+                  >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Reset
                   </button>
@@ -336,7 +372,11 @@ const Transactions = () => {
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
-                    onClick={() => setActiveTab(tab.key)}
+                    onClick={() => {
+                      setActiveTab(tab.key);
+                      setFilters((f) => ({ ...f, status: "all" }));
+                      setPagination((p) => ({ ...p, current_page: 1 }));
+                    }}
                     className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
                       activeTab === tab.key
                         ? "border-orange-500 text-orange-600"

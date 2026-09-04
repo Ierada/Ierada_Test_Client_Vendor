@@ -37,6 +37,7 @@ const PaymentOverview    = lazy(() => import("../pages/Vendor/Payments/payment-o
 const Settlements        = lazy(() => import("../pages/Vendor/Payments/settlements/index.jsx"));
 const Transactions       = lazy(() => import("../pages/Vendor/Payments/transactions/index.jsx"));
 const PaymentAdvice      = lazy(() => import("../pages/Vendor/Payments/payment-advice/index.jsx"));
+const PaymentAdviceList  = lazy(() => import("../pages/Vendor/Payments/payment-advice/list.jsx"));
 const GstTaxCenter       = lazy(() => import("../pages/Vendor/Payments/gst-center/index.jsx"));
 const PickupVerification = lazy(() => import("../pages/Vendor/PickupVerification/index.jsx"));
 
@@ -194,7 +195,8 @@ const VendorRoutes = () => {
         { path: "/payments", element: <Suspense fallback={<PageLoader />}><PaymentOverview /></Suspense> },
         { path: "/payments/settlements", element: <Suspense fallback={<PageLoader />}><Settlements /></Suspense> },
         { path: "/payments/transactions", element: <Suspense fallback={<PageLoader />}><Transactions /></Suspense> },
-        { path: "/payments/payment-advice", element: <Suspense fallback={<PageLoader />}><PaymentAdvice /></Suspense> },
+        { path: "/payments/payment-advice", element: <Suspense fallback={<PageLoader />}><PaymentAdviceList /></Suspense> },
+        { path: "/payments/payment-advice/:id", element: <Suspense fallback={<PageLoader />}><PaymentAdvice /></Suspense> },
         { path: "/payments/gst-center", element: <Suspense fallback={<PageLoader />}><GstTaxCenter /></Suspense> },
         { path: "/support", element: <Suspense fallback={<PageLoader />}><SupportPage /></Suspense> },
         { path: "/notifications", element: <Suspense fallback={<PageLoader />}><VendorNotification /></Suspense> },
