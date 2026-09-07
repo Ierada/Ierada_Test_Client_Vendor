@@ -1,5 +1,16 @@
 import { getProductById } from "../../../../services/api.product";
 
+const PHOTO_SLOT_IDS = [
+  "front",
+  "back",
+  "side",
+  "lifestyle",
+  "packaging",
+  "extra1",
+  "extra2",
+  "extra3",
+];
+
 function parseMaybeJson(v, fallback) {
   if (v == null) return fallback;
   if (typeof v === "object") return v;
@@ -10,18 +21,62 @@ function parseMaybeJson(v, fallback) {
   }
 }
 
+/**
+ * Prefer explicit listing_type. Never trust variationMode alone — API used to
+ * default variationMode to "color_size" even for single products.
+ */
 function resolveListingType(p) {
-  if (p.listing_type === "combo") return "combo";
-  if (p.variationMode === "custom" || p.listing_type === "custom") return "custom";
-  if (
-    p.variationMode === "color_size" ||
-    p.listing_type === "color_size" ||
-    p.listing_type === "variation" ||
-    p.is_variation
-  ) {
-    return "color_size";
+  const lt = String(p.listing_type || "").toLowerCase();
+  if (lt === "combo") return "combo";
+  if (lt === "single") return "single";
+  if (lt === "custom") return "custom";
+  if (lt === "color_size" || lt === "variation") {
+    return p.variationMode === "custom" ? "custom" : "color_size";
+  }
+  if (p.is_variation) {
+    return p.variationMode === "custom" ? "custom" : "color_size";
   }
   return "single";
+}
+
+function normalizeExistingMedia(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((m) => {
+      if (!m) return null;
+      const url = m.url || m.file || (typeof m === "string" ? m : "");
+      if (!url) return null;
+      return {
+        id: m.id || null,
+        url,
+        type: m.type || "image",
+        label: m.label || null,
+        alt_text: m.alt_text || m.alt || null,
+      };
+    })
+    .filter(Boolean);
+}
+
+/** Align server media into labeled slots for the photo boxes UI. */
+function mediaLabelsFromExisting(existingMedia) {
+  const slots = PHOTO_SLOT_IDS;
+  const used = new Set();
+  const labels = [];
+  const ordered = [];
+
+  (existingMedia || []).forEach((m, i) => {
+    let slot = m.label && slots.includes(m.label) ? m.label : null;
+    if (!slot || used.has(slot)) {
+      slot = slots.find((s) => !used.has(s)) || `extra${i}`;
+    }
+    used.add(slot);
+    ordered.push({ ...m, label: slot });
+    labels.push({
+      label: slot,
+      alt_text: m.alt_text || "",
+    });
+  });
+
+  return { existingMedia: ordered, mediaLabels: labels };
 }
 
 function hydrateColorGroups(variations) {
@@ -29,7 +84,7 @@ function hydrateColorGroups(variations) {
     color_id: g.color_id || g.color?.id || "",
     color_name: g.color?.name || g.color_name || "",
     media: [],
-    existingMedia: g.media || [],
+    existingMedia: normalizeExistingMedia(g.media),
     sizes: (g.sizes || []).map((s) => ({
       size_id: s.size_id || s.size?.id || "",
       stock: s.stock ?? "",
@@ -51,7 +106,7 @@ function hydrateCustomRows(variations) {
     sku: r.sku || "",
     barcode: r.barcode || "",
     media: [],
-    existingMedia: r.media || [],
+    existingMedia: normalizeExistingMedia(r.media),
     enabled: true,
   }));
 }
@@ -68,6 +123,10 @@ export async function hydrateSmartListingFromProduct(productId) {
   const meta = parseMaybeJson(p.listing_meta, {}) || {};
   const listingType = resolveListingType(p);
   const variations = Array.isArray(p.variations) ? p.variations : [];
+  const rawMedia = normalizeExistingMedia(
+    p.media || p.ProductImages || p.product_images || p.images || [],
+  );
+  const { existingMedia, mediaLabels } = mediaLabelsFromExisting(rawMedia);
 
   return {
     productId: p.id,
@@ -99,6 +158,7 @@ export async function hydrateSmartListingFromProduct(productId) {
     allow_backorders: !!meta.allow_backorders,
     min_order_qty: meta.min_order_qty || 1,
     product_condition: meta.product_condition || "New",
+    size_id: meta.size_id || "",
     warrantyType: meta.warranty_type || "",
     warrantyPeriod: meta.warranty_period || "",
     warranty_info: p.warranty_info || "",
@@ -124,11 +184,12 @@ export async function hydrateSmartListingFromProduct(productId) {
     listing_status: p.listing_status || "draft",
     compliance: meta.compliance || {},
     files: [],
-    mediaLabels: [],
+    mediaLabels,
+    deleteMediaIds: [],
     colorGroups: listingType === "color_size" ? hydrateColorGroups(variations) : [],
     customRows: listingType === "custom" ? hydrateCustomRows(variations) : [],
     comboItems: Array.isArray(p.comboItems) ? p.comboItems : [],
-    existingMedia: p.media || p.ProductImages || p.product_images || p.images || [],
+    existingMedia,
     sizeChartUrl: p.size_chart_image || p.inner_subcategory?.size_chart_image || null,
   };
 }

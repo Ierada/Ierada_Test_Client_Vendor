@@ -38,6 +38,23 @@ export function validateNonNegativeOptional(val, label) {
   return null;
 }
 
+/** Package L / W / H are required for shipping (cm, > 0). */
+export function validatePackageDimensions(state) {
+  const errors = {};
+  const checks = [
+    ["package_length", "Length"],
+    ["package_width", "Width"],
+    ["package_height", "Height"],
+  ];
+  for (const [key, label] of checks) {
+    const n = toNum(state[key]);
+    if (!Number.isFinite(n) || n <= 0) {
+      errors[key] = `${label} (cm) is required`;
+    }
+  }
+  return errors;
+}
+
 export function validateMrpAndSelling(mrpVal, sellVal) {
   const errors = {};
   const mrpErr = validatePositivePrice(mrpVal, "MRP");
@@ -142,6 +159,7 @@ export function validateSmartListingState(state) {
   const errors = {};
   if (!String(state.name || "").trim()) errors.name = "Product name is required";
   if (!String(state.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
+  Object.assign(errors, validatePackageDimensions(state));
 
   if (state.listingType === "single" || !state.listingType) {
     Object.assign(errors, validateSingleListingPricing(state));

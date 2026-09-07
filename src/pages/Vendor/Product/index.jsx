@@ -343,7 +343,23 @@ const Product = () => {
       {
         accessorKey: "custom_id",
         header: "ID",
-        cell: ({ row }) => row.original.custom_id,
+        cell: ({ row }) => {
+          const id = row.original.custom_id;
+          if (!id) return <span className="text-gray-400">N/A</span>;
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openModal(row.original);
+              }}
+              className="font-mono text-xs font-semibold text-[#F47954] hover:text-[#e8683e] hover:underline leading-tight text-left"
+              title="Open product details"
+            >
+              {id}
+            </button>
+          );
+        },
       },
       {
         accessorKey: "name",

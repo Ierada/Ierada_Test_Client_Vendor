@@ -122,15 +122,24 @@ function ensureShortDescription(text, name, categoryPath) {
   return lines.slice(0, 5).join("\n");
 }
 
+function isOriginBoilerplate(text) {
+  return /\bmade\s+in\s+india\b|\bcountry\s+of\s+origin\b/i.test(String(text || ""));
+}
+
+function isAsShownPlaceholder(text) {
+  return /\bas\s+shown\s+in\s+(the\s+)?(images?|photos?|listing)\b/i.test(
+    String(text || ""),
+  );
+}
+
 function ensureKeyFeatures(features, name, categoryPath) {
   const base = (Array.isArray(features) ? features : [])
     .map((x) => scrubPlatformBranding(x))
-    .filter(Boolean);
+    .filter((x) => x && !isOriginBoilerplate(x) && !isAsShownPlaceholder(x));
   const cat = categoryPath || "general";
   if (base.length >= 5) return base.slice(0, 12);
   const pads = [
     `Designed for everyday ${cat.split(" › ").pop() || "use"}`,
-    `Colour and finish as shown in listing photos`,
     `Check size / fit guidance on the listing before ordering`,
     `Packed for dispatch across India`,
     `Sold as listed unless a variation is selected`,
@@ -268,10 +277,7 @@ export function localAiDraft(state, vendorContext = {}) {
       `${name} for ${cat}`,
       "Quality-checked listing with clear specifications",
       "Images show actual product style and finish",
-      state.countryOfOrigin
-        ? `Country of origin: ${state.countryOfOrigin}`
-        : "Country of origin: India",
-      "Packaged for safe dispatch",
+      "Packed for safe dispatch",
       "Read size / dimension notes before ordering",
       "Follow care instructions for longer product life",
     ],
@@ -288,10 +294,7 @@ export function localAiDraft(state, vendorContext = {}) {
 
   const shortDescription = ensureShortDescription("", name, cat);
   const productDetails = ensureProductDescription("", name, cat, shortDescription);
-  const whatsInTheBox = [
-    { title: "Main product", details: "1 unit as per listing title" },
-    { title: "Packaging", details: "Retail / protective packaging as applicable" },
-  ];
+  const whatsInTheBox = [];
   const specifications = [
     { feature: "Category", specification: cat },
     ...(brand ? [{ feature: "Brand", specification: brand }] : []),
@@ -332,7 +335,6 @@ export function localAiDraft(state, vendorContext = {}) {
         "key_features",
         "description",
         "specifications",
-        "whats_in_box",
         "benefits",
         "seo",
         "shipping",
@@ -348,7 +350,7 @@ const SECTION_FIELDS = {
   key_features: ["keyFeatures"],
   description: ["productDetails", "generalInfo"],
   specifications: ["specifications"],
-  whats_in_box: ["whatsInTheBox"],
+  // whats_in_box is manual — never merge from AI
   benefits: ["benefits"],
   seo: ["metaTitle", "metaDescription", "metaKeywords", "tags"],
   shipping: [
@@ -384,9 +386,9 @@ function scrubDraftStrings(draft) {
     }
   }
   if (Array.isArray(next.keyFeatures)) {
-    next.keyFeatures = next.keyFeatures.map((x) =>
-      scrubRestrictedText(scrubPlatformBranding(x)),
-    );
+    next.keyFeatures = next.keyFeatures
+      .map((x) => scrubRestrictedText(scrubPlatformBranding(x)))
+      .filter((x) => x && !isOriginBoilerplate(x) && !isAsShownPlaceholder(x));
   }
   if (Array.isArray(next.benefits)) {
     next.benefits = next.benefits.map((x) =>
@@ -399,18 +401,19 @@ function scrubDraftStrings(draft) {
     );
   }
   if (Array.isArray(next.specifications)) {
-    next.specifications = next.specifications.map((row) => ({
-      feature: scrubRestrictedText(scrubPlatformBranding(row?.feature || "")),
-      specification: scrubRestrictedText(
+    next.specifications = next.specifications.map((row) => {
+      const specification = scrubRestrictedText(
         scrubPlatformBranding(row?.specification || ""),
-      ),
-    }));
+      );
+      return {
+        feature: scrubRestrictedText(scrubPlatformBranding(row?.feature || "")),
+        specification: isAsShownPlaceholder(specification) ? "" : specification,
+      };
+    });
   }
+  // Never keep AI-invented box contents from a stale draft payload
   if (Array.isArray(next.whatsInTheBox)) {
-    next.whatsInTheBox = next.whatsInTheBox.map((row) => ({
-      title: scrubRestrictedText(scrubPlatformBranding(row?.title || "")),
-      details: scrubRestrictedText(scrubPlatformBranding(row?.details || "")),
-    }));
+    delete next.whatsInTheBox;
   }
   return next;
 }

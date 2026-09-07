@@ -6,6 +6,18 @@ const ProductModal = ({ isOpen, onClose, product }) => {
   if (!isOpen || !product) return null;
 
   const formatPrice = (price) => `₹${price?.toLocaleString() || 0}`;
+  const categoryLabel =
+    product.category ||
+    product.Category?.title ||
+    "N/A";
+  const discountPrice =
+    product.discount_price ?? product.discounted_price;
+  const productImages =
+    product.media?.length > 0
+      ? product.media
+      : product.image
+        ? [{ url: product.image }]
+        : [];
 
   return (
     <AnimatePresence>
@@ -13,7 +25,8 @@ const ProductModal = ({ isOpen, onClose, product }) => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        onClick={onClose}
       >
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -21,15 +34,26 @@ const ProductModal = ({ isOpen, onClose, product }) => {
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
         >
           <div className="p-6">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">
-                {product.name}
-              </h2>
+            <div className="flex justify-between items-start gap-4 mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {product.name}
+                </h2>
+                {product.custom_id && (
+                  <p className="mt-1 font-mono text-sm text-gray-500">
+                    Product ID: {product.custom_id}
+                  </p>
+                )}
+              </div>
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors shrink-0"
+                aria-label="Close"
+                title="Close"
               >
                 <X className="w-6 h-6 text-gray-500" />
               </button>
@@ -43,19 +67,23 @@ const ProductModal = ({ isOpen, onClose, product }) => {
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Product ID
+                  </label>
+                  <p className="text-gray-900 font-mono text-sm">
+                    {product.custom_id || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     Category
                   </label>
-                  <p className="text-gray-900">
-                    {product.category}
-                    {/* {product.SubCategory?.title && ` → ${product.SubCategory.title}`}
-                    {product.InnerSubCategory?.title && ` → ${product.InnerSubCategory.title}`} */}
-                  </p>
+                  <p className="text-gray-900">{categoryLabel}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Type
                   </label>
-                  <p className="text-gray-900">{product.type}</p>
+                  <p className="text-gray-900">{product.type || "N/A"}</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -70,7 +98,7 @@ const ProductModal = ({ isOpen, onClose, product }) => {
                     Discounted Price
                   </label>
                   <p className="text-gray-900">
-                    {formatPrice(product.discount_price)}
+                    {formatPrice(discountPrice)}
                   </p>
                 </div>
                 <div>
@@ -184,7 +212,7 @@ const ProductModal = ({ isOpen, onClose, product }) => {
                   )}
                   {product.warranty_info && (
                     <div>
-                      <label className="block t2ext-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Warranty Information
                       </label>
                       <div
@@ -248,13 +276,13 @@ const ProductModal = ({ isOpen, onClose, product }) => {
             )}
 
             {/* Images Section */}
-            {product.media && product.media.length > 0 && (
+            {productImages.length > 0 && (
               <div className="bg-white rounded-lg border shadow-sm p-6">
                 <h3 className="text-lg font-semibold mb-4 text-gray-900">
                   Product Images
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {product.media.map((image, index) => (
+                  {productImages.map((image, index) => (
                     <motion.div
                       key={index}
                       initial={{ opacity: 0, y: 20 }}
@@ -263,7 +291,7 @@ const ProductModal = ({ isOpen, onClose, product }) => {
                       className="aspect-square rounded-lg overflow-hidden"
                     >
                       <img
-                        src={image.url}
+                        src={image.url || image}
                         alt={`${product.name} - Image ${index + 1}`}
                         className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                       />

@@ -146,6 +146,9 @@ const emptyState = () => ({
   innerSubCategoryTitle: "",
   files: [],
   mediaLabels: [],
+  existingMedia: [],
+  deleteMediaIds: [],
+  size_id: "",
   name: "",
   brand: "",
   shortDescription: "",
@@ -905,10 +908,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   }, [state, phase, step, reviewSection, stableId, vendorId]);
 
   const previewUrls = useMemo(() => {
-    return (state.files || []).map((f) =>
-      f instanceof File ? URL.createObjectURL(f) : null,
-    );
-  }, [state.files]);
+    const fromFiles = (state.files || [])
+      .map((f) => (f instanceof File ? URL.createObjectURL(f) : null))
+      .filter(Boolean);
+    if (fromFiles.length) return fromFiles;
+    return (state.existingMedia || [])
+      .map((m) => m?.url)
+      .filter(Boolean);
+  }, [state.files, state.existingMedia]);
 
   useEffect(() => {
     return () => {
@@ -1138,7 +1145,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (step === "images") {
       const needsParentImages =
         state.listingType === "single" || state.listingType === "combo";
-      if (needsParentImages && (!state.files || state.files.length === 0)) {
+      const hasNew = (state.files || []).some((f) => f instanceof File);
+      const hasExisting = (state.existingMedia || []).length > 0;
+      if (needsParentImages && !hasNew && !hasExisting) {
         err.files = "Add at least one product image";
       }
     }
@@ -1305,10 +1314,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
       const vErr = validateSmartListingState(state);
-      if (state.listingType === "single" && !state.files?.length) {
+      const hasImages =
+        (state.files || []).some((f) => f instanceof File) ||
+        (state.existingMedia || []).length > 0;
+      if (state.listingType === "single" && !hasImages) {
         vErr.files = "Add at least one image before submit";
       }
-      if (state.listingType === "combo" && !state.files?.length) {
+      if (state.listingType === "combo" && !hasImages) {
         vErr.files = "Add at least one cover image for the combo listing";
       }
       const firstErr = firstValidationError(vErr);
@@ -1320,6 +1332,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               ? "combo"
               : "matrix",
           );
+        } else if (
+          vErr.package_length ||
+          vErr.package_width ||
+          vErr.package_height
+        ) {
+          setPhase("review");
+          setReviewSection("shipping");
         } else if (vErr.name || vErr.hsn_code) {
           setReviewSection("product_info");
         } else if (
@@ -1956,10 +1975,58 @@ function BasicsPanel({
                 sellErr={sellErr}
               />
             </div>
+            {state.listingType === "single" ? (
+              <SingleSizeField state={state} patch={patch} />
+            ) : null}
           </div>
         </>
       ) : null}
     </div>
+  );
+}
+
+function SingleSizeField({ state, patch }) {
+  const [sizeOptions, setSizeOptions] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!state.category_id) {
+        setSizeOptions([]);
+        return;
+      }
+      try {
+        const res = await getAllSizes(sizeQueryFromListing(state));
+        if (cancelled) return;
+        const list = Array.isArray(res?.data) ? res.data : [];
+        setSizeOptions(
+          list.map((s) => ({
+            id: s.id,
+            label: s.name || `Size #${s.id}`,
+          })),
+        );
+      } catch {
+        if (!cancelled) setSizeOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
+
+  return (
+    <Field
+      label="Size (optional)"
+      hint="For single-size products (e.g. Free Size, One Size, or only M). Leave blank if size does not apply."
+    >
+      <SearchablePicker
+        value={state.size_id || ""}
+        onChange={(id) => patch({ size_id: id || "" })}
+        placeholder="Select size"
+        searchPlaceholder="Search size…"
+        options={sizeOptions}
+        allowClear
+      />
+    </Field>
   );
 }
 
@@ -2132,10 +2199,15 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "whats_in_box" ? (
-          <BoxEditor
-            items={state.whatsInTheBox}
-            onChange={(whatsInTheBox) => patch({ whatsInTheBox })}
-          />
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500">
+              Fill manually — list each item the buyer receives in the package.
+            </p>
+            <BoxEditor
+              items={state.whatsInTheBox}
+              onChange={(whatsInTheBox) => patch({ whatsInTheBox })}
+            />
+          </div>
         ) : null}
 
         {reviewSection === "benefits" ? (
@@ -2189,6 +2261,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 onChange={(e) => patch({ min_order_qty: e.target.value })}
               />
             </Field>
+            {state.listingType === "single" ? (
+              <SingleSizeField state={state} patch={patch} />
+            ) : null}
             <Field label="Condition">
               <select
                 className={inputCls}
@@ -2281,10 +2356,17 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               />
             </Field>
             {["package_length", "package_width", "package_height"].map((k) => (
-              <Field key={k} label={k.replace("package_", "").toUpperCase() + " (cm)"}>
+              <Field
+                key={k}
+                label={k.replace("package_", "").toUpperCase() + " (cm)"}
+                required
+                error={fieldErrors[k]}
+              >
                 <input
                   type="number"
-                  className={inputCls}
+                  min="0.1"
+                  step="0.1"
+                  className={inputClsErr(fieldErrors[k])}
                   value={state[k]}
                   onChange={(e) => patch({ [k]: e.target.value })}
                 />
@@ -2509,8 +2591,9 @@ function RightRail({ state, settlement, previewUrl }) {
         <h3 className="font-semibold text-sm">Bank Settlement Summary</h3>
         <Row k="MRP" v={settlement.mrp} />
         <Row k="Sale" v={settlement.sale} />
+        <Row k="Listing Price" v={settlement.listingPrice} />
         <Row k="Discount %" v={`${settlement.discountPct}%`} raw />
-        <Row k="GST (est. breakup)" v={settlement.gstAmount} />
+        <Row k="GST breakup" v={settlement.gstAmount} />
         <Row k="TDS (2%)" v={settlement.tds} />
         <Row k="Shipping (seller)" v={settlement.shipping} />
         <Row k="Platform fee" v={settlement.platformFee} />

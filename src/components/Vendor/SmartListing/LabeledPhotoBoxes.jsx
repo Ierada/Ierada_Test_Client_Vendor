@@ -14,30 +14,56 @@ export const PHOTO_SLOTS = [
   { id: "extra3", label: "Extra 3", required: false },
 ];
 
+function slotPreview(hit) {
+  if (hit?.file instanceof File) return URL.createObjectURL(hit.file);
+  if (hit?.existing?.url) return hit.existing.url;
+  return null;
+}
+
 /**
  * Labeled photo boxes — each slot maps to files[] + mediaLabels[] for alt/label persist.
- * state.files is File[] aligned with state.mediaLabels[{label, alt_text}]
+ * On edit, existingMedia[] (with url/label) fills slots until replaced.
  */
 export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
   const files = state.files || [];
   const labels = state.mediaLabels || [];
+  const existingMedia = state.existingMedia || [];
+  const deleteMediaIds = state.deleteMediaIds || [];
 
   const bySlot = {};
   files.forEach((f, i) => {
     const slot = labels[i]?.label || (i === 0 ? "front" : `extra${i}`);
     if (!bySlot[slot]) bySlot[slot] = { file: f, index: i };
   });
+  existingMedia.forEach((m) => {
+    const slot = m.label || null;
+    if (!slot || bySlot[slot]) return;
+    bySlot[slot] = { existing: m };
+  });
 
   const setSlot = (slotId, file) => {
     const nextFiles = [...files];
     const nextLabels = [...labels];
+    let nextExisting = [...existingMedia];
+    let nextDelete = [...deleteMediaIds];
     const existingIdx = nextLabels.findIndex((l) => l?.label === slotId);
+    const existingHit = nextExisting.find((m) => m.label === slotId);
+
     if (!file) {
       if (existingIdx >= 0) {
         nextFiles.splice(existingIdx, 1);
         nextLabels.splice(existingIdx, 1);
       }
-      patch({ files: nextFiles, mediaLabels: nextLabels });
+      if (existingHit?.id) {
+        nextDelete.push(existingHit.id);
+        nextExisting = nextExisting.filter((m) => m.label !== slotId);
+      }
+      patch({
+        files: nextFiles,
+        mediaLabels: nextLabels,
+        existingMedia: nextExisting,
+        deleteMediaIds: [...new Set(nextDelete)],
+      });
       return;
     }
     if (file.size > LISTING_IMAGE_MAX_BYTES) {
@@ -49,6 +75,10 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       notifyOnFail("Only image files are allowed");
       return;
     }
+    if (existingHit?.id) {
+      nextDelete.push(existingHit.id);
+      nextExisting = nextExisting.filter((m) => m.label !== slotId);
+    }
     const entry = {
       label: slotId,
       alt_text: `${state.name || "Product"} — ${slotId}`,
@@ -57,14 +87,19 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       nextFiles[existingIdx] = file;
       nextLabels[existingIdx] = entry;
     } else {
-      if (nextFiles.length >= 8) {
+      if (nextFiles.length + nextExisting.length >= 8) {
         notifyOnFail("Maximum 8 photos per listing");
         return;
       }
       nextFiles.push(file);
       nextLabels.push(entry);
     }
-    patch({ files: nextFiles, mediaLabels: nextLabels });
+    patch({
+      files: nextFiles,
+      mediaLabels: nextLabels,
+      existingMedia: nextExisting,
+      deleteMediaIds: [...new Set(nextDelete)],
+    });
   };
 
   return (
@@ -75,8 +110,7 @@ export default function LabeledPhotoBoxes({ state, patch, fieldError }) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {PHOTO_SLOTS.map((slot) => {
           const hit = bySlot[slot.id];
-          const preview =
-            hit?.file instanceof File ? URL.createObjectURL(hit.file) : null;
+          const preview = slotPreview(hit);
           return (
             <div
               key={slot.id}

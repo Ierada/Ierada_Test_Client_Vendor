@@ -1,4 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+} from "react";
 import { useAppContext } from "../../../context/AppContext";
 import LogoutModal from "../LogoutModal";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -17,6 +24,9 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
   const { user } = useAppContext();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const sidebarRef = useRef(null);
+  const savedScrollTop = useRef(0);
+  const isRestoringScroll = useRef(false);
+  const scrollLockUntil = useRef(0);
   const [openSubMenus, setOpenSubMenus] = useState({ Orders: false });
   const [hoveredSubMenu, setHoveredSubMenu] = useState(null);
 
@@ -33,22 +43,57 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
     });
   }, [counts.selfShipEnabled]);
 
+  const restoreScroll = useCallback(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+    isRestoringScroll.current = true;
+    el.scrollTop = savedScrollTop.current;
+    requestAnimationFrame(() => {
+      if (sidebarRef.current) {
+        sidebarRef.current.scrollTop = savedScrollTop.current;
+      }
+      isRestoringScroll.current = false;
+    });
+  }, []);
+
+  const lockScroll = useCallback(() => {
+    if (sidebarRef.current && !isRestoringScroll.current) {
+      savedScrollTop.current = sidebarRef.current.scrollTop;
+    }
+    scrollLockUntil.current = Date.now() + 450;
+    restoreScroll();
+  }, [restoreScroll]);
+
   useEffect(() => {
     const scroll = localStorage.getItem(SCROLL_POSITION_KEY);
-    if (scroll && sidebarRef.current) sidebarRef.current.scrollTop = Number(scroll);
+    if (scroll && sidebarRef.current) {
+      savedScrollTop.current = Number(scroll) || 0;
+      sidebarRef.current.scrollTop = savedScrollTop.current;
+    }
   }, []);
 
   useEffect(() => {
     const saveScroll = () => {
-      if (sidebarRef.current) localStorage.setItem(SCROLL_POSITION_KEY, sidebarRef.current.scrollTop);
+      if (sidebarRef.current) {
+        localStorage.setItem(
+          SCROLL_POSITION_KEY,
+          String(sidebarRef.current.scrollTop),
+        );
+      }
     };
     window.addEventListener("beforeunload", saveScroll);
     return () => window.removeEventListener("beforeunload", saveScroll);
   }, []);
 
+  useLayoutEffect(() => {
+    if (Date.now() > scrollLockUntil.current) return;
+    restoreScroll();
+  }, [openSubMenus, restoreScroll]);
+
   const handleNavigation = useCallback(() => {
+    lockScroll();
     if (window.innerWidth < 1024) setSidebarOpen(false);
-  }, [setSidebarOpen]);
+  }, [setSidebarOpen, lockScroll]);
 
   const handleLogoutConfirm = useCallback(() => {
     setSidebarOpen(false);
@@ -59,25 +104,56 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen }) => {
     });
   }, [setSidebarOpen]);
 
-  const toggleSubMenu = useCallback((name) => {
-    setOpenSubMenus((prev) => ({ ...prev, [name]: !prev[name] }));
-  }, []);
+  const toggleSubMenu = useCallback(
+    (name) => {
+      lockScroll();
+      setOpenSubMenus((prev) => ({ ...prev, [name]: !prev[name] }));
+    },
+    [lockScroll],
+  );
 
   return (
     <>
       <div className="flex flex-col h-screen bg-white border-r border-[#EAECF0] w-64">
         <BrandHeader setSidebarOpen={setSidebarOpen} />
         <SearchBar />
-        <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300 py-2" ref={sidebarRef}>
+        <div
+          className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300 py-2"
+          ref={sidebarRef}
+          style={{ overflowAnchor: "none" }}
+          onScroll={(e) => {
+            if (isRestoringScroll.current) return;
+            if (Date.now() <= scrollLockUntil.current) {
+              e.currentTarget.scrollTop = savedScrollTop.current;
+              return;
+            }
+            savedScrollTop.current = e.currentTarget.scrollTop;
+          }}
+        >
           <ul className="space-y-1 px-3">
             {menuItems.map((item, i) => (
-              <MenuItem key={i} item={item} counts={counts} openSubMenus={openSubMenus} toggleSubMenu={toggleSubMenu} hoveredSubMenu={hoveredSubMenu} setHoveredSubMenu={setHoveredSubMenu} handleNavigation={handleNavigation} />
+              <MenuItem
+                key={i}
+                item={item}
+                counts={counts}
+                openSubMenus={openSubMenus}
+                toggleSubMenu={toggleSubMenu}
+                hoveredSubMenu={hoveredSubMenu}
+                setHoveredSubMenu={setHoveredSubMenu}
+                handleNavigation={handleNavigation}
+              />
             ))}
           </ul>
         </div>
         <UserProfile user={user} onLogout={() => setShowLogoutModal(true)} />
       </div>
-      {showLogoutModal && <LogoutModal isOpen={showLogoutModal} onClose={() => setShowLogoutModal(false)} onConfirm={handleLogoutConfirm} />}
+      {showLogoutModal && (
+        <LogoutModal
+          isOpen={showLogoutModal}
+          onClose={() => setShowLogoutModal(false)}
+          onConfirm={handleLogoutConfirm}
+        />
+      )}
     </>
   );
 };

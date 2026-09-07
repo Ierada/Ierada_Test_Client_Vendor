@@ -36,6 +36,7 @@ function emptyColorGroup(defaults = {}) {
     color_id: "",
     color_name: "",
     media: [],
+    existingMedia: [],
     sizes: [emptySizeRow(defaults)],
   };
 }
@@ -283,6 +284,34 @@ export default function ColorSizeMatrix({ state, patch }) {
           <div>
             <p className="text-xs font-medium text-gray-600 mb-1">Images for this color</p>
             <div className="flex flex-wrap gap-2 items-center">
+              {(g.existingMedia || []).map((m, fi) => (
+                <div key={`ex-${m.id || fi}`} className="relative w-16 h-16 rounded-lg overflow-hidden border bg-white">
+                  <img
+                    src={m.url || ""}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    className="absolute top-0 right-0 bg-black/60 text-white text-[10px] px-1"
+                    onClick={() => {
+                      const id = m.id;
+                      updateGroup(gi, {
+                        existingMedia: (g.existingMedia || []).filter((_, i) => i !== fi),
+                      });
+                      if (id) {
+                        patch({
+                          deleteMediaIds: [
+                            ...new Set([...(state.deleteMediaIds || []), id]),
+                          ],
+                        });
+                      }
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
               {(g.media || []).map((f, fi) => (
                 <div key={fi} className="relative w-16 h-16 rounded-lg overflow-hidden border bg-white">
                   <img

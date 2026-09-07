@@ -24,11 +24,13 @@ export function calcSettlement({
   const youEarn = Math.max(0, sale - tds - fee - ship - otherCharges);
   const discountPct =
     mrpN > 0 && sale > 0 ? Math.round(((mrpN - sale) / mrpN) * 100) : 0;
+  const listingPrice = round2(sale + ship + fee);
 
   return {
     mrp: mrpN,
     sale,
     discountPct,
+    listingPrice,
     gstAmount: round2(gstAmount),
     tds: round2(tds),
     shipping: ship,

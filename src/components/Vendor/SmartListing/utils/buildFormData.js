@@ -211,6 +211,7 @@ export function buildSmartListingFormData(state, { asDraft = false, requestPubli
     return_shipping_payer: state.return_shipping_payer || "seller",
     brand_auth_doc_name: state.brandAuthDocName || null,
     smart_listing: true,
+    size_id: state.size_id ? Number(state.size_id) : null,
     compliance: {
       fssai_license: state.compliance?.fssai_license || "",
       manufacturer_name: state.compliance?.manufacturer_name || "",
@@ -303,6 +304,15 @@ export function buildSmartListingFormData(state, { asDraft = false, requestPubli
   });
 
   appendFilesAndMedia(fd, state);
+
+  if (Array.isArray(state.deleteMediaIds) && state.deleteMediaIds.length) {
+    fd.append(
+      "delete_media",
+      JSON.stringify(
+        state.deleteMediaIds.map((id) => Number(id)).filter((n) => Number.isFinite(n)),
+      ),
+    );
+  }
 
   return { formData: fd, settlement, sku, slug, TDS_RATE };
 }
