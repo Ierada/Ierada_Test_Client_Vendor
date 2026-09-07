@@ -1,9 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  Calendar,
   Download,
-  SlidersHorizontal,
-  ChevronDown,
   Receipt,
   Landmark,
   Percent,
@@ -21,6 +18,30 @@ import {
   getCommissionByCategory,
   getOrderWiseCommission,
 } from "../../../../services/api.gstTax";
+import * as XLSX from "xlsx";
+
+// Latest fully-closed calendar month in YYYY-MM (running month isn't fileable)
+const latestClosedMonth = () => {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const currentMonthKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const monthRange = (ym) => {
+  const [y, m] = ym.split("-").map(Number);
+  const pad = (n) => String(n).padStart(2, "0");
+  const lastDay = new Date(y, m, 0).getDate();
+  return {
+    start_date: `${y}-${pad(m)}-01`,
+    end_date: `${y}-${pad(m)}-${lastDay}`,
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Shared styling tokens
@@ -28,8 +49,6 @@ import {
 const card = "bg-white rounded-2xl border border-gray-100 shadow-sm";
 const secondaryBtn =
   "inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors";
-const primaryBtn =
-  "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors shadow-sm";
 
 const money = (n) =>
   `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -51,7 +70,8 @@ const TABLE_HEAD = "text-left text-[11px] font-medium text-gray-400 uppercase tr
 const GstTaxCenter = () => {
   const [activeTab, setActiveTab] = useState("gst");
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState("01 Aug 2026 - 15 Aug 2026");
+  const [month, setMonth] = useState(latestClosedMonth());
+  const isRunningMonth = month === currentMonthKey();
   
   // GST Data
   const [gstSummary, setGstSummary] = useState(null);
@@ -69,18 +89,20 @@ const GstTaxCenter = () => {
 
   useEffect(() => {
     fetchAllData();
-  }, [dateRange]);
+  }, [month]);
 
   const fetchAllData = async () => {
     try {
       setLoading(true);
-      
+      const { start_date, end_date } = monthRange(month);
+      const params = { start_date, end_date };
+
       // Fetch GST data
       const [gstSum, gstBreak, gstInv, gstr] = await Promise.all([
-        getGSTSummary(),
-        getGSTBreakup(),
-        getGSTInvoiceSummary(),
-        getGSTRFilingStatus(),
+        getGSTSummary(params),
+        getGSTBreakup(params),
+        getGSTInvoiceSummary(params),
+        getGSTRFilingStatus(params),
       ]);
       
       if (gstSum.status === 1) setGstSummary(gstSum.data);
@@ -89,14 +111,14 @@ const GstTaxCenter = () => {
       if (gstr.status === 1) setGstrStatus(gstr.data);
       
       // Fetch TDS data
-      const tds = await getTDSReport();
+      const tds = await getTDSReport(params);
       if (tds.status === 1) setTdsReport(tds.data);
       
       // Fetch Commission data
       const [comm, commCat, commOrd] = await Promise.all([
-        getCommissionReport(),
-        getCommissionByCategory(),
-        getOrderWiseCommission(),
+        getCommissionReport(params),
+        getCommissionByCategory(params),
+        getOrderWiseCommission(params),
       ]);
       
       if (comm.status === 1) setCommissionReport(comm.data);
@@ -110,7 +132,93 @@ const GstTaxCenter = () => {
     }
   };
 
-  // Prepare dynamic data from API responses
+  const handleExport = () => {
+    const wb = XLSX.utils.book_new();
+    const stamp = month;
+    if (activeTab === "gst") {
+      if (gstBreakup.length > 0) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(
+            gstBreakup.map((r, i) => ({
+              "#": i + 1,
+              "Tax Type": r.type,
+              "Taxable Value": r.taxable,
+              "Rate": r.rate,
+              "GST Amount": r.amount,
+            }))
+          ),
+          "GST Breakup"
+        );
+      }
+      if (gstInvoiceSummary.length > 0) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(
+            gstInvoiceSummary.map((r, i) => ({
+              "#": i + 1,
+              "Invoice Type": r.type,
+              "Count": r.count,
+              "Taxable Value": r.taxable,
+              "GST Amount": r.amount,
+            }))
+          ),
+          "Invoice Summary"
+        );
+      }
+    } else if (activeTab === "tds" && tdsReport) {
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(
+          (tdsReport.tds_deductions || []).map((r, i) => ({
+            "#": i + 1,
+            "Settlement": r.settlement,
+            "Date": r.date,
+            "Gross Amount": r.gross,
+            "TDS": r.tds,
+            "Rate": r.rate,
+          }))
+        ),
+        "TDS Deductions"
+      );
+    } else if (activeTab === "commission") {
+      if (commissionByCategory.length > 0) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(
+            commissionByCategory.map((r, i) => ({
+              "#": i + 1,
+              "Category": r.category,
+              "Order Value": parseFloat(r.order_value || 0),
+              "Rate": r.rate,
+              "Commission": r.commission,
+            }))
+          ),
+          "Commission by Category"
+        );
+      }
+      if (orderWiseCommission.length > 0) {
+        XLSX.utils.book_append_sheet(
+          wb,
+          XLSX.utils.json_to_sheet(
+            orderWiseCommission.map((r, i) => ({
+              "#": i + 1,
+              "Order ID": r.order_id,
+              "Date": r.date,
+              "Order Value": r.value,
+              "Rate": r.rate,
+              "Commission": r.commission,
+            }))
+          ),
+          "Order-wise Commission"
+        );
+      }
+    }
+    if (wb.SheetNames.length === 0) return;
+    XLSX.writeFile(wb, `tax_report_${activeTab}_${stamp}.xlsx`);
+  };
+
+  const EMPTY_COPY = "No delivered orders in this period — GST appears here after your orders are delivered.";
   const GST_SUMMARY_CARDS = gstSummary ? [
     { label: "Taxable Value", value: money(gstSummary.total_taxable_value), icon: Receipt, iconBg: "bg-blue-50", iconColor: "text-blue-600" },
     { label: "CGST Collected", value: money(gstSummary.cgst_collected), icon: Landmark, iconBg: "bg-green-50", iconColor: "text-green-600" },
@@ -155,7 +263,7 @@ const GstTaxCenter = () => {
           <div>
             <h1 className="text-lg font-semibold text-gray-900">GST & Tax Center</h1>
             <p className="text-xs text-gray-500 mt-0.5">
-              View and download your GST, TDS, and Commission reports
+              Delivered orders · closed return periods — GST, TDS, and Commission reports
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -182,17 +290,21 @@ const GstTaxCenter = () => {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button className={secondaryBtn}>
-              <Calendar className="w-4 h-4" />
-              01 Aug 2026 - 15 Aug 2026
-            </button>
-            <button className={secondaryBtn}>
+            <input
+              type="month"
+              value={month}
+              max={currentMonthKey()}
+              onChange={(e) => e.target.value && setMonth(e.target.value)}
+              className="px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-200 text-gray-700"
+            />
+            {isRunningMonth && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-50 text-yellow-600 whitespace-nowrap">
+                Running — not yet fileable
+              </span>
+            )}
+            <button onClick={handleExport} className={secondaryBtn}>
               <Download className="w-4 h-4" />
               Export
-            </button>
-            <button className={primaryBtn}>
-              <SlidersHorizontal className="w-4 h-4" />
-              Filter
             </button>
           </div>
         </div>
@@ -216,7 +328,7 @@ const GstTaxCenter = () => {
                 ))
               ) : (
                 <div className="col-span-4 text-center text-gray-500 py-8">
-                  No GST data available for selected period
+                  {EMPTY_COPY}
                 </div>
               )}
             </div>
@@ -245,7 +357,7 @@ const GstTaxCenter = () => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="py-4 text-center text-gray-500">No data available</td>
+                        <td colSpan={4} className="py-4 text-center text-gray-500">{EMPTY_COPY}</td>
                       </tr>
                     )}
                   </tbody>
@@ -283,7 +395,7 @@ const GstTaxCenter = () => {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={4} className="py-4 text-center text-gray-500">No data available</td>
+                        <td colSpan={4} className="py-4 text-center text-gray-500">{EMPTY_COPY}</td>
                       </tr>
                     )}
                   </tbody>
@@ -350,7 +462,7 @@ const GstTaxCenter = () => {
                 ))
               ) : (
                 <div className="col-span-4 text-center text-gray-500 py-8">
-                  No TDS data available for selected period
+                  {EMPTY_COPY}
                 </div>
               )}
             </div>
@@ -439,7 +551,7 @@ const GstTaxCenter = () => {
                 ))
               ) : (
                 <div className="col-span-4 text-center text-gray-500 py-8">
-                  No commission data available for selected period
+                  {EMPTY_COPY}
                 </div>
               )}
             </div>
