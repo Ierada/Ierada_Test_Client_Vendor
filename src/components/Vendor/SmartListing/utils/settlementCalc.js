@@ -24,7 +24,8 @@ export function calcSettlement({
   const youEarn = Math.max(0, sale - tds - fee - ship - otherCharges);
   const discountPct =
     mrpN > 0 && sale > 0 ? Math.round(((mrpN - sale) / mrpN) * 100) : 0;
-  const listingPrice = round2(sale + ship + fee);
+  // Listing price = sale + shipping + platform fee — stay 0 until selling price is set.
+  const listingPrice = sale > 0 ? round2(sale + ship + fee) : 0;
 
   return {
     mrp: mrpN,

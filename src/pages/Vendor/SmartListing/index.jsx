@@ -1917,6 +1917,7 @@ function BasicsPanel({
                     category_id: id,
                     sub_category_id: "",
                     inner_sub_category_id: "",
+                    size_id: "",
                   })
                 }
                 placeholder="Search category"
@@ -1932,6 +1933,7 @@ function BasicsPanel({
                   patch({
                     sub_category_id: id,
                     inner_sub_category_id: "",
+                    size_id: "",
                   })
                 }
                 placeholder="Search subcategory"
@@ -1943,7 +1945,7 @@ function BasicsPanel({
             <Field label="Inner Sub Category" optional>
               <SearchablePicker
                 value={state.inner_sub_category_id}
-                onChange={(id) => patch({ inner_sub_category_id: id })}
+                onChange={(id) => patch({ inner_sub_category_id: id, size_id: "" })}
                 placeholder="Search inner subcategory"
                 searchPlaceholder="Search inner subcategory…"
                 options={filteredInners.map((c) => ({ id: c.id, label: c.name }))}
@@ -1990,20 +1992,31 @@ function SingleSizeField({ state, patch }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!state.category_id) {
+      if (!state.inner_sub_category_id) {
         setSizeOptions([]);
         return;
       }
       try {
         const res = await getAllSizes(sizeQueryFromListing(state));
         if (cancelled) return;
+        const innerId = String(state.inner_sub_category_id);
         const list = Array.isArray(res?.data) ? res.data : [];
-        setSizeOptions(
-          list.map((s) => ({
+        const seen = new Set();
+        const filtered = [];
+        for (const s of list) {
+          const sid = String(s.id);
+          if (seen.has(sid)) continue;
+          const rowInner = String(
+            s.inner_sub_cat_id || s.innerSubCategory?.id || "",
+          );
+          if (rowInner !== innerId) continue;
+          seen.add(sid);
+          filtered.push({
             id: s.id,
             label: s.name || `Size #${s.id}`,
-          })),
-        );
+          });
+        }
+        setSizeOptions(filtered);
       } catch {
         if (!cancelled) setSizeOptions([]);
       }
@@ -2016,15 +2029,26 @@ function SingleSizeField({ state, patch }) {
   return (
     <Field
       label="Size (optional)"
-      hint="For single-size products (e.g. Free Size, One Size, or only M). Leave blank if size does not apply."
+      hint="Only sizes linked to the selected inner subcategory. Leave blank if size does not apply."
     >
       <SearchablePicker
         value={state.size_id || ""}
         onChange={(id) => patch({ size_id: id || "" })}
-        placeholder="Select size"
+        placeholder={
+          state.inner_sub_category_id
+            ? "Select size"
+            : "Select inner subcategory first"
+        }
         searchPlaceholder="Search size…"
         options={sizeOptions}
         allowClear
+        tone="brand"
+        emptyText={
+          state.inner_sub_category_id
+            ? "No sizes for this inner subcategory"
+            : "Select inner subcategory to load sizes"
+        }
+        disabled={!state.inner_sub_category_id}
       />
     </Field>
   );
@@ -2591,12 +2615,14 @@ function RightRail({ state, settlement, previewUrl }) {
         <h3 className="font-semibold text-sm">Bank Settlement Summary</h3>
         <Row k="MRP" v={settlement.mrp} />
         <Row k="Sale" v={settlement.sale} />
-        <Row k="Listing Price" v={settlement.listingPrice} />
         <Row k="Discount %" v={`${settlement.discountPct}%`} raw />
         <Row k="GST breakup" v={settlement.gstAmount} />
         <Row k="TDS (2%)" v={settlement.tds} />
         <Row k="Shipping (seller)" v={settlement.shipping} />
         <Row k="Platform fee" v={settlement.platformFee} />
+        <div className="rounded-xl bg-orange-50 border border-orange-100 px-3 py-2">
+          <Row k="Listing Price" v={settlement.listingPrice} highlight />
+        </div>
         <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
           <Row k="You Earn" v={settlement.youEarn} strong />
         </div>
@@ -2614,11 +2640,21 @@ function RightRail({ state, settlement, previewUrl }) {
   );
 }
 
-function Row({ k, v, strong, raw }) {
+function Row({ k, v, strong, raw, highlight }) {
   return (
     <div className="flex justify-between gap-2">
-      <span className="text-gray-500">{k}</span>
-      <span className={strong ? "font-semibold text-emerald-700" : ""}>
+      <span className={highlight ? "text-primary-100 font-semibold" : "text-gray-500"}>
+        {k}
+      </span>
+      <span
+        className={
+          strong
+            ? "font-semibold text-emerald-700"
+            : highlight
+              ? "font-semibold text-primary-100"
+              : ""
+        }
+      >
         {raw ? v : `₹${v ?? 0}`}
       </span>
     </div>
