@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Plus, Search, Trash2 } from "lucide-react";
 import { getProductById, getProductsByVendorId } from "../../../services/api.product";
-import { notifyOnFail } from "../../../utils/notification/toast";
+import { notifyOnFail, notifyOnWarning } from "../../../utils/notification/toast";
+import { inheritComboParentFromItems } from "./utils/comboInherit";
 
 const inputCls =
   "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
@@ -13,11 +14,19 @@ function isListedProduct(p) {
   );
 }
 
+function patchComboItems(patch, state, next) {
+  patch({
+    comboItems: next,
+    ...inheritComboParentFromItems(next, state),
+  });
+}
+
 export default function ComboBuilder({ state, patch, vendorId }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState([]);
   const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [addingId, setAddingId] = useState(null);
   const items = state.comboItems || [];
   const parentId = state.productId || state.id || null;
   const addedIds = useMemo(
@@ -44,7 +53,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       return;
     }
     if (!vendorId) {
-      notifyOnFail("Vendor account required before searching combo products");
+      notifyOnFail("Vendor account required to search combo products");
       return;
     }
     setBusy(true);
@@ -56,6 +65,10 @@ export default function ComboBuilder({ state, patch, vendorId }) {
         visibility: "Published",
         listing_status: "published",
       });
+      if (!res || res.status === 0) {
+        setHits([]);
+        return;
+      }
       const rows = (res?.data || []).filter((p) => {
         if (!isListedProduct(p)) return false;
         if (String(p.listing_type || "").toLowerCase() === "combo") return false;
@@ -64,7 +77,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       });
       setHits(rows);
     } catch {
-      notifyOnFail("Search failed");
+      // api.product already toasts network errors
       setHits([]);
     } finally {
       setBusy(false);
@@ -73,7 +86,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
 
   const addProduct = async (p) => {
     if (vendorId && Number(p.vendor_id) !== Number(vendorId)) {
-      notifyOnFail("Only your products can be added to a combo");
+      notifyOnFail("Only products from your catalog can be added");
       return;
     }
     if (!isListedProduct(p)) {
@@ -84,11 +97,16 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       notifyOnFail("Product already in this combo");
       return;
     }
+    setAddingId(p.id);
     try {
       const detail = await getProductById(p.id);
+      if (detail && detail.status === 0) {
+        notifyOnFail(detail.message || "Could not load product details");
+        return;
+      }
       const product = detail?.data || p;
       if (vendorId && Number(product.vendor_id) !== Number(vendorId)) {
-        notifyOnFail("Only your products can be added to a combo");
+        notifyOnFail("Only products from your catalog can be added");
         return;
       }
       if (!isListedProduct(product)) {
@@ -104,12 +122,45 @@ export default function ComboBuilder({ state, patch, vendorId }) {
         variations.length > 0
           ? variations.reduce((s, v) => s + (Number(v.stock) || 0), 0)
           : Number(product.stock) || 0;
+      if (stock <= 0) {
+        notifyOnWarning(
+          `"${product.name || "Product"}" has 0 stock — combo stock may be 0 until restocked`,
+        );
+      }
+      if (
+        !(Number(product.original_price) > 0) ||
+        !(Number(product.discounted_price) > 0)
+      ) {
+        notifyOnWarning(
+          `"${product.name || "Product"}" has missing MRP/sale — check bundle pricing in Review`,
+        );
+      }
+      const thumb = (product.media || [])[0]?.url || "";
       const next = [
         ...items,
         {
           combo_product_id: product.id,
           name: product.name,
           sku: product.sku || "",
+          thumb,
+          original_price: product.original_price || "",
+          discounted_price: product.discounted_price || "",
+          category_id: product.category_id || "",
+          sub_category_id: product.sub_category_id || "",
+          inner_sub_category_id: product.inner_sub_category_id || "",
+          categoryTitle: product.Category?.title || product.category?.title || "",
+          subCategoryTitle:
+            product.SubCategory?.title || product.sub_category?.title || "",
+          innerSubCategoryTitle:
+            product.InnerSubCategory?.title ||
+            product.inner_sub_category?.title ||
+            "",
+          hsn_code: product.hsn_code || "",
+          gst: product.gst ?? "",
+          package_weight: product.package_weight || "",
+          package_length: product.package_length || "",
+          package_width: product.package_width || "",
+          package_height: product.package_height || "",
           variation_id: "",
           variations,
           qty: 1,
@@ -117,22 +168,13 @@ export default function ComboBuilder({ state, patch, vendorId }) {
           discount_percentage: null,
         },
       ];
-      patch({
-        comboItems: next,
-        stock: String(
-          Math.min(
-            ...next.map((it) => {
-              const child = Number(it.available_stock) || 0;
-              const qty = Math.max(1, Number(it.qty) || 1);
-              return Math.floor(child / qty);
-            }),
-          ) || 0,
-        ),
-      });
+      patchComboItems(patch, state, next);
       setHits((prev) => prev.filter((h) => String(h.id) !== String(product.id)));
       setQ("");
     } catch {
       notifyOnFail("Could not add product to combo");
+    } finally {
+      setAddingId(null);
     }
   };
 
@@ -153,16 +195,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       }
       return merged;
     });
-    const minStock = next.length
-      ? Math.min(
-          ...next.map((it) => {
-            const child = Number(it.available_stock) || 0;
-            const qty = Math.max(1, Number(it.qty) || 1);
-            return Math.floor(child / qty);
-          }),
-        )
-      : 0;
-    patch({ comboItems: next, stock: String(minStock) });
+    patchComboItems(patch, state, next);
   };
 
   return (
@@ -170,11 +203,20 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       <div>
         <h2 className="font-semibold text-gray-900">Combo builder</h2>
         <p className="text-xs text-gray-500">
-          Bundle your listed products only. Parent stock = min(floor(component
-          stock ÷ qty)). Tax uses parent HSN/GST only.
-          <span className="block mt-1 text-amber-700">
-            Search by product name, product ID, or SKU — listed products only.
-          </span>
+          Works for Brand and Generic. Search and add at least 2 already listed
+          products from this vendor. Those products stay live as singles; this
+          combo is an extra listing that shows them together. Category, HSN,
+          GST, MRP and cover come from the components — no photoshoot or AI.
+          {vendorId ? (
+            <span className="block mt-1 text-amber-700">
+              Search by product name, product ID, or SKU — listed products only.
+              Minimum 2 products.
+            </span>
+          ) : (
+            <span className="block mt-1 text-amber-700">
+              Your vendor account is required to search component products.
+            </span>
+          )}
         </p>
       </div>
 
@@ -187,8 +229,8 @@ export default function ComboBuilder({ state, patch, vendorId }) {
             setQ(e.target.value);
             setSearched(false);
           }}
-          onKeyDown={(e) => e.key === "Enter" && runSearch()}
-          disabled={!vendorId}
+          onKeyDown={(e) => e.key === "Enter" && !busy && runSearch()}
+          disabled={!vendorId || busy}
         />
         <button
           type="button"
@@ -204,6 +246,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
         <ul className="border rounded-xl divide-y max-h-56 overflow-y-auto bg-white">
           {hits.slice(0, 20).map((p) => {
             const already = addedIds.has(String(p.id));
+            const adding = String(addingId) === String(p.id);
             return (
               <li
                 key={p.id}
@@ -214,20 +257,17 @@ export default function ComboBuilder({ state, patch, vendorId }) {
                   <p className="text-[11px] text-gray-500 truncate">
                     ID {p.id}
                     {p.sku ? ` · SKU ${p.sku}` : ""}
-                    {p.custom_id ? ` · ${p.custom_id}` : ""}
-                    {" · "}stock{" "}
-                    {Array.isArray(p.variations) && p.variations.length
-                      ? p.variations.reduce((s, v) => s + (Number(v.stock) || 0), 0)
-                      : Number(p.stock) || 0}
+                    {p.discounted_price != null ? ` · ₹${p.discounted_price}` : ""}
                   </p>
                 </div>
                 <button
                   type="button"
-                  disabled={already}
+                  disabled={already || adding || !!addingId}
                   className="shrink-0 text-primary-100 inline-flex items-center gap-1 text-xs disabled:opacity-40"
                   onClick={() => addProduct(p)}
                 >
-                  <Plus className="w-3.5 h-3.5" /> {already ? "Added" : "Add"}
+                  <Plus className="w-3.5 h-3.5" />{" "}
+                  {already ? "Added" : adding ? "Adding…" : "Add"}
                 </button>
               </li>
             );
@@ -241,17 +281,30 @@ export default function ComboBuilder({ state, patch, vendorId }) {
 
       {items.length ? (
         <div className="space-y-2">
+          <p className="text-xs text-gray-600 font-medium">
+            Combo components ({items.length}
+            {items.length < 2 ? " — need 2+" : ""})
+          </p>
           {items.map((it, idx) => (
             <div
               key={`${it.combo_product_id}-${idx}`}
               className="border rounded-xl p-3 grid sm:grid-cols-12 gap-2 items-end bg-slate-50/60"
             >
-              <div className="sm:col-span-4">
-                <p className="text-sm font-medium truncate">{it.name}</p>
-                <p className="text-[11px] text-gray-500">
-                  ID {it.combo_product_id}
-                  {it.sku ? ` · SKU ${it.sku}` : ""} · Avail: {it.available_stock}
-                </p>
+              <div className="sm:col-span-4 flex gap-2 min-w-0">
+                {it.thumb ? (
+                  <img
+                    src={it.thumb}
+                    alt=""
+                    className="w-10 h-10 rounded object-cover bg-gray-100 shrink-0"
+                  />
+                ) : null}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{it.name}</p>
+                  <p className="text-[11px] text-gray-500">
+                    ID {it.combo_product_id}
+                    {it.sku ? ` · SKU ${it.sku}` : ""} · Avail: {it.available_stock}
+                  </p>
+                </div>
               </div>
               <label className="sm:col-span-3 space-y-1">
                 <span className="text-xs text-gray-600">Variant</span>
@@ -276,7 +329,10 @@ export default function ComboBuilder({ state, patch, vendorId }) {
                   min={1}
                   className={inputCls}
                   value={it.qty}
-                  onChange={(e) => updateItem(idx, { qty: e.target.value })}
+                  onChange={(e) => {
+                    const n = Math.max(1, parseInt(e.target.value, 10) || 1);
+                    updateItem(idx, { qty: n });
+                  }}
                 />
               </label>
               <div className="sm:col-span-2 text-xs text-gray-600">
@@ -287,30 +343,32 @@ export default function ComboBuilder({ state, patch, vendorId }) {
                 className="sm:col-span-1 p-2 text-red-600"
                 onClick={() => {
                   const next = items.filter((_, i) => i !== idx);
-                  const min =
-                    next.length === 0
-                      ? 0
-                      : Math.min(
-                          ...next.map((it) => {
-                            const child = Number(it.available_stock) || 0;
-                            const qty = Math.max(1, Number(it.qty) || 1);
-                            return Math.floor(child / qty);
-                          }),
-                        );
-                  patch({ comboItems: next, stock: String(min) });
+                  patchComboItems(patch, state, next);
                 }}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
           ))}
-          <p className="text-sm font-medium text-emerald-800">
-            Computed combo stock: {stockMin}
-          </p>
+          <div className="text-sm space-y-1 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+            <p className="font-medium text-emerald-800">
+              Computed combo stock: {stockMin}
+            </p>
+            <p className="text-xs text-gray-600">
+              Bundle MRP ₹{state.original_price || "—"} · Sale ₹
+              {state.discounted_price || "—"} · HSN {state.hsn_code || "—"} ·{" "}
+              {state.categoryTitle || "Category from first product"}
+            </p>
+            {items.length < 2 ? (
+              <p className="text-xs text-amber-800">
+                Add one more listed product to continue.
+              </p>
+            ) : null}
+          </div>
         </div>
       ) : (
         <p className="text-sm text-gray-500">
-          Add at least one listed component product (search by name, ID, or SKU).
+          Add at least 2 listed products (search by name, ID, or SKU).
         </p>
       )}
     </div>

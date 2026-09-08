@@ -138,8 +138,8 @@ export function validateVariationRow(row, prefix = "") {
 
 export function validateComboItems(comboItems = []) {
   const errors = {};
-  if (!comboItems.length) {
-    errors.combo = "Add at least one product to the combo";
+  if (!Array.isArray(comboItems) || comboItems.length < 2) {
+    errors.combo = "Add at least 2 listed products to create a combo";
     return errors;
   }
   comboItems.forEach((it, i) => {
@@ -158,16 +158,30 @@ function sizeRowId(s) {
 export function validateSmartListingState(state) {
   const errors = {};
   if (!String(state.name || "").trim()) errors.name = "Product name is required";
+
+  if (state.listingType === "combo") {
+    if (!String(state.hsn_code || "").trim()) {
+      errors.hsn_code =
+        "HSN is required — add listed components so HSN can inherit";
+    }
+    Object.assign(
+      errors,
+      validateMrpAndSelling(state.original_price, state.discounted_price),
+    );
+    // Combo stock is derived; allow 0 (components OOS) but must be a valid number
+    const stockN = toNum(state.stock);
+    if (state.stock === "" || state.stock == null || !Number.isFinite(stockN) || stockN < 0) {
+      errors.stock = "Combo stock is invalid — check component availability";
+    }
+    Object.assign(errors, validateComboItems(state.comboItems));
+    return errors;
+  }
+
   if (!String(state.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
   Object.assign(errors, validatePackageDimensions(state));
 
   if (state.listingType === "single" || !state.listingType) {
     Object.assign(errors, validateSingleListingPricing(state));
-  }
-
-  if (state.listingType === "combo") {
-    Object.assign(errors, validateSingleListingPricing(state));
-    Object.assign(errors, validateComboItems(state.comboItems));
   }
 
   if (state.listingType === "color_size") {

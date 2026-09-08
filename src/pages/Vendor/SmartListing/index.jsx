@@ -80,9 +80,10 @@ import {
 } from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
 
 function basicsStepsFor(listingType) {
+  // Combo: Brand → Type → pick listed products only (no images / category / AI)
+  if (listingType === "combo") return ["brand", "type", "combo"];
   const base = ["brand", "type", "images", "category"];
   if (listingType === "color_size" || listingType === "custom") return [...base, "matrix"];
-  if (listingType === "combo") return [...base, "combo"];
   return base;
 }
 
@@ -109,7 +110,7 @@ const STEP_LABELS = {
   images: "Images",
   matrix: "Variations",
   combo: "Combo",
-  review: "AI Review",
+  review: "Review",
 };
 
 const REVIEW_SECTIONS = [
@@ -125,9 +126,20 @@ const REVIEW_SECTIONS = [
   { id: "size_chart", label: "Size Chart" },
 ];
 
+/** Slim review for combo — no AI sections required */
+const COMBO_REVIEW_SECTIONS = [
+  { id: "pricing", label: "Pricing & Inventory" },
+  { id: "product_info", label: "Product Information" },
+  { id: "shipping", label: "Shipping Details" },
+];
+
 const LISTING_TYPES = [
   { id: "single", title: "Single Listing", desc: "One price, one SKU" },
-  { id: "combo", title: "Combo Listing", desc: "Bundle existing products" },
+  {
+    id: "combo",
+    title: "Combo Listing",
+    desc: "Bundle already listed products (Brand or Generic)",
+  },
   { id: "color_size", title: "Color & Size Variation", desc: "Color × size matrix" },
   { id: "custom", title: "Custom Variation", desc: "Up to 4 custom attributes" },
 ];
@@ -632,6 +644,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     () => basicsStepsFor(state.listingType),
     [state.listingType],
   );
+
+  useEffect(() => {
+    if (phase !== "basics") return;
+    if (steps.length && step && !steps.includes(step)) {
+      setStep(steps.includes("combo") ? "combo" : steps[0]);
+    }
+  }, [steps, step, phase]);
 
   // Load product for Smart edit
   useEffect(() => {
@@ -1146,8 +1165,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       Object.assign(err, validateCategoryStepPricing(state));
     }
     if (step === "images") {
-      const needsParentImages =
-        state.listingType === "single" || state.listingType === "combo";
+      const needsParentImages = state.listingType === "single";
       const hasNew = (state.files || []).some((f) => f instanceof File);
       const hasExisting = (state.existingMedia || []).length > 0;
       if (needsParentImages && !hasNew && !hasExisting) {
@@ -1178,8 +1196,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       }
     }
     if (step === "combo") {
-      if (!(state.comboItems || []).length) err.combo = "Add at least one combo component";
-      else Object.assign(err, validateComboItems(state.comboItems));
+      if ((state.comboItems || []).length < 2) {
+        err.combo = "Add at least 2 listed products to create a combo";
+      } else Object.assign(err, validateComboItems(state.comboItems));
     }
     setFieldErrors(err);
     return err;
@@ -1189,6 +1208,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const err = validateBasicsStep();
     if (Object.keys(err).length) {
       const text =
+        err.combo ||
         formatPriceValidationToast(err) ||
         firstValidationError(err) ||
         "Please fix the highlighted fields before continuing.";
@@ -1200,6 +1220,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
       setStep(steps[idx + 1]);
+      return;
+    }
+    // Combo: skip AI — go straight to Review → Submit
+    if (state.listingType === "combo") {
+      setPhase("review");
+      setReviewSection("pricing");
       return;
     }
     runAiGenerate();
@@ -1323,12 +1349,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       if (state.listingType === "single" && !hasImages) {
         vErr.files = "Add at least one image before submit";
       }
-      if (state.listingType === "combo" && !hasImages) {
-        vErr.files = "Add at least one cover image for the combo listing";
-      }
+      // Combo: cover copied from first component on server
       const firstErr = firstValidationError(vErr);
       if (firstErr) {
-        if (vErr.matrix) {
+        if (vErr.combo || Object.keys(vErr).some((k) => k.startsWith("combo"))) {
+          setPhase("basics");
+          setStep("combo");
+        } else if (vErr.matrix) {
           setPhase("basics");
           setStep(
             state.listingType === "combo"
@@ -1343,6 +1370,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           setPhase("review");
           setReviewSection("shipping");
         } else if (vErr.name || vErr.hsn_code) {
+          setPhase("review");
           setReviewSection("product_info");
         } else if (
           vErr.original_price ||
@@ -1350,11 +1378,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           vErr.stock ||
           vErr.min_order_qty
         ) {
+          setPhase("review");
           setReviewSection("pricing");
         }
         const text = vErr.matrix
           ? vErr.matrix
-          : formatPriceValidationToast(vErr) || firstErr;
+          : vErr.combo || formatPriceValidationToast(vErr) || firstErr;
         setFieldErrors(vErr);
         setBanner({ type: "error", text });
         notifyOnFail({ title: "Please check", message: text });
@@ -1365,6 +1394,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     // branded publish blocked client — need approved auth (server also enforces)
     if (
       !asDraft &&
+      state.listingType !== "combo" &&
       state.brandType === "branded" &&
       !state.brandAuthApproved
     ) {
@@ -1450,16 +1480,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           );
         }
       } else {
-        setBanner({
-          type: "error",
-          text: res?.message || "Could not save listing. Please fix and retry.",
-        });
+        const msg = res?.message || "Could not save listing. Please fix and retry.";
+        setBanner({ type: "error", text: msg });
+        notifyOnFail(msg);
+        if (state.listingType === "combo" && /combo/i.test(msg)) {
+          setPhase("basics");
+          setStep("combo");
+        }
       }
     } catch (error) {
+      const msg = getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally.");
       setBanner({
         type: "error",
-        text: getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally."),
+        text: msg,
       });
+      notifyOnFail(msg);
     } finally {
       setSubmitting(false);
     }
@@ -1507,7 +1542,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                   ? "Edit listing"
                   : phase === "basics"
                     ? "Provide Basics"
-                    : "Review & Edit AI Generated Information"}
+                    : state.listingType === "combo"
+                      ? "Review & Submit Combo"
+                      : "Review & Edit AI Generated Information"}
             </h1>
             {bulkProgress ? (
               <p className="text-xs text-gray-500 mt-0.5">
@@ -1667,9 +1704,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                     <Loader2 className="w-4 h-4 animate-spin" /> Writing listing…
                   </>
                 ) : step === steps[steps.length - 1] ? (
-                  <>
-                    <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
-                  </>
+                  state.listingType === "combo" ? (
+                    <>
+                      Next: Review <ArrowRight className="w-4 h-4" />
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
+                    </>
+                  )
                 ) : (
                   <>
                     Next <ArrowRight className="w-4 h-4" />
@@ -2045,15 +2088,25 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
   const priceErr = livePriceErr(state, fieldErrors);
+  const isCombo = state.listingType === "combo";
+  const sections = isCombo ? COMBO_REVIEW_SECTIONS : REVIEW_SECTIONS;
 
   useEffect(() => {
     if (reviewSection === "compliance") setReviewSection("shipping");
-  }, [reviewSection, setReviewSection]);
+    if (isCombo && !sections.some((s) => s.id === reviewSection)) {
+      setReviewSection("pricing");
+    }
+  }, [reviewSection, setReviewSection, isCombo]);
 
   return (
     <div className="grid md:grid-cols-12 gap-4">
       <nav className="md:col-span-4 space-y-1">
-        {REVIEW_SECTIONS.map((s) => (
+        {isCombo ? (
+          <p className="text-[11px] text-gray-500 px-1 pb-1">
+            Combo review — pricing & name from listed products. Cover image is taken from the first component.
+          </p>
+        ) : null}
+        {sections.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -2069,12 +2122,13 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               {dirty(s.id) ? (
                 <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">Edited</span>
               ) : null}
-              {ai(s.id) ? (
+              {!isCombo && ai(s.id) ? (
                 <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">AI</span>
               ) : null}
             </span>
           </button>
         ))}
+        {!isCombo ? (
         <button
           type="button"
           disabled={aiGenerating}
@@ -2091,6 +2145,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             </>
           )}
         </button>
+        ) : null}
       </nav>
       <div className="md:col-span-8 bg-white rounded-2xl border p-5 space-y-4">
         {ai(reviewSection) ? (
