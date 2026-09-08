@@ -97,11 +97,11 @@ function appendFilesAndMedia(fd, state) {
     }
   }
 
-  if (state.listingType === "combo" && state.comboItems?.length) {
+  if (state.listingType === "combo") {
     fd.append(
       "combo_items",
       JSON.stringify(
-        state.comboItems.map((c) => ({
+        (state.comboItems || []).map((c) => ({
           combo_product_id: Number(c.combo_product_id),
           variation_id: c.variation_id ? Number(c.variation_id) : null,
           qty: Math.max(1, Number(c.qty) || 1),

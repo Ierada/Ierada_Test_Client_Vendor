@@ -6,11 +6,24 @@ import { notifyOnFail } from "../../../utils/notification/toast";
 const inputCls =
   "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30";
 
+function isListedProduct(p) {
+  return (
+    String(p?.visibility || "").toLowerCase() === "published" &&
+    String(p?.listing_status || "").toLowerCase() === "published"
+  );
+}
+
 export default function ComboBuilder({ state, patch, vendorId }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState([]);
+  const [searched, setSearched] = useState(false);
   const [busy, setBusy] = useState(false);
   const items = state.comboItems || [];
+  const parentId = state.productId || state.id || null;
+  const addedIds = useMemo(
+    () => new Set(items.map((it) => String(it.combo_product_id))),
+    [items],
+  );
 
   const stockMin = useMemo(() => {
     if (!items.length) return 0;
@@ -25,21 +38,34 @@ export default function ComboBuilder({ state, patch, vendorId }) {
   }, [items]);
 
   const runSearch = async () => {
-    if (!q.trim()) return;
+    const term = q.trim();
+    if (!term) {
+      notifyOnFail("Enter product name, ID, or SKU to search");
+      return;
+    }
     if (!vendorId) {
       notifyOnFail("Vendor account required before searching combo products");
       return;
     }
     setBusy(true);
+    setSearched(true);
     try {
       const res = await getProductsByVendorId(vendorId, {
-        search: q.trim(),
-        limit: 20,
-        visibility: "all",
+        search: term,
+        limit: 30,
+        visibility: "Published",
+        listing_status: "published",
       });
-      setHits(res?.data || []);
+      const rows = (res?.data || []).filter((p) => {
+        if (!isListedProduct(p)) return false;
+        if (String(p.listing_type || "").toLowerCase() === "combo") return false;
+        if (parentId && String(p.id) === String(parentId)) return false;
+        return true;
+      });
+      setHits(rows);
     } catch {
       notifyOnFail("Search failed");
+      setHits([]);
     } finally {
       setBusy(false);
     }
@@ -50,11 +76,27 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       notifyOnFail("Only your products can be added to a combo");
       return;
     }
+    if (!isListedProduct(p)) {
+      notifyOnFail("Only listed (published) products can be added to a combo");
+      return;
+    }
+    if (addedIds.has(String(p.id))) {
+      notifyOnFail("Product already in this combo");
+      return;
+    }
     try {
       const detail = await getProductById(p.id);
       const product = detail?.data || p;
       if (vendorId && Number(product.vendor_id) !== Number(vendorId)) {
         notifyOnFail("Only your products can be added to a combo");
+        return;
+      }
+      if (!isListedProduct(product)) {
+        notifyOnFail("Only listed (published) products can be added to a combo");
+        return;
+      }
+      if (String(product.listing_type || "").toLowerCase() === "combo") {
+        notifyOnFail("Cannot nest another combo inside a combo");
         return;
       }
       const variations = product.variations || [];
@@ -67,6 +109,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
         {
           combo_product_id: product.id,
           name: product.name,
+          sku: product.sku || "",
           variation_id: "",
           variations,
           qty: 1,
@@ -86,7 +129,7 @@ export default function ComboBuilder({ state, patch, vendorId }) {
           ) || 0,
         ),
       });
-      setHits([]);
+      setHits((prev) => prev.filter((h) => String(h.id) !== String(product.id)));
       setQ("");
     } catch {
       notifyOnFail("Could not add product to combo");
@@ -127,10 +170,10 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       <div>
         <h2 className="font-semibold text-gray-900">Combo builder</h2>
         <p className="text-xs text-gray-500">
-          Parent stock = min(floor(component stock ÷ qty)). Tax uses parent listing
-          HSN/GST only (pan-India ecommerce standard — no component breakup).
+          Bundle your listed products only. Parent stock = min(floor(component
+          stock ÷ qty)). Tax uses parent HSN/GST only.
           <span className="block mt-1 text-amber-700">
-            Search is limited to your catalog only.
+            Search by product name, product ID, or SKU — listed products only.
           </span>
         </p>
       </div>
@@ -138,45 +181,77 @@ export default function ComboBuilder({ state, patch, vendorId }) {
       <div className="flex gap-2">
         <input
           className={inputCls}
-          placeholder="Search your products to add…"
+          placeholder="Search by name, product ID, or SKU…"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setSearched(false);
+          }}
           onKeyDown={(e) => e.key === "Enter" && runSearch()}
+          disabled={!vendorId}
         />
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !vendorId}
           onClick={runSearch}
           className="px-3 rounded-lg bg-primary-100 text-white text-sm inline-flex items-center gap-1 disabled:opacity-50"
         >
-          <Search className="w-4 h-4" /> Search
+          <Search className="w-4 h-4" /> {busy ? "…" : "Search"}
         </button>
       </div>
 
       {hits.length ? (
-        <ul className="border rounded-xl divide-y max-h-48 overflow-y-auto bg-white">
-          {hits.slice(0, 12).map((p) => (
-            <li key={p.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span className="truncate pr-2">{p.name}</span>
-              <button
-                type="button"
-                className="text-primary-100 inline-flex items-center gap-1 text-xs"
-                onClick={() => addProduct(p)}
+        <ul className="border rounded-xl divide-y max-h-56 overflow-y-auto bg-white">
+          {hits.slice(0, 20).map((p) => {
+            const already = addedIds.has(String(p.id));
+            return (
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
               >
-                <Plus className="w-3.5 h-3.5" /> Add
-              </button>
-            </li>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-gray-900">{p.name}</p>
+                  <p className="text-[11px] text-gray-500 truncate">
+                    ID {p.id}
+                    {p.sku ? ` · SKU ${p.sku}` : ""}
+                    {p.custom_id ? ` · ${p.custom_id}` : ""}
+                    {" · "}stock{" "}
+                    {Array.isArray(p.variations) && p.variations.length
+                      ? p.variations.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+                      : Number(p.stock) || 0}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={already}
+                  className="shrink-0 text-primary-100 inline-flex items-center gap-1 text-xs disabled:opacity-40"
+                  onClick={() => addProduct(p)}
+                >
+                  <Plus className="w-3.5 h-3.5" /> {already ? "Added" : "Add"}
+                </button>
+              </li>
+            );
+          })}
         </ul>
+      ) : searched && !busy ? (
+        <p className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          No listed products found for “{q.trim()}”. Try name, exact product ID, or SKU.
+        </p>
       ) : null}
 
       {items.length ? (
         <div className="space-y-2">
           {items.map((it, idx) => (
-            <div key={idx} className="border rounded-xl p-3 grid sm:grid-cols-12 gap-2 items-end bg-slate-50/60">
+            <div
+              key={`${it.combo_product_id}-${idx}`}
+              className="border rounded-xl p-3 grid sm:grid-cols-12 gap-2 items-end bg-slate-50/60"
+            >
               <div className="sm:col-span-4">
                 <p className="text-sm font-medium truncate">{it.name}</p>
-                <p className="text-[11px] text-gray-500">Avail: {it.available_stock}</p>
+                <p className="text-[11px] text-gray-500">
+                  ID {it.combo_product_id}
+                  {it.sku ? ` · SKU ${it.sku}` : ""} · Avail: {it.available_stock}
+                </p>
               </div>
               <label className="sm:col-span-3 space-y-1">
                 <span className="text-xs text-gray-600">Variant</span>
@@ -188,7 +263,8 @@ export default function ComboBuilder({ state, patch, vendorId }) {
                   <option value="">Parent / any</option>
                   {(it.variations || []).map((v) => (
                     <option key={v.id} value={v.id}>
-                      #{v.id} stock {v.stock}
+                      #{v.id}
+                      {v.sku ? ` ${v.sku}` : ""} stock {v.stock}
                     </option>
                   ))}
                 </select>
@@ -211,7 +287,17 @@ export default function ComboBuilder({ state, patch, vendorId }) {
                 className="sm:col-span-1 p-2 text-red-600"
                 onClick={() => {
                   const next = items.filter((_, i) => i !== idx);
-                  patch({ comboItems: next });
+                  const min =
+                    next.length === 0
+                      ? 0
+                      : Math.min(
+                          ...next.map((it) => {
+                            const child = Number(it.available_stock) || 0;
+                            const qty = Math.max(1, Number(it.qty) || 1);
+                            return Math.floor(child / qty);
+                          }),
+                        );
+                  patch({ comboItems: next, stock: String(min) });
                 }}
               >
                 <Trash2 className="w-4 h-4" />
@@ -223,7 +309,9 @@ export default function ComboBuilder({ state, patch, vendorId }) {
           </p>
         </div>
       ) : (
-        <p className="text-sm text-gray-500">Add at least one component product.</p>
+        <p className="text-sm text-gray-500">
+          Add at least one listed component product (search by name, ID, or SKU).
+        </p>
       )}
     </div>
   );

@@ -188,7 +188,18 @@ export async function hydrateSmartListingFromProduct(productId) {
     deleteMediaIds: [],
     colorGroups: listingType === "color_size" ? hydrateColorGroups(variations) : [],
     customRows: listingType === "custom" ? hydrateCustomRows(variations) : [],
-    comboItems: Array.isArray(p.comboItems) ? p.comboItems : [],
+    comboItems: Array.isArray(p.comboItems)
+      ? p.comboItems.map((c) => ({
+          combo_product_id: c.combo_product_id,
+          name: c.name || "",
+          sku: c.sku || "",
+          variation_id: c.variation_id || "",
+          variations: Array.isArray(c.variations) ? c.variations : [],
+          qty: c.qty || 1,
+          available_stock: c.available_stock ?? null,
+          discount_percentage: c.discount_percentage ?? null,
+        }))
+      : [],
     existingMedia,
     sizeChartUrl: p.size_chart_image || p.inner_subcategory?.size_chart_image || null,
   };
