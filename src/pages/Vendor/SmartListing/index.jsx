@@ -49,6 +49,7 @@ import { hydrateSmartListingFromProduct } from "../../../components/Vendor/Smart
 import {
   hasRealSizeRow,
   sizeQueryFromListing,
+  splitContextualSizes,
   prefillColorGroupsFromCategorySizes,
   prefillColorGroupsFromSuggestedNames,
   applyParentDefaultsToEmptySizeRows,
@@ -836,14 +837,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const H = Number(state.package_height) || 0;
     const vol = L && W && H ? (L * W * H) / 5000 : 0;
     const weight = Math.max(Number(state.package_weight) || 0, vol);
+    const sale = Number(state.discounted_price) || 0;
     let charge = 0;
-    if (!state.free_shipping && shippingRates.length) {
+    // Do not auto-apply rate-card shipping until selling price is entered.
+    if (sale > 0 && !state.free_shipping && shippingRates.length) {
       const match = shippingRates.find((r) => weight <= r.maxWeight);
       charge = match
         ? match.charge
         : shippingRates[shippingRates.length - 1]?.charge || 0;
     }
-    const sale = Number(state.discounted_price) || 0;
     const pct = Number(state.platform_fee_pct) || 0;
     const maxCap = Number(state.platform_fee_max) || 0;
     let fee = Math.round(((sale * pct) / 100) * 100) / 100;
@@ -1992,31 +1994,21 @@ function SingleSizeField({ state, patch }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!state.inner_sub_category_id) {
+      if (!state.category_id && !state.sub_category_id && !state.inner_sub_category_id) {
         setSizeOptions([]);
         return;
       }
       try {
         const res = await getAllSizes(sizeQueryFromListing(state));
         if (cancelled) return;
-        const innerId = String(state.inner_sub_category_id);
-        const list = Array.isArray(res?.data) ? res.data : [];
-        const seen = new Set();
-        const filtered = [];
-        for (const s of list) {
-          const sid = String(s.id);
-          if (seen.has(sid)) continue;
-          const rowInner = String(
-            s.inner_sub_cat_id || s.innerSubCategory?.id || "",
-          );
-          if (rowInner !== innerId) continue;
-          seen.add(sid);
-          filtered.push({
+        // Contextual only (inner → sub → cat). Never the full catalog.
+        const split = splitContextualSizes(res?.data || [], res?.meta, state);
+        setSizeOptions(
+          (split.contextual || []).map((s) => ({
             id: s.id,
             label: s.name || `Size #${s.id}`,
-          });
-        }
-        setSizeOptions(filtered);
+          })),
+        );
       } catch {
         if (!cancelled) setSizeOptions([]);
       }
@@ -2026,29 +2018,29 @@ function SingleSizeField({ state, patch }) {
     };
   }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
 
+  const ready = Boolean(
+    state.inner_sub_category_id || state.sub_category_id || state.category_id,
+  );
+
   return (
     <Field
       label="Size (optional)"
-      hint="Only sizes linked to the selected inner subcategory. Leave blank if size does not apply."
+      hint="Sizes for this category path (inner → sub → category). Unrelated catalog sizes are hidden."
     >
       <SearchablePicker
         value={state.size_id || ""}
         onChange={(id) => patch({ size_id: id || "" })}
-        placeholder={
-          state.inner_sub_category_id
-            ? "Select size"
-            : "Select inner subcategory first"
-        }
+        placeholder={ready ? "Select size" : "Select category first"}
         searchPlaceholder="Search size…"
         options={sizeOptions}
         allowClear
         tone="brand"
         emptyText={
-          state.inner_sub_category_id
-            ? "No sizes for this inner subcategory"
-            : "Select inner subcategory to load sizes"
+          ready
+            ? "No sizes mapped for this category — add sizes in Size & Color, or leave blank"
+            : "Select category to load sizes"
         }
-        disabled={!state.inner_sub_category_id}
+        disabled={!ready}
       />
     </Field>
   );

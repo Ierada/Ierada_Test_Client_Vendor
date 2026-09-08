@@ -13,8 +13,10 @@ export function calcSettlement({
   const sale = Number(sellingPrice) || 0;
   const mrpN = Number(mrp) || 0;
   const gstPct = Number(gstPercent) || 0;
-  const ship = freeShipping ? 0 : Number(shippingCharges) || 0;
-  const fee = Number(platformFee) || 0;
+  // Hide shipping in summary until selling price is entered.
+  const ship =
+    sale > 0 && !freeShipping ? Number(shippingCharges) || 0 : 0;
+  const fee = sale > 0 ? Number(platformFee) || 0 : 0;
   const otherPct = Number(otherChargesPct) || 0;
 
   const gstAmount =
