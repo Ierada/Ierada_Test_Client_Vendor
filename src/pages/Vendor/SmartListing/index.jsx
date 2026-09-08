@@ -50,6 +50,7 @@ import {
   hasRealSizeRow,
   sizeQueryFromListing,
   splitContextualSizes,
+  sizePickerOptions,
   prefillColorGroupsFromCategorySizes,
   prefillColorGroupsFromSuggestedNames,
   applyParentDefaultsToEmptySizeRows,
@@ -2001,14 +2002,9 @@ function SingleSizeField({ state, patch }) {
       try {
         const res = await getAllSizes(sizeQueryFromListing(state));
         if (cancelled) return;
-        // Contextual only (inner → sub → cat). Never the full catalog.
+        // Full catalog with search; category-linked sizes listed first when present.
         const split = splitContextualSizes(res?.data || [], res?.meta, state);
-        setSizeOptions(
-          (split.contextual || []).map((s) => ({
-            id: s.id,
-            label: s.name || `Size #${s.id}`,
-          })),
-        );
+        setSizeOptions(sizePickerOptions(split));
       } catch {
         if (!cancelled) setSizeOptions([]);
       }
@@ -2025,7 +2021,7 @@ function SingleSizeField({ state, patch }) {
   return (
     <Field
       label="Size (optional)"
-      hint="Sizes for this category path (inner → sub → category). Unrelated catalog sizes are hidden."
+      hint="All catalog sizes with search. Category-linked sizes appear first when mapped."
     >
       <SearchablePicker
         value={state.size_id || ""}
@@ -2037,7 +2033,7 @@ function SingleSizeField({ state, patch }) {
         tone="brand"
         emptyText={
           ready
-            ? "No sizes mapped for this category — add sizes in Size & Color, or leave blank"
+            ? "No sizes in catalog — add sizes in Size & Color, or leave blank"
             : "Select category to load sizes"
         }
         disabled={!ready}
