@@ -64,6 +64,8 @@ import SearchablePicker from "../../../components/Vendor/SmartListing/Searchable
 import ColorSizeMatrix from "../../../components/Vendor/SmartListing/ColorSizeMatrix";
 import CustomVariationMatrix from "../../../components/Vendor/SmartListing/CustomVariationMatrix";
 import ComboBuilder from "../../../components/Vendor/SmartListing/ComboBuilder";
+import ComboReviewReadonly from "../../../components/Vendor/SmartListing/ComboReviewReadonly";
+import { inheritComboParentFromItems } from "../../../components/Vendor/SmartListing/utils/comboInherit";
 import LabeledPhotoBoxes from "../../../components/Vendor/SmartListing/LabeledPhotoBoxes";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
 import RequestSpecField from "../../../components/Vendor/SmartListing/RequestSpecField";
@@ -126,10 +128,9 @@ const REVIEW_SECTIONS = [
   { id: "size_chart", label: "Size Chart" },
 ];
 
-/** Slim review for combo — no AI sections required */
+/** Slim read-only review for combo — product list + shipping only */
 const COMBO_REVIEW_SECTIONS = [
-  { id: "pricing", label: "Pricing & Inventory" },
-  { id: "product_info", label: "Product Information" },
+  { id: "pricing", label: "Selected products" },
   { id: "shipping", label: "Shipping Details" },
 ];
 
@@ -422,13 +423,17 @@ function showPriceErr(liveErr, submitErr, value) {
 function livePriceErr(state, fieldErrors) {
   const isMatrix =
     state.listingType === "color_size" || state.listingType === "custom";
+  const isCombo = state.listingType === "combo";
   const hasMrp = state.original_price !== "" && state.original_price != null;
   const hasSell = state.discounted_price !== "" && state.discounted_price != null;
-  const live = isMatrix
-    ? hasMrp || hasSell
-      ? validateMrpAndSelling(state.original_price, state.discounted_price)
-      : {}
-    : validateSingleListingPricing(state);
+  // Combo review is read-only — don't run single-listing stock/SKU live chips
+  const live = isCombo
+    ? {}
+    : isMatrix
+      ? hasMrp || hasSell
+        ? validateMrpAndSelling(state.original_price, state.discounted_price)
+        : {}
+      : validateSingleListingPricing(state);
   const leaked = isMatrix ? {} : fieldErrors;
   return {
     original_price: showPriceErr(
@@ -1222,8 +1227,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       setStep(steps[idx + 1]);
       return;
     }
-    // Combo: skip AI — go straight to Review → Submit
+    // Combo: skip AI — refresh inherited sums, then Review (read-only)
     if (state.listingType === "combo") {
+      patch(inheritComboParentFromItems(state.comboItems || [], state));
       setPhase("review");
       setReviewSection("pricing");
       return;
@@ -1342,11 +1348,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
-      const vErr = validateSmartListingState(state);
+      const comboState =
+        state.listingType === "combo"
+          ? {
+              ...state,
+              ...inheritComboParentFromItems(state.comboItems || [], state),
+            }
+          : state;
+      if (state.listingType === "combo") {
+        patch(inheritComboParentFromItems(state.comboItems || [], state));
+      }
+      const vErr = validateSmartListingState(comboState);
       const hasImages =
-        (state.files || []).some((f) => f instanceof File) ||
-        (state.existingMedia || []).length > 0;
-      if (state.listingType === "single" && !hasImages) {
+        (comboState.files || []).some((f) => f instanceof File) ||
+        (comboState.existingMedia || []).length > 0;
+      if (comboState.listingType === "single" && !hasImages) {
         vErr.files = "Add at least one image before submit";
       }
       // Combo: cover copied from first component on server
@@ -1358,7 +1374,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         } else if (vErr.matrix) {
           setPhase("basics");
           setStep(
-            state.listingType === "combo"
+            comboState.listingType === "combo"
               ? "combo"
               : "matrix",
           );
@@ -1370,8 +1386,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           setPhase("review");
           setReviewSection("shipping");
         } else if (vErr.name || vErr.hsn_code) {
-          setPhase("review");
-          setReviewSection("product_info");
+          if (comboState.listingType === "combo") {
+            setPhase("basics");
+            setStep("combo");
+          } else {
+            setPhase("review");
+            setReviewSection("product_info");
+          }
         } else if (
           vErr.original_price ||
           vErr.discounted_price ||
@@ -1408,13 +1429,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     setSubmitting(true);
     setBanner(null);
     try {
+      const inheritedCombo =
+        state.listingType === "combo"
+          ? inheritComboParentFromItems(state.comboItems || [], state)
+          : {};
       // Always create/update a real Product row for drafts so they appear under
       // Products → Draft and can be edited later.
       const draftState = {
         ...state,
+        ...inheritedCombo,
         vendor_id: vendorId || state.vendor_id,
         name:
-          state.name?.trim() ||
+          (inheritedCombo.name || state.name)?.trim() ||
           state.innerSubCategoryTitle ||
           state.subCategoryTitle ||
           state.categoryTitle ||
@@ -2103,7 +2129,8 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
       <nav className="md:col-span-4 space-y-1">
         {isCombo ? (
           <p className="text-[11px] text-gray-500 px-1 pb-1">
-            Combo review — pricing & name from listed products. Cover image is taken from the first component.
+            Read-only summary. Orders still pick stock from each single product;
+            here you only confirm the combined bundle.
           </p>
         ) : null}
         {sections.map((s) => (
@@ -2155,6 +2182,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "product_info" ? (
+          isCombo ? (
+            <ComboReviewReadonly section="product_info" state={state} />
+          ) : (
           <div className="grid gap-3">
             <Field label="Product Name" required>
               <input className={inputCls} value={state.name} onChange={(e) => patch({ name: e.target.value })} />
@@ -2205,6 +2235,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               ) : null}
             </div>
           </div>
+          )
         ) : null}
 
         {reviewSection === "key_features" ? (
@@ -2281,6 +2312,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "pricing" ? (
+          isCombo ? (
+            <ComboReviewReadonly section="pricing" state={state} />
+          ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             <PricePairFields
               state={state}
@@ -2351,6 +2385,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               />
             </Field>
           </div>
+          )
         ) : null}
 
         {reviewSection === "size_chart" ? (
@@ -2412,6 +2447,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "shipping" ? (
+          isCombo ? (
+            <ComboReviewReadonly section="shipping" state={state} />
+          ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label="Weight (g)" required>
               <input
@@ -2458,6 +2496,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               Ships to Pan India, delivery time, return window ({state.return_window_days ?? 7} days for returnable categories), COD, shipping charges, and replacement rules are applied automatically from admin settings and your category.
             </p>
           </div>
+          )
         ) : null}
       </div>
     </div>

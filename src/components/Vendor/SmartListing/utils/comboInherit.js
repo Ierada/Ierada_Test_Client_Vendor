@@ -20,11 +20,17 @@ export function inheritComboParentFromItems(items = [], state = {}) {
   let mrp = 0;
   let sale = 0;
   let weight = 0;
+  let maxL = 0;
+  let maxW = 0;
+  let maxH = 0;
   for (const it of list) {
     const qty = Math.max(1, Number(it.qty) || 1);
     mrp += (Number(it.original_price) || 0) * qty;
     sale += (Number(it.discounted_price) || 0) * qty;
     weight += (Number(it.package_weight) || 0) * qty;
+    maxL = Math.max(maxL, Number(it.package_length) || 0);
+    maxW = Math.max(maxW, Number(it.package_width) || 0);
+    maxH = Math.max(maxH, Number(it.package_height) || 0);
   }
   // Keep MRP strictly above selling so listing validation does not fail on equal sums
   if (sale > 0 && mrp <= sale) {
@@ -55,8 +61,14 @@ export function inheritComboParentFromItems(items = [], state = {}) {
     subCategoryTitle: first.subCategoryTitle || state.subCategoryTitle || "",
     innerSubCategoryTitle:
       first.innerSubCategoryTitle || state.innerSubCategoryTitle || "",
-    hsn_code: first.hsn_code || state.hsn_code || "",
-    gst: first.gst != null && first.gst !== "" ? first.gst : state.gst || 0,
+    hsn_code:
+      list.map((it) => String(it.hsn_code || "").trim()).find(Boolean) ||
+      state.hsn_code ||
+      "",
+    gst: (() => {
+      const fromItem = list.find((it) => it.gst != null && it.gst !== "");
+      return fromItem ? fromItem.gst : state.gst || 0;
+    })(),
     original_price: mrp > 0 ? String(Math.round(mrp * 100) / 100) : state.original_price || "",
     discounted_price:
       sale > 0 ? String(Math.round(sale * 100) / 100) : state.discounted_price || "",
@@ -64,9 +76,15 @@ export function inheritComboParentFromItems(items = [], state = {}) {
     package_weight:
       weight > 0 ? String(weight) : state.package_weight || "100",
     package_length:
-      first.package_length || state.package_length || "10",
-    package_width: first.package_width || state.package_width || "10",
-    package_height: first.package_height || state.package_height || "10",
+      maxL > 0 ? String(maxL) : first.package_length || state.package_length || "10",
+    package_width:
+      maxW > 0 ? String(maxW) : first.package_width || state.package_width || "10",
+    package_height:
+      maxH > 0 ? String(maxH) : first.package_height || state.package_height || "10",
+    volumetric_weight:
+      maxL > 0 && maxW > 0 && maxH > 0
+        ? Math.round(((maxL * maxW * maxH) / 5000) * 1000) / 1000
+        : state.volumetric_weight || 0,
     shortDescription:
       state.shortDescription ||
       (names.length

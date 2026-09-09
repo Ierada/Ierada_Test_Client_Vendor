@@ -157,12 +157,16 @@ function sizeRowId(s) {
 
 export function validateSmartListingState(state) {
   const errors = {};
-  if (!String(state.name || "").trim()) errors.name = "Product name is required";
 
   if (state.listingType === "combo") {
+    Object.assign(errors, validateComboItems(state.comboItems));
+    if (errors.combo) return errors;
+    if (!String(state.name || "").trim()) {
+      errors.name = "Combo title missing — go back and re-add products";
+    }
     if (!String(state.hsn_code || "").trim()) {
       errors.hsn_code =
-        "HSN is required — add listed components so HSN can inherit";
+        "No HSN on selected products — each component needs an HSN on its listing";
     }
     Object.assign(
       errors,
@@ -173,9 +177,10 @@ export function validateSmartListingState(state) {
     if (state.stock === "" || state.stock == null || !Number.isFinite(stockN) || stockN < 0) {
       errors.stock = "Combo stock is invalid — check component availability";
     }
-    Object.assign(errors, validateComboItems(state.comboItems));
     return errors;
   }
+
+  if (!String(state.name || "").trim()) errors.name = "Product name is required";
 
   if (!String(state.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
   Object.assign(errors, validatePackageDimensions(state));
