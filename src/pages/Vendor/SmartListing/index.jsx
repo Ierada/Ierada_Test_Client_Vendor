@@ -125,7 +125,7 @@ const LISTING_TYPES = [
   {
     id: "single",
     title: "Single Listing",
-    desc: "One price, one SKU — optional combo flag before photos",
+    desc: "One price, one SKU — combo flag on the Images step",
   },
   { id: "color_size", title: "Color & Size Variation", desc: "Color × size matrix" },
   { id: "custom", title: "Custom Variation", desc: "Up to 4 custom attributes" },
@@ -555,7 +555,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (planned === "combo") {
       setBanner({
         type: "info",
-        text: "This slot is planned as Combo — Single + combo checkbox pre-selected. Works for Brand or Generic.",
+        text: "This slot is planned as Combo — Single path; confirm combo on the Images step (Brand or Generic both OK).",
       });
     } else if (planned) {
       setBanner({
@@ -627,7 +627,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       setState((prev) => ({ ...prev, listingType: "combo", comboItems: [] }));
       setBanner({
         type: "info",
-        text: "This slot is planned as Combo — Single + combo checkbox pre-selected. Works for Brand or Generic.",
+        text: "This slot is planned as Combo — Single path; confirm combo on the Images step (Brand or Generic both OK).",
       });
     } else if (planned && !state.listingType) {
       setState((prev) => ({ ...prev, listingType: planned }));
@@ -1836,7 +1836,12 @@ function BasicsPanel({
                 type="button"
                 onClick={() =>
                   t.id === "single"
-                    ? patch({ listingType: "single", comboItems: [] })
+                    ? patch({
+                        // Keep combo flag if already set (e.g. bulk / Images checkbox); card is still Single
+                        listingType:
+                          state.listingType === "combo" ? "combo" : "single",
+                        comboItems: [],
+                      })
                     : patch({ listingType: t.id, comboItems: [] })
                 }
                 className={`text-left rounded-2xl border-2 p-4 transition-colors ${
@@ -1850,29 +1855,6 @@ function BasicsPanel({
               </button>
             ))}
           </div>
-          {state.listingType === "single" || state.listingType === "combo" ? (
-            <label className="mt-3 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={state.listingType === "combo"}
-                onChange={(e) =>
-                  patch({
-                    listingType: e.target.checked ? "combo" : "single",
-                    comboItems: [],
-                  })
-                }
-              />
-              <span>
-                <span className="block text-sm font-medium text-gray-900">
-                  Is this product a combo?
-                </span>
-                <span className="block text-xs text-gray-500 mt-0.5">
-                  Works for Brand and Generic. Same photos + AI as a single listing. When checked, AI title/specs use combo wording (e.g. Combo / Set of). Saved as listing_type=combo so Admin can identify it.
-                </span>
-              </span>
-            </label>
-          ) : null}
           {fieldErrors.listingType ? (
             <p className="text-xs text-red-600">{fieldErrors.listingType}</p>
           ) : null}
@@ -1905,6 +1887,29 @@ function BasicsPanel({
             </p>
           ) : null}
           <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
+          {state.listingType === "single" || state.listingType === "combo" ? (
+            <label className="mt-3 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={state.listingType === "combo"}
+                onChange={(e) =>
+                  patch({
+                    listingType: e.target.checked ? "combo" : "single",
+                    comboItems: [],
+                  })
+                }
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-900">
+                  Is this product a combo?
+                </span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Works for Brand and Generic. Same photos + AI as a single listing. When checked, AI title/specs use combo wording (e.g. Combo / Set of). Saved as listing_type=combo so Admin can identify it.
+                </span>
+              </span>
+            </label>
+          ) : null}
         </>
       ) : null}
 
