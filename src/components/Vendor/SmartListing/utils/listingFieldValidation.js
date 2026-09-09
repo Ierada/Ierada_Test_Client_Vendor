@@ -158,34 +158,17 @@ function sizeRowId(s) {
 export function validateSmartListingState(state) {
   const errors = {};
 
-  if (state.listingType === "combo") {
-    Object.assign(errors, validateComboItems(state.comboItems));
-    if (errors.combo) return errors;
-    if (!String(state.name || "").trim()) {
-      errors.name = "Combo title missing — go back and re-add products";
-    }
-    if (!String(state.hsn_code || "").trim()) {
-      errors.hsn_code =
-        "No HSN on selected products — each component needs an HSN on its listing";
-    }
-    Object.assign(
-      errors,
-      validateMrpAndSelling(state.original_price, state.discounted_price),
-    );
-    // Combo stock is derived; allow 0 (components OOS) but must be a valid number
-    const stockN = toNum(state.stock);
-    if (state.stock === "" || state.stock == null || !Number.isFinite(stockN) || stockN < 0) {
-      errors.stock = "Combo stock is invalid — check component availability";
-    }
-    return errors;
-  }
-
   if (!String(state.name || "").trim()) errors.name = "Product name is required";
 
   if (!String(state.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
   Object.assign(errors, validatePackageDimensions(state));
 
-  if (state.listingType === "single" || !state.listingType) {
+  // Combo is a single-SKU listing flagged as combo (not a BOM of other products)
+  if (
+    state.listingType === "single" ||
+    state.listingType === "combo" ||
+    !state.listingType
+  ) {
     Object.assign(errors, validateSingleListingPricing(state));
   }
 

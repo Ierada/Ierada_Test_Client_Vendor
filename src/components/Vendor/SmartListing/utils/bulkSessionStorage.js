@@ -5,7 +5,7 @@ export const BULK_SESSION_MAX = 1000;
 
 export const BULK_LISTING_TYPES = [
   { id: "single", label: "Single", hint: "One price, one SKU" },
-  { id: "combo", label: "Combo", hint: "Needs existing products first" },
+  { id: "combo", label: "Combo", hint: "Use Single + “Is this product a combo?” checkbox" },
   { id: "color_size", label: "Color × Size", hint: "Variation matrix" },
   { id: "custom", label: "Custom variation", hint: "Up to 4 attributes" },
 ];

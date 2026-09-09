@@ -26,7 +26,6 @@ import {
   firstVariationMatrixError,
   formatPriceValidationToast,
   validateCategoryStepPricing,
-  validateComboItems,
   validateMrpAndSelling,
   validateSingleListingPricing,
   validateSmartListingState,
@@ -63,9 +62,6 @@ import {
 import SearchablePicker from "../../../components/Vendor/SmartListing/SearchablePicker";
 import ColorSizeMatrix from "../../../components/Vendor/SmartListing/ColorSizeMatrix";
 import CustomVariationMatrix from "../../../components/Vendor/SmartListing/CustomVariationMatrix";
-import ComboBuilder from "../../../components/Vendor/SmartListing/ComboBuilder";
-import ComboReviewReadonly from "../../../components/Vendor/SmartListing/ComboReviewReadonly";
-import { inheritComboParentFromItems } from "../../../components/Vendor/SmartListing/utils/comboInherit";
 import LabeledPhotoBoxes from "../../../components/Vendor/SmartListing/LabeledPhotoBoxes";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
 import RequestSpecField from "../../../components/Vendor/SmartListing/RequestSpecField";
@@ -82,14 +78,12 @@ import {
 } from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
 
 function basicsStepsFor(listingType) {
-  // Combo: Brand → Type → pick listed products only (no images / category / AI)
-  if (listingType === "combo") return ["brand", "type", "combo"];
+  // Combo is a flag on the single flow (checkbox) — same steps as single
   const base = ["brand", "type", "images", "category"];
   if (listingType === "color_size" || listingType === "custom") return [...base, "matrix"];
   return base;
 }
 
-/** Prefer front slot, else first uploaded file. */
 function firstListingImageFile(state) {
   const files = state.files || [];
   const labels = state.mediaLabels || [];
@@ -111,7 +105,6 @@ const STEP_LABELS = {
   category: "Category",
   images: "Images",
   matrix: "Variations",
-  combo: "Combo",
   review: "Review",
 };
 
@@ -128,22 +121,20 @@ const REVIEW_SECTIONS = [
   { id: "size_chart", label: "Size Chart" },
 ];
 
-/** Slim read-only review for combo — product list + shipping only */
-const COMBO_REVIEW_SECTIONS = [
-  { id: "pricing", label: "Selected products" },
-  { id: "shipping", label: "Shipping Details" },
-];
-
 const LISTING_TYPES = [
-  { id: "single", title: "Single Listing", desc: "One price, one SKU" },
   {
-    id: "combo",
-    title: "Combo Listing",
-    desc: "Bundle already listed products (Brand or Generic)",
+    id: "single",
+    title: "Single Listing",
+    desc: "One price, one SKU — optional combo flag before photos",
   },
   { id: "color_size", title: "Color & Size Variation", desc: "Color × size matrix" },
   { id: "custom", title: "Custom Variation", desc: "Up to 4 custom attributes" },
 ];
+
+/** Type picker card id (combo is a checkbox on Single, not its own card). */
+function listingTypeCardId(listingType) {
+  return listingType === "combo" ? "single" : listingType;
+}
 
 const emptyState = () => ({
   brandType: "",
@@ -423,17 +414,13 @@ function showPriceErr(liveErr, submitErr, value) {
 function livePriceErr(state, fieldErrors) {
   const isMatrix =
     state.listingType === "color_size" || state.listingType === "custom";
-  const isCombo = state.listingType === "combo";
   const hasMrp = state.original_price !== "" && state.original_price != null;
   const hasSell = state.discounted_price !== "" && state.discounted_price != null;
-  // Combo review is read-only — don't run single-listing stock/SKU live chips
-  const live = isCombo
-    ? {}
-    : isMatrix
-      ? hasMrp || hasSell
-        ? validateMrpAndSelling(state.original_price, state.discounted_price)
-        : {}
-      : validateSingleListingPricing(state);
+  const live = isMatrix
+    ? hasMrp || hasSell
+      ? validateMrpAndSelling(state.original_price, state.discounted_price)
+      : {}
+    : validateSingleListingPricing(state);
   const leaked = isMatrix ? {} : fieldErrors;
   return {
     original_price: showPriceErr(
@@ -554,7 +541,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const session = sessionOverride || getBulkSession();
     const planned = getPlannedType(session);
     const next = emptyState();
-    if (planned) {
+    if (planned === "combo") {
+      next.listingType = "combo";
+      next.comboItems = [];
+    } else if (planned) {
       next.listingType = planned;
     }
     setState(next);
@@ -565,7 +555,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (planned === "combo") {
       setBanner({
         type: "info",
-        text: "This slot is planned as Combo — add products that already exist in your catalog. If they are not ready yet, Skip and do singles/variations first.",
+        text: "This slot is planned as Combo — Single + combo checkbox pre-selected. Works for Brand or Generic.",
       });
     } else if (planned) {
       setBanner({
@@ -633,14 +623,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (!bulkMode || isEditMode || !bulkSession) return;
     if ((bulkSession.completed || 0) > 0) return;
     const planned = getPlannedType(bulkSession);
-    if (planned && !state.listingType) {
+    if (planned === "combo") {
+      setState((prev) => ({ ...prev, listingType: "combo", comboItems: [] }));
+      setBanner({
+        type: "info",
+        text: "This slot is planned as Combo — Single + combo checkbox pre-selected. Works for Brand or Generic.",
+      });
+    } else if (planned && !state.listingType) {
       setState((prev) => ({ ...prev, listingType: planned }));
-      if (planned === "combo") {
-        setBanner({
-          type: "info",
-          text: "This slot is planned as Combo — components must already exist in catalog.",
-        });
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on bulk session start
   }, [bulkMode, isEditMode, bulkSession?.id]);
@@ -653,7 +643,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   useEffect(() => {
     if (phase !== "basics") return;
     if (steps.length && step && !steps.includes(step)) {
-      setStep(steps.includes("combo") ? "combo" : steps[0]);
+      setStep(steps[0]);
     }
   }, [steps, step, phase]);
 
@@ -1170,7 +1160,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       Object.assign(err, validateCategoryStepPricing(state));
     }
     if (step === "images") {
-      const needsParentImages = state.listingType === "single";
+      const needsParentImages =
+        state.listingType === "single" || state.listingType === "combo";
       const hasNew = (state.files || []).some((f) => f instanceof File);
       const hasExisting = (state.existingMedia || []).length > 0;
       if (needsParentImages && !hasNew && !hasExisting) {
@@ -1200,11 +1191,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         if (matrixPriceErr) err.matrix = matrixPriceErr;
       }
     }
-    if (step === "combo") {
-      if ((state.comboItems || []).length < 2) {
-        err.combo = "Add at least 2 listed products to create a combo";
-      } else Object.assign(err, validateComboItems(state.comboItems));
-    }
     setFieldErrors(err);
     return err;
   };
@@ -1213,7 +1199,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const err = validateBasicsStep();
     if (Object.keys(err).length) {
       const text =
-        err.combo ||
         formatPriceValidationToast(err) ||
         firstValidationError(err) ||
         "Please fix the highlighted fields before continuing.";
@@ -1225,13 +1210,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
       setStep(steps[idx + 1]);
-      return;
-    }
-    // Combo: skip AI — refresh inherited sums, then Review (read-only)
-    if (state.listingType === "combo") {
-      patch(inheritComboParentFromItems(state.comboItems || [], state));
-      setPhase("review");
-      setReviewSection("pricing");
       return;
     }
     runAiGenerate();
@@ -1348,36 +1326,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
-      const comboState =
-        state.listingType === "combo"
-          ? {
-              ...state,
-              ...inheritComboParentFromItems(state.comboItems || [], state),
-            }
-          : state;
-      if (state.listingType === "combo") {
-        patch(inheritComboParentFromItems(state.comboItems || [], state));
-      }
-      const vErr = validateSmartListingState(comboState);
+      const vErr = validateSmartListingState(state);
       const hasImages =
-        (comboState.files || []).some((f) => f instanceof File) ||
-        (comboState.existingMedia || []).length > 0;
-      if (comboState.listingType === "single" && !hasImages) {
+        (state.files || []).some((f) => f instanceof File) ||
+        (state.existingMedia || []).length > 0;
+      if (
+        (state.listingType === "single" || state.listingType === "combo") &&
+        !hasImages
+      ) {
         vErr.files = "Add at least one image before submit";
       }
-      // Combo: cover copied from first component on server
       const firstErr = firstValidationError(vErr);
       if (firstErr) {
-        if (vErr.combo || Object.keys(vErr).some((k) => k.startsWith("combo"))) {
+        if (vErr.matrix) {
           setPhase("basics");
-          setStep("combo");
-        } else if (vErr.matrix) {
-          setPhase("basics");
-          setStep(
-            comboState.listingType === "combo"
-              ? "combo"
-              : "matrix",
-          );
+          setStep("matrix");
         } else if (
           vErr.package_length ||
           vErr.package_width ||
@@ -1386,13 +1349,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           setPhase("review");
           setReviewSection("shipping");
         } else if (vErr.name || vErr.hsn_code) {
-          if (comboState.listingType === "combo") {
-            setPhase("basics");
-            setStep("combo");
-          } else {
-            setPhase("review");
-            setReviewSection("product_info");
-          }
+          setPhase("review");
+          setReviewSection("product_info");
         } else if (
           vErr.original_price ||
           vErr.discounted_price ||
@@ -1404,7 +1362,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         }
         const text = vErr.matrix
           ? vErr.matrix
-          : vErr.combo || formatPriceValidationToast(vErr) || firstErr;
+          : formatPriceValidationToast(vErr) || firstErr;
         setFieldErrors(vErr);
         setBanner({ type: "error", text });
         notifyOnFail({ title: "Please check", message: text });
@@ -1412,10 +1370,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       }
     }
 
-    // branded publish blocked client — need approved auth (server also enforces)
+    // Branded publish gate (single + combo)
     if (
       !asDraft &&
-      state.listingType !== "combo" &&
       state.brandType === "branded" &&
       !state.brandAuthApproved
     ) {
@@ -1429,21 +1386,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     setSubmitting(true);
     setBanner(null);
     try {
-      const inheritedCombo =
-        state.listingType === "combo"
-          ? inheritComboParentFromItems(state.comboItems || [], state)
-          : {};
       // Always create/update a real Product row for drafts so they appear under
       // Products → Draft and can be edited later.
       const draftState = {
         ...state,
-        ...inheritedCombo,
         vendor_id: vendorId || state.vendor_id,
         name:
-          (inheritedCombo.name || state.name)?.trim() ||
-          state.innerSubCategoryTitle ||
-          state.subCategoryTitle ||
-          state.categoryTitle ||
+          state.name?.trim() ||
+          [state.brand, state.innerSubCategoryTitle || state.subCategoryTitle || state.categoryTitle]
+            .filter(Boolean)
+            .join(" ") ||
           "Untitled draft",
       };
 
@@ -1509,10 +1461,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         const msg = res?.message || "Could not save listing. Please fix and retry.";
         setBanner({ type: "error", text: msg });
         notifyOnFail(msg);
-        if (state.listingType === "combo" && /combo/i.test(msg)) {
-          setPhase("basics");
-          setStep("combo");
-        }
       }
     } catch (error) {
       const msg = getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally.");
@@ -1730,15 +1678,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                     <Loader2 className="w-4 h-4 animate-spin" /> Writing listing…
                   </>
                 ) : step === steps[steps.length - 1] ? (
-                  state.listingType === "combo" ? (
-                    <>
-                      Next: Review <ArrowRight className="w-4 h-4" />
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
-                    </>
-                  )
+                  <>
+                    <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
+                  </>
                 ) : (
                   <>
                     Next <ArrowRight className="w-4 h-4" />
@@ -1814,8 +1756,8 @@ function BasicsPanel({
                 <div className="font-medium capitalize">{t} Product</div>
                 <p className="text-xs text-gray-500 mt-1">
                   {t === "branded"
-                    ? "Requires brand authorization document"
-                    : "No brand certificate required"}
+                    ? "Requires brand authorization document — also for combo listings"
+                    : "No brand certificate required — also for combo listings"}
                 </p>
               </button>
             ))}
@@ -1829,7 +1771,7 @@ function BasicsPanel({
                 Generic product — no brand certificate needed
               </p>
               <p className="text-xs text-emerald-800">
-                Click Next to choose listing type (Single, Combo, Color & Size, or Custom).
+                Click Next to choose listing type (Single, Color & Size, or Custom).
               </p>
             </div>
           ) : null}
@@ -1892,9 +1834,13 @@ function BasicsPanel({
               <button
                 key={t.id}
                 type="button"
-                onClick={() => patch({ listingType: t.id })}
+                onClick={() =>
+                  t.id === "single"
+                    ? patch({ listingType: "single", comboItems: [] })
+                    : patch({ listingType: t.id, comboItems: [] })
+                }
                 className={`text-left rounded-2xl border-2 p-4 transition-colors ${
-                  state.listingType === t.id
+                  listingTypeCardId(state.listingType) === t.id
                     ? "border-primary-100 bg-orange-50 shadow-sm"
                     : "border-gray-200 hover:border-orange-200"
                 }`}
@@ -1904,6 +1850,29 @@ function BasicsPanel({
               </button>
             ))}
           </div>
+          {state.listingType === "single" || state.listingType === "combo" ? (
+            <label className="mt-3 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={state.listingType === "combo"}
+                onChange={(e) =>
+                  patch({
+                    listingType: e.target.checked ? "combo" : "single",
+                    comboItems: [],
+                  })
+                }
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-900">
+                  Is this product a combo?
+                </span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Works for Brand and Generic. Same photos + AI as a single listing. When checked, AI title/specs use combo wording (e.g. Combo / Set of). Saved as listing_type=combo so Admin can identify it.
+                </span>
+              </span>
+            </label>
+          ) : null}
           {fieldErrors.listingType ? (
             <p className="text-xs text-red-600">{fieldErrors.listingType}</p>
           ) : null}
@@ -1919,15 +1888,6 @@ function BasicsPanel({
           )}
           {fieldErrors.matrix ? (
             <p className="text-xs text-red-600">{fieldErrors.matrix}</p>
-          ) : null}
-        </>
-      ) : null}
-
-      {step === "combo" ? (
-        <>
-          <ComboBuilder state={state} patch={patch} vendorId={vendorId} />
-          {fieldErrors.combo ? (
-            <p className="text-xs text-red-600">{fieldErrors.combo}</p>
           ) : null}
         </>
       ) : null}
@@ -2048,7 +2008,7 @@ function BasicsPanel({
                 sellErr={sellErr}
               />
             </div>
-            {state.listingType === "single" ? (
+            {state.listingType === "single" || state.listingType === "combo" ? (
               <SingleSizeField state={state} patch={patch} />
             ) : null}
           </div>
@@ -2114,26 +2074,13 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
   const priceErr = livePriceErr(state, fieldErrors);
-  const isCombo = state.listingType === "combo";
-  const sections = isCombo ? COMBO_REVIEW_SECTIONS : REVIEW_SECTIONS;
-
   useEffect(() => {
     if (reviewSection === "compliance") setReviewSection("shipping");
-    if (isCombo && !sections.some((s) => s.id === reviewSection)) {
-      setReviewSection("pricing");
-    }
-  }, [reviewSection, setReviewSection, isCombo]);
-
+  }, [reviewSection, setReviewSection]);
   return (
     <div className="grid md:grid-cols-12 gap-4">
       <nav className="md:col-span-4 space-y-1">
-        {isCombo ? (
-          <p className="text-[11px] text-gray-500 px-1 pb-1">
-            Read-only summary. Orders still pick stock from each single product;
-            here you only confirm the combined bundle.
-          </p>
-        ) : null}
-        {sections.map((s) => (
+        {REVIEW_SECTIONS.map((s) => (
           <button
             key={s.id}
             type="button"
@@ -2149,13 +2096,12 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               {dirty(s.id) ? (
                 <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">Edited</span>
               ) : null}
-              {!isCombo && ai(s.id) ? (
+              {ai(s.id) ? (
                 <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">AI</span>
               ) : null}
             </span>
           </button>
         ))}
-        {!isCombo ? (
         <button
           type="button"
           disabled={aiGenerating}
@@ -2172,7 +2118,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             </>
           )}
         </button>
-        ) : null}
       </nav>
       <div className="md:col-span-8 bg-white rounded-2xl border p-5 space-y-4">
         {ai(reviewSection) ? (
@@ -2182,9 +2127,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "product_info" ? (
-          isCombo ? (
-            <ComboReviewReadonly section="product_info" state={state} />
-          ) : (
           <div className="grid gap-3">
             <Field label="Product Name" required>
               <input className={inputCls} value={state.name} onChange={(e) => patch({ name: e.target.value })} />
@@ -2235,7 +2177,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               ) : null}
             </div>
           </div>
-          )
         ) : null}
 
         {reviewSection === "key_features" ? (
@@ -2312,9 +2253,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "pricing" ? (
-          isCombo ? (
-            <ComboReviewReadonly section="pricing" state={state} />
-          ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             <PricePairFields
               state={state}
@@ -2357,7 +2295,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 onChange={(e) => patch({ min_order_qty: e.target.value })}
               />
             </Field>
-            {state.listingType === "single" ? (
+            {state.listingType === "single" || state.listingType === "combo" ? (
               <SingleSizeField state={state} patch={patch} />
             ) : null}
             <Field label="Condition">
@@ -2385,7 +2323,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               />
             </Field>
           </div>
-          )
         ) : null}
 
         {reviewSection === "size_chart" ? (
@@ -2447,9 +2384,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "shipping" ? (
-          isCombo ? (
-            <ComboReviewReadonly section="shipping" state={state} />
-          ) : (
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label="Weight (g)" required>
               <input
@@ -2496,7 +2430,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               Ships to Pan India, delivery time, return window ({state.return_window_days ?? 7} days for returnable categories), COD, shipping charges, and replacement rules are applied automatically from admin settings and your category.
             </p>
           </div>
-          )
         ) : null}
       </div>
     </div>

@@ -97,18 +97,17 @@ function appendFilesAndMedia(fd, state) {
     }
   }
 
+  // Legacy BOM only: send combo_items when present. Flag-only combos send [].
   if (state.listingType === "combo") {
-    fd.append(
-      "combo_items",
-      JSON.stringify(
-        (state.comboItems || []).map((c) => ({
-          combo_product_id: Number(c.combo_product_id),
-          variation_id: c.variation_id ? Number(c.variation_id) : null,
-          qty: Math.max(1, Number(c.qty) || 1),
-          discount_percentage: c.discount_percentage ?? null,
-        })),
-      ),
-    );
+    const lines = (state.comboItems || [])
+      .filter((c) => c?.combo_product_id)
+      .map((c) => ({
+        combo_product_id: Number(c.combo_product_id),
+        variation_id: c.variation_id ? Number(c.variation_id) : null,
+        qty: Math.max(1, Number(c.qty) || 1),
+        discount_percentage: c.discount_percentage ?? null,
+      }));
+    fd.append("combo_items", JSON.stringify(lines));
   }
 
   allFiles.forEach((file) => fd.append("files", file));
