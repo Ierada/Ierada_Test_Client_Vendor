@@ -1,7 +1,9 @@
 import React from "react";
 
 const ProductCell = ({ product }) => {
-  const baseWebsiteUrl = import.meta.env.VITE_BASE_WEBSITE_URL || 'https://ierada.com';
+  const baseWebsiteUrl =
+    import.meta.env.VITE_BASE_WEBSITE_URL ||
+    "https://internal-testing.ierada.com";
   const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
   const productIdentifier = product?.slug || product?.productSlug || product?.name?.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || product?.productId || product?.id || product?._id || product?.custom_id;
 
