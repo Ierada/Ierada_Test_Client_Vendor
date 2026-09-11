@@ -38,11 +38,18 @@ export const getApiErrorMessage = (
     return "File is too large. Compress images or upload in smaller batches via Media Manager.";
   }
 
-  // No response at all — network drop / timeout. Never surface the raw axios
-  // message ("Network Error", "ECONNABORTED", etc.) to the user.
+  // No response at all — network drop / timeout / local validation Error.
   if (!error?.response) {
     if (error?.code === "ECONNABORTED" || /timeout/i.test(String(error?.message))) {
       return "Request timed out. Please check your connection and try again.";
+    }
+    const clientMsg = String(error?.message || "").trim();
+    if (
+      clientMsg &&
+      !isUnsafeMessage(clientMsg) &&
+      !/network error|axioserror|failed to fetch/i.test(clientMsg)
+    ) {
+      return clientMsg;
     }
     return "Unable to reach the server. Please check your internet connection and try again.";
   }
