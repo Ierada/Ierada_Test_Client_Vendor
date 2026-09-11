@@ -47,7 +47,7 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
   const unreadCount = notifications?.filter((n) => n.unread).length;
 
   return (
-    <header className="lg:ml-20 h-20 fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 transition-all duration-300">
+    <header className="lg:left-[72px] h-20 fixed top-0 left-0 right-0 z-20 bg-[#FFF3EF] border-b border-[#F3D9CF]">
       <div className="flex items-center justify-end h-full px-6">
         {/* Menu Toggle Button - Only visible on mobile */}
         <button
