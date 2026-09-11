@@ -35,6 +35,11 @@ export function isVendorProductWizardPath(pathname) {
   );
 }
 
+/** Smart Listing add/edit: full-bleed canvas (no top header / max-width). */
+export function isSmartListingCanvasPath(pathname) {
+  return /^\/product\/(add|edit)(\/|$)/.test(pathname || "");
+}
+
 export function isVendorProductSectionPath(pathname) {
   const path = pathname || "";
   return path.startsWith("/product") || path.startsWith("/bulk-upload");
