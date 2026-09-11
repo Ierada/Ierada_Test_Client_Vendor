@@ -5,10 +5,10 @@ export function SectionPills({ hubPath, hubLabel = "Overview", items = [] }) {
   const path = location.pathname;
 
   const pillClass = (active) =>
-    `px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+    `px-4 py-1.5 rounded-full text-[13px] font-medium border transition-colors ${
       active
-        ? "bg-[#F47954] text-white border-[#F47954]"
-        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+        ? "bg-[#F56C43] text-white border-[#F56C43]"
+        : "bg-white text-slate-700 border-[#E5E7EB] hover:bg-slate-50"
     }`;
 
   const itemActive = (itemPath) => {
@@ -22,7 +22,7 @@ export function SectionPills({ hubPath, hubLabel = "Overview", items = [] }) {
   };
 
   return (
-    <nav className="flex flex-wrap gap-2 mb-4 px-4 pt-4">
+    <nav className="sticky top-20 z-30 flex flex-wrap gap-2 bg-[#F5F6F8] px-4 pb-3 pt-3">
       <Link to={hubPath} className={pillClass(path === hubPath)}>
         {hubLabel}
       </Link>

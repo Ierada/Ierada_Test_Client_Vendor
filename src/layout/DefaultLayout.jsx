@@ -8,8 +8,6 @@ import {
   VENDOR_PRODUCT_HUB_PATH,
   VENDOR_PRODUCT_SECTION_ITEMS,
   isVendorProductSectionPath,
-  isVendorProductWizardPath,
-  isSmartListingCanvasPath,
 } from "../config/productSection";
 
 const VendorLayout = () => {
@@ -19,7 +17,6 @@ const VendorLayout = () => {
     typeof window !== "undefined" ? window.innerWidth >= 1024 : true,
   );
   const location = useLocation();
-  const smartListingCanvas = isSmartListingCanvasPath(location.pathname);
   const expanded = isLg ? railHover : sidebarOpen;
 
   useEffect(() => {
@@ -46,7 +43,7 @@ const VendorLayout = () => {
           if (isLg) setRailHover(true);
         }}
         onMouseLeave={() => setRailHover(false)}
-        className={`fixed inset-y-0 left-0 z-40 bg-[#FFF3EF] border-r border-[#F3D9CF] overflow-hidden transition-[width,transform,box-shadow] duration-200 ease-out ${
+        className={`fixed inset-y-0 left-0 z-50 isolate bg-[#FFF3EF] border-r border-[#F3D9CF] overflow-hidden transition-[width,transform,box-shadow] duration-200 ease-out ${
           isLg || sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } ${expanded ? "w-64 shadow-[8px_0_32px_rgba(26,43,72,0.10)]" : "w-[72px]"}`}
       >
@@ -58,18 +55,13 @@ const VendorLayout = () => {
       </div>
 
       <div
-        className={`relative flex flex-1 flex-col min-w-0 lg:pl-[72px] ${
-          smartListingCanvas ? "bg-[#F8FAFC]" : "bg-[#FFF3EF]"
-        }`}
+        className="relative z-0 flex flex-1 flex-col min-w-0 lg:ml-[72px] bg-[#F5F6F8]"
       >
-        {smartListingCanvas ? null : (
-          <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
-        )}
+        <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
-        <main className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-20"}`}>
-          <div className={smartListingCanvas ? "" : "mx-auto max-w-screen-2xl"}>
-            {isVendorProductSectionPath(location.pathname) &&
-            !isVendorProductWizardPath(location.pathname) ? (
+        <main className="flex-grow min-w-0 mt-20">
+          <div className="mx-auto max-w-screen-2xl">
+            {isVendorProductSectionPath(location.pathname) ? (
               <SectionPills
                 hubPath={VENDOR_PRODUCT_HUB_PATH}
                 hubLabel="Products"
