@@ -55,3 +55,15 @@ export async function generateListingAiDraft(payload) {
     throw error.response?.data || error;
   }
 }
+
+/** 3D studio shot from the first listing photo */
+export async function generateListing3dImage(payload) {
+  try {
+    const res = await apiClient.post("/ai/listing-3d-image", payload, {
+      timeout: 180000,
+    });
+    return res.data;
+  } catch (error) {
+    throw error.response?.data || error;
+  }
+}

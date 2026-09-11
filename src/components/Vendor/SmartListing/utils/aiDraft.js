@@ -1,5 +1,6 @@
 import { scrubRestrictedText } from "./restrictedClaims";
 import { fileToSuggestPayload } from "./fileToSuggestPayload";
+import { inferLocalSizeChart, sellerSizeChartPayload } from "./sizeChart";
 
 const PLATFORM_BRAND_RE = /\bierada\b/gi;
 
@@ -78,17 +79,22 @@ function buildDefaultProductName(state) {
 function polishProductName(name, state, brand) {
   let n = stripBrandFromName(name, brand);
   if (!n) n = buildDefaultProductName(state);
-  n = titleCaseWords(n.replace(/\s*[-–—]\s*/g, " - "));
-  const colors = resolveListingColors(state).map(titleCaseWords);
-  if (colors.length === 1 && !new RegExp(colors[0], "i").test(n)) {
-    n = `${n} - ${colors[0]}`;
-  } else if (colors.length > 1 && colors.length <= 3) {
-    const colorPart = colors.join(" / ");
-    if (!colors.some((c) => new RegExp(c, "i").test(n))) {
-      n = `${n} (${colorPart})`;
+  n = n.replace(/\s{2,}/g, " ").trim();
+  const fallback = buildDefaultProductName(state);
+  const looksGeneric =
+    n.length < 28 || n.toLowerCase() === String(fallback).toLowerCase();
+  if (looksGeneric) {
+    const colors = resolveListingColors(state);
+    if (colors.length === 1 && !new RegExp(colors[0], "i").test(n)) {
+      n = `${n} - ${colors[0]}`;
+    } else if (colors.length > 1 && colors.length <= 3) {
+      const colorPart = colors.join(" / ");
+      if (!colors.some((c) => new RegExp(c, "i").test(n))) {
+        n = `${n} (${colorPart})`;
+      }
     }
   }
-  return scrubRestrictedText(n.replace(/\s{2,}/g, " ").trim());
+  return scrubRestrictedText(n);
 }
 
 function splitSentences(text) {
@@ -330,6 +336,7 @@ export function localAiDraft(state, vendorContext = {}) {
       shipsFrom: state.shipsFrom || "India",
       shipsTo: state.shipsTo || "Pan India",
       deliveryTimeText: state.deliveryTimeText || "3–7 business days",
+      sizeChart: inferLocalSizeChart(state),
       aiGeneratedSections: [
         "product_info",
         "key_features",
@@ -338,6 +345,7 @@ export function localAiDraft(state, vendorContext = {}) {
         "benefits",
         "seo",
         "shipping",
+        "size_chart",
       ],
     },
     vendorContext,
@@ -360,6 +368,7 @@ const SECTION_FIELDS = {
     "warrantyType",
     "warrantyPeriod",
   ],
+  size_chart: ["sizeChart"],
 };
 
 function scrubDraftStrings(draft) {
@@ -464,12 +473,16 @@ function mediaLabelNames(state) {
 }
 
 function sizeNamesFromState(state) {
-  return (state.colorGroups || [])
+  const fromGroups = (state.colorGroups || [])
     .flatMap((g) =>
       (g.sizes || []).map((s) => s.size_name || s.sizeName || s.label || ""),
     )
     .map((x) => String(x).trim())
     .filter(Boolean);
+  const fromLabels = (Array.isArray(state.size_labels) ? state.size_labels : [])
+    .map((x) => String(x).trim())
+    .filter(Boolean);
+  return [...new Set([...fromGroups, ...fromLabels])];
 }
 
 function customAttributeLines(state) {
@@ -517,6 +530,7 @@ export async function buildListingAiPayload(state, vendorContext = {}) {
     mediaLabels: mediaLabelNames(state),
     colorNames: resolveListingColors(state),
     sizeNames: sizeNamesFromState(state),
+    ...sellerSizeChartPayload(state),
     customAttributes: customAttributeLines(state),
     comboItemNames: comboItemNames(state),
     vendorShopName:

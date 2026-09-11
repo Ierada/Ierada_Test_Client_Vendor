@@ -1,4 +1,10 @@
 import { getProductById } from "../../../../services/api.product";
+import {
+  colorSizeMediaKey,
+  deriveCustomAttrsFromRows,
+  selectedVariationColorIds,
+} from "./variationHelpers";
+import { listingTypeKey } from "./listingMediaByType";
 
 const PHOTO_SLOT_IDS = [
   "front",
@@ -79,21 +85,48 @@ function mediaLabelsFromExisting(existingMedia) {
   return { existingMedia: ordered, mediaLabels: labels };
 }
 
-function hydrateColorGroups(variations) {
+function hydrateColorGroups(variations, variantStatus = {}) {
   return (variations || []).map((g) => ({
     color_id: g.color_id || g.color?.id || "",
     color_name: g.color?.name || g.color_name || "",
     media: [],
     existingMedia: normalizeExistingMedia(g.media),
-    sizes: (g.sizes || []).map((s) => ({
-      size_id: s.size_id || s.size?.id || "",
-      stock: s.stock ?? "",
-      original_price: s.original_price ?? "",
-      discounted_price: s.discounted_price ?? "",
-      sku: s.sku || "",
-      barcode: s.barcode || "",
-    })),
+    sizes: (g.sizes || []).map((s) => {
+      const colorId = g.color_id || g.color?.id || "";
+      const sizeId = s.size_id || s.size?.id || "";
+      const metaStatus = variantStatus?.[`${colorId}:${sizeId}`];
+      const status =
+        s.status ||
+        metaStatus ||
+        (s.enabled === false ? "out_of_stock" : "in_stock");
+      return {
+        size_id: sizeId,
+        size: s.size || { id: sizeId, name: s.size?.name || "" },
+        stock: s.stock ?? "",
+        original_price: s.original_price ?? "",
+        discounted_price: s.discounted_price ?? "",
+        sku: s.sku || "",
+        barcode: s.barcode || "",
+        status,
+        enabled: s.enabled !== false && status !== "out_of_stock",
+      };
+    }),
   }));
+}
+
+function hydrateSizeMedia(raw) {
+  const out = {};
+  (Array.isArray(raw) ? raw : []).forEach((s) => {
+    const sizeId = s?.size_id != null && s.size_id !== "" ? String(s.size_id) : "";
+    const colorId = s?.color_id != null && s.color_id !== "" ? String(s.color_id) : "";
+    const key = colorId && sizeId ? colorSizeMediaKey(colorId, sizeId) : colorId || sizeId;
+    if (!key) return;
+    out[key] = {
+      media: [],
+      existingMedia: normalizeExistingMedia(s.existing || s.existingMedia || s.media),
+    };
+  });
+  return out;
 }
 
 function hydrateCustomRows(variations) {
@@ -107,8 +140,36 @@ function hydrateCustomRows(variations) {
     barcode: r.barcode || "",
     media: [],
     existingMedia: normalizeExistingMedia(r.media),
-    enabled: true,
+    enabled: r.enabled !== false,
   }));
+}
+
+function hydrateCustomValueMedia(raw) {
+  const out = {};
+  (Array.isArray(raw) ? raw : []).forEach((item) => {
+    const key = item?.key;
+    if (!key) return;
+    out[key] = {
+      media: [],
+      existingMedia: normalizeExistingMedia(item.existing || item.existingMedia || item.media),
+    };
+  });
+  return out;
+}
+
+function hydrateCustomAttrs(meta, rows) {
+  if (Array.isArray(meta?.custom_attrs) && meta.custom_attrs.length) {
+    return meta.custom_attrs.map((a) => {
+      const values = Array.isArray(a.values) ? a.values.filter(Boolean) : [];
+      return {
+        attribute_id: a.attribute_id || "",
+        name: a.name || "",
+        values,
+        valuesText: values.join(", "),
+      };
+    });
+  }
+  return deriveCustomAttrsFromRows(rows);
 }
 
 /**
@@ -127,13 +188,17 @@ export async function hydrateSmartListingFromProduct(productId) {
     p.media || p.ProductImages || p.product_images || p.images || [],
   );
   const { existingMedia, mediaLabels } = mediaLabelsFromExisting(rawMedia);
+  const customRows = listingType === "custom" ? hydrateCustomRows(variations) : [];
 
   return {
     productId: p.id,
     vendor_id: p.vendor_id,
     brandType: p.brand_type || "generic",
     brand: p.brand || "",
-    listingType,
+    listingType: listingType === "combo" ? "single" : listingType,
+    isCombo:
+      (listingType === "combo" || listingType === "single") &&
+      (listingType === "combo" || !!meta.is_combo),
     category_id: p.category_id || "",
     sub_category_id: p.sub_category_id || "",
     inner_sub_category_id: p.inner_sub_category_id || "",
@@ -159,6 +224,18 @@ export async function hydrateSmartListingFromProduct(productId) {
     min_order_qty: meta.min_order_qty || 1,
     product_condition: meta.product_condition || "New",
     size_id: meta.size_id || "",
+    size_ids: Array.isArray(meta.size_ids)
+      ? meta.size_ids.map(String)
+      : meta.size_id
+        ? [String(meta.size_id)]
+        : [],
+    color_id: meta.color_id || "",
+    color_ids: selectedVariationColorIds({
+      color_ids: Array.isArray(meta.color_ids) ? meta.color_ids.map(String) : [],
+      color_id: meta.color_id || "",
+      colorGroups: listingType === "color_size" ? hydrateColorGroups(variations, meta.variant_status) : [],
+    }),
+    color_name: meta.color_name || "",
     warrantyType: meta.warranty_type || "",
     warrantyPeriod: meta.warranty_period || "",
     warranty_info: p.warranty_info || "",
@@ -186,21 +263,39 @@ export async function hydrateSmartListingFromProduct(productId) {
     files: [],
     mediaLabels,
     deleteMediaIds: [],
-    colorGroups: listingType === "color_size" ? hydrateColorGroups(variations) : [],
-    customRows: listingType === "custom" ? hydrateCustomRows(variations) : [],
-    comboItems: Array.isArray(p.comboItems)
-      ? p.comboItems.map((c) => ({
-          combo_product_id: c.combo_product_id,
-          name: c.name || "",
-          sku: c.sku || "",
-          variation_id: c.variation_id || "",
-          variations: Array.isArray(c.variations) ? c.variations : [],
-          qty: c.qty || 1,
-          available_stock: c.available_stock ?? null,
-          discount_percentage: c.discount_percentage ?? null,
-        }))
-      : [],
+    mediaByListingType: {
+      ...(meta.media_by_listing_type && typeof meta.media_by_listing_type === "object"
+        ? meta.media_by_listing_type
+        : {}),
+      [listingTypeKey(listingType)]: {
+        files: [],
+        mediaLabels,
+        existingMedia,
+        deleteMediaIds: [],
+        coverPreviewUrl: "",
+      },
+    },
+    colorGroups: listingType === "color_size" ? hydrateColorGroups(variations, meta.variant_status) : [],
+    sizeMedia: listingType === "color_size" ? hydrateSizeMedia(meta.size_media) : {},
+    colorSizeAvailability:
+      listingType === "color_size" && meta.color_size_availability && typeof meta.color_size_availability === "object"
+        ? meta.color_size_availability
+        : {},
+    customRows,
+    customAttrs: listingType === "custom" ? hydrateCustomAttrs(meta, customRows) : [],
+    customValueMedia: listingType === "custom" ? hydrateCustomValueMedia(meta.custom_value_media) : {},
+    comboItems: Array.isArray(p.comboItems) ? p.comboItems : [],
     existingMedia,
     sizeChartUrl: p.size_chart_image || p.inner_subcategory?.size_chart_image || null,
+    sizeChart: meta.sizeChart || {
+      applicable: false,
+      status: "not_applicable",
+      measurementType: "",
+      unit: "",
+      columns: [],
+      rows: [],
+      note: "",
+    },
+    size_labels: Array.isArray(meta.size_labels) ? meta.size_labels : [],
   };
 }

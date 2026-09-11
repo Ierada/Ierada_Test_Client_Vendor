@@ -2,16 +2,17 @@ import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 import { getApiErrorMessage } from "../utils/apiError";
 
-export const getAllSizes = async (query) => {
+export const getAllSizes = async (query, { silent = false } = {}) => {
   try {
     const response = await apiClient.get("/size/get", { params: query });
     if (response.data.status === 1) {
       return response.data;
-    } else {
+    } else if (!silent) {
       notifyOnFail(response.data.message);
     }
+    return response.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error fetching sizes"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error fetching sizes"));
     console.error(error);
   }
 };

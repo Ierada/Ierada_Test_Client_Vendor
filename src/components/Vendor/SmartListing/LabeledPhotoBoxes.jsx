@@ -2,6 +2,7 @@ import React from "react";
 import { ImagePlus, X } from "lucide-react";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { LISTING_IMAGE_MAX_BYTES } from "./utils/chunkUploadFiles";
+import { resolveMediaUrl } from "./utils/listingMediaCache";
 
 export const PHOTO_SLOTS = [
   { id: "front", label: "Front", required: true },
@@ -16,7 +17,7 @@ export const PHOTO_SLOTS = [
 
 function slotPreview(hit) {
   if (hit?.file instanceof File) return URL.createObjectURL(hit.file);
-  if (hit?.existing?.url) return hit.existing.url;
+  if (hit?.existing?.url) return resolveMediaUrl(hit.existing.url);
   return null;
 }
 

@@ -1,4 +1,9 @@
-import apiClient from "../axios.config";
+export const previewListingSettlement = async (payload) => {
+  const response = await apiClient.post("/settlement/listing-preview", payload, {
+    timeout: 30000,
+  });
+  return response.data;
+};
 
 // Get all settlements for a vendor
 export const getSettlements = async (params = {}) => {

@@ -74,8 +74,8 @@ export default function ColorSizeMatrix({ state, patch }) {
       setLoading(true);
       try {
         const [cRes, sRes] = await Promise.all([
-          getAllColors(),
-          getAllSizes(sizeQueryFromListing(state)),
+          getAllColors({ silent: true }),
+          getAllSizes(sizeQueryFromListing(state), { silent: true }),
         ]);
         if (cancelled) return;
         setColors(cRes?.data || []);

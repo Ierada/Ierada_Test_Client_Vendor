@@ -1,11 +1,11 @@
 "use strict";
 
 /**
- * Cartesian helper for custom attrs (max 4).
+ * Cartesian helper for custom attrs.
  * attrs: [{ attribute_id, name, values: string[] }]
  */
 export function cartesianCustomRows(attrs) {
-  const active = (attrs || []).filter((a) => a.attribute_id && (a.values || []).length);
+  const active = (attrs || []).filter((a) => (a.attribute_id || a.name) && (a.values || []).length);
   if (!active.length) return [];
   let rows = [{}];
   for (const attr of active) {
@@ -17,7 +17,7 @@ export function cartesianCustomRows(attrs) {
           attributes: [
             ...(row.attributes || []),
             {
-              attribute_id: Number(attr.attribute_id),
+              attribute_id: attr.attribute_id ? Number(attr.attribute_id) : null,
               attribute_name: attr.name || "",
               attribute_value: String(value).trim(),
             },
@@ -48,6 +48,7 @@ export function buildColorSizeRows(colorGroups) {
     (g.sizes || []).forEach((s, si) => {
       const sizeId = s.size_id || s.size?.id;
       if (!sizeId) return;
+      if (s.enabled === false || s.status === "out_of_stock") return;
       rows.push({
         color_id: Number(colorId),
         size_id: Number(sizeId),
@@ -196,8 +197,8 @@ function buildPrefillColorGroups(sizeList, state) {
   };
   return [
     {
-      color_id: existing.color_id || existing.color?.id || "",
-      color_name: existing.color_name || existing.color?.name || "",
+      color_id: existing.color_id || existing.color?.id || state.color_id || "",
+      color_name: existing.color_name || existing.color?.name || state.color_name || "",
       media: existing.media || [],
       existingMedia: existing.existingMedia || [],
       sizes: sizeList.map((z) => ({
@@ -213,16 +214,68 @@ function buildPrefillColorGroups(sizeList, state) {
   ];
 }
 
-/**
- * Auto-select category sizes into an empty Color × Size matrix.
- * Returns colorGroups, or null when listing type / existing size_ids block it.
- */
+export function listingSizeIds(state) {
+  const fromList = Array.isArray(state?.size_ids) ? state.size_ids : [];
+  if (fromList.length) return fromList.map((id) => String(id)).filter(Boolean);
+  if (state?.size_id) return [String(state.size_id)];
+  return [];
+}
+
+/** Keep / seed Color × Size rows from the sizes picked under MRP. */
+export function applySelectedSizeIdsToColorGroups(colorGroups, sizeIds, state = {}) {
+  const ids = (sizeIds || []).map((id) => String(id)).filter(Boolean);
+  if (!ids.length) return colorGroups;
+  const defaults = {
+    original_price: state.original_price ?? "",
+    discounted_price: state.discounted_price ?? "",
+    stock: state.stock ?? "",
+  };
+  const groups =
+    colorGroups?.length
+      ? colorGroups
+      : [
+          {
+            color_id: state.color_id || "",
+            color_name: state.color_name || "",
+            media: [],
+            existingMedia: [],
+            sizes: [],
+          },
+        ];
+  return groups.map((g) => {
+    const byId = new Map(
+      (g.sizes || []).map((s) => [String(s.size_id || s.size?.id || ""), s]),
+    );
+    return {
+      ...g,
+      sizes: ids.map((id) => {
+        const existing = byId.get(id);
+        if (existing) return existing;
+        return {
+          size_id: id,
+          stock: defaults.stock,
+          original_price: defaults.original_price,
+          discounted_price: defaults.discounted_price,
+          sku: "",
+          barcode: "",
+        };
+      }),
+    };
+  });
+}
+
 export function prefillColorGroupsFromCategorySizes(sizes, state, meta) {
   if (state?.listingType !== "color_size") return null;
   if (hasRealSizeRow(state.colorGroups)) return null;
 
   const split = splitContextualSizes(sizes, meta, state);
+  const selected = listingSizeIds(state);
   let toUse = split.contextual;
+  if (selected.length) {
+    const byId = new Map(split.all.map((s) => [String(s.id), s]));
+    const picked = selected.map((id) => byId.get(id)).filter(Boolean);
+    if (picked.length) toUse = picked;
+  }
   if (!toUse.length) {
     const fallback = findFreeSizeFallback(split.all);
     if (fallback) toUse = [fallback];
@@ -292,4 +345,437 @@ export function sizePickerOptions(split) {
     ...contextual.map((z) => ({ id: z.id, label: z.name, hint: ctxHint })),
     ...rest.map((z) => ({ id: z.id, label: z.name, hint: otherHint })),
   ];
+}
+
+const COLOR_SKU_SHORT = {
+  black: "BLK",
+  white: "WHT",
+  blue: "BLU",
+  navy: "NVY",
+  olive: "OLV",
+  green: "GRN",
+  red: "RED",
+  pink: "PNK",
+  grey: "GRY",
+  gray: "GRY",
+  yellow: "YLW",
+  beige: "BGE",
+  brown: "BRN",
+  orange: "ORG",
+  purple: "PPL",
+  maroon: "MRN",
+};
+
+function skuToken(name, max = 3) {
+  const raw = String(name || "").trim();
+  const mapped = COLOR_SKU_SHORT[raw.toLowerCase()];
+  if (mapped) return mapped;
+  const compact = raw.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (!compact) return "";
+  if (compact.length <= max) return compact;
+  return compact.slice(0, max);
+}
+
+export function suggestColorSizeSku(baseSku, colorName, sizeName) {
+  const base = String(baseSku || "SKU")
+    .replace(/\s+/g, "")
+    .toUpperCase()
+    .slice(0, 12) || "SKU";
+  const parts = [skuToken(colorName, 3), skuToken(sizeName, 4)].filter(Boolean);
+  return parts.length ? `${base}-${parts.join("-")}` : base;
+}
+
+function groupColorId(g) {
+  return g?.color_id || g?.color?.id || "";
+}
+
+function rowSizeId(s) {
+  return s?.size_id || s?.size?.id || "";
+}
+
+function rowEnabled(s) {
+  return s?.enabled !== false && s?.status !== "out_of_stock";
+}
+
+export function sizeIdsFromColorGroups(colorGroups) {
+  const ids = [];
+  const seen = new Set();
+  for (const g of colorGroups || []) {
+    for (const s of g.sizes || []) {
+      const id = String(rowSizeId(s));
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+/** Color×size image bucket key, aligned with Variant Images by Color order. */
+export function colorSizeMediaKey(colorId, sizeId) {
+  return `${String(colorId)}:${String(sizeId)}`;
+}
+
+export function parseColorSizeMediaKey(key) {
+  const raw = String(key || "");
+  const sep = raw.indexOf(":");
+  if (sep <= 0) return { colorId: "", sizeId: raw };
+  return { colorId: raw.slice(0, sep), sizeId: raw.slice(sep + 1) };
+}
+
+export function availableSizeIdsForColor(colorId, sizeIds, availability) {
+  const ids = (sizeIds || []).map(String).filter(Boolean);
+  const picked = availability?.[String(colorId)];
+  if (!Array.isArray(picked) || !picked.length) return ids;
+  const allow = new Set(picked.map(String));
+  return ids.filter((id) => allow.has(id));
+}
+
+/** New / unsaved colors offer every selected size until the seller turns one off. */
+export function withDefaultColorAvailability(availability, colorIds, sizeIds) {
+  const ids = (sizeIds || []).map(String).filter(Boolean);
+  const next = { ...(availability || {}) };
+  let changed = false;
+  for (const colorId of colorIds || []) {
+    const key = String(colorId);
+    if (!key) continue;
+    if (!Array.isArray(next[key]) || next[key].length === 0) {
+      next[key] = [...ids];
+      changed = true;
+    }
+  }
+  return changed ? next : availability || {};
+}
+
+export function toggleColorSizeAvailability(availability, colorId, sizeId, sizeIds) {
+  const current = availableSizeIdsForColor(colorId, sizeIds, availability);
+  const sid = String(sizeId);
+  const next = current.includes(sid) ? current.filter((id) => id !== sid) : [...current, sid];
+  return {
+    ...(availability || {}),
+    [String(colorId)]: next,
+  };
+}
+
+export function sizeMediaGroupingKey(key) {
+  const raw = String(key || "");
+  if (!raw) return "";
+  if (raw.includes(":")) {
+    const { colorId, sizeId } = parseColorSizeMediaKey(raw);
+    if (colorId && sizeId) return `size:${colorId}:${sizeId}`;
+  }
+  return `sizes:${raw}`;
+}
+
+/** Persist prefilled matrix sizes onto the category Size picker. */
+export function listingPatchFromPrefillGroups(groups, state = {}) {
+  if (!groups) return {};
+  const existing = listingSizeIds(state);
+  const size_ids = existing.length ? existing : sizeIdsFromColorGroups(groups);
+  const color_ids = selectedVariationColorIds({ ...state, colorGroups: groups });
+  return {
+    colorGroups: groups,
+    size_ids,
+    size_id: size_ids[0] || state.size_id || "",
+    color_ids,
+    color_id: color_ids[0] || state.color_id || "",
+  };
+}
+
+export function selectedVariationColorIds(state) {
+  const ids = [];
+  for (const id of Array.isArray(state?.color_ids) ? state.color_ids : []) {
+    if (id) ids.push(String(id));
+  }
+  if (state?.color_id) ids.push(String(state.color_id));
+  for (const g of state?.colorGroups || []) {
+    const id = groupColorId(g);
+    if (id) ids.push(String(id));
+  }
+  return [...new Set(ids.filter(Boolean).map(String))];
+}
+
+export function selectedVariationSizeIds(state) {
+  const fromList = listingSizeIds(state);
+  if (fromList.length) return fromList;
+  const fromGroups = [];
+  const seen = new Set();
+  for (const g of state?.colorGroups || []) {
+    for (const s of g.sizes || []) {
+      const id = String(rowSizeId(s));
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      fromGroups.push(id);
+    }
+  }
+  return fromGroups;
+}
+
+/**
+ * Cartesian Color × Size into colorGroups, keeping existing media / row values.
+ */
+export function generateColorSizeCombinations({
+  colorIds = [],
+  sizeIds = [],
+  sizesByColor = {},
+  existingGroups = [],
+  colors = [],
+  sizes = [],
+  defaults = {},
+  baseSku = "SKU",
+} = {}) {
+  const idsC = colorIds.map((id) => String(id)).filter(Boolean);
+  const idsS = sizeIds.map((id) => String(id)).filter(Boolean);
+  if (!idsC.length) return [];
+
+  const byColor = new Map(
+    (existingGroups || [])
+      .filter((g) => groupColorId(g))
+      .map((g) => [String(groupColorId(g)), g]),
+  );
+  const colorById = new Map((colors || []).map((c) => [String(c.id), c]));
+  const sizeById = new Map((sizes || []).map((z) => [String(z.id), z]));
+
+  const colorless = (existingGroups || []).find((g) => !groupColorId(g));
+
+  return idsC.map((colorId, colorIndex) => {
+    const prev = byColor.get(colorId) || (colorIndex === 0 ? colorless : null) || {};
+    const color = colorById.get(colorId);
+    const colorName = color?.name || prev.color_name || prev.color?.name || "";
+    const prevBySize = new Map(
+      (prev.sizes || [])
+        .filter((s) => rowSizeId(s))
+        .map((s) => [String(rowSizeId(s)), s]),
+    );
+    const sizeList = (
+      sizesByColor?.[colorId] ||
+      sizesByColor?.[String(colorId)] ||
+      idsS
+    )
+      .map(String)
+      .filter(Boolean);
+    return {
+      color_id: colorId,
+      color_name: colorName,
+      color_code: color?.code || prev.color_code || prev.color?.code || "",
+      media: prev.media || [],
+      existingMedia: prev.existingMedia || [],
+      usesPrimaryCoverDefault: !!prev.usesPrimaryCoverDefault,
+      primaryCoverFingerprint: prev.primaryCoverFingerprint || "",
+      sizes: sizeList.map((sizeId) => {
+        const existing = prevBySize.get(sizeId);
+        const size = sizeById.get(sizeId);
+        const sizeName = size?.name || existing?.size?.name || "";
+        if (existing) {
+          return {
+            ...existing,
+            size_id: sizeId,
+            size: { id: sizeId, name: sizeName },
+            sku: existing.sku || suggestColorSizeSku(baseSku, colorName, sizeName),
+            status: existing.status || (rowEnabled(existing) ? "in_stock" : "out_of_stock"),
+          };
+        }
+        return {
+          size_id: sizeId,
+          size: { id: sizeId, name: sizeName },
+          stock: defaults.stock ?? "",
+          original_price: defaults.original_price ?? "",
+          discounted_price: defaults.discounted_price ?? "",
+          sku: suggestColorSizeSku(baseSku, colorName, sizeName),
+          barcode: "",
+          status: "in_stock",
+          enabled: true,
+        };
+      }),
+    };
+  });
+}
+
+export function flattenColorSizeVariants(colorGroups = []) {
+  const rows = [];
+  (colorGroups || []).forEach((g, gi) => {
+    (g.sizes || []).forEach((s, si) => {
+      if (!rowSizeId(s)) return;
+      rows.push({ gi, si, group: g, size: s });
+    });
+  });
+  return rows;
+}
+
+export function combinationSignature(colorGroups = []) {
+  return (colorGroups || [])
+    .map((g) => {
+      const cid = String(groupColorId(g) || "");
+      const name = String(g.color_name || g.color?.name || "");
+      const sizes = (g.sizes || [])
+        .map((s) => String(rowSizeId(s) || ""))
+        .filter(Boolean)
+        .join(",");
+      return `${cid}:${name}:${sizes}`;
+    })
+    .join("|");
+}
+
+/**
+ * Reorder flattened variant rows. Same-color drags move sizes;
+ * cross-color drags move the whole color group.
+ */
+export function reorderFlattenedVariants(colorGroups, fromIndex, toIndex) {
+  const groups = colorGroups || [];
+  const rows = flattenColorSizeVariants(groups);
+  if (
+    fromIndex === toIndex ||
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= rows.length ||
+    toIndex >= rows.length
+  ) {
+    return groups;
+  }
+  const from = rows[fromIndex];
+  const to = rows[toIndex];
+  if (from.gi === to.gi) {
+    return groups.map((g, i) => {
+      if (i !== from.gi) return g;
+      const sizes = [...(g.sizes || [])];
+      const [moved] = sizes.splice(from.si, 1);
+      if (!moved) return g;
+      sizes.splice(to.si, 0, moved);
+      return { ...g, sizes };
+    });
+  }
+  const next = [...groups];
+  const [movedGroup] = next.splice(from.gi, 1);
+  if (!movedGroup) return groups;
+  next.splice(to.gi, 0, movedGroup);
+  return next;
+}
+
+export function patchColorGroupSize(colorGroups, gi, si, partial) {
+  return (colorGroups || []).map((g, i) => {
+    if (i !== gi) return g;
+    return {
+      ...g,
+      sizes: (g.sizes || []).map((s, j) => (j === si ? { ...s, ...partial } : s)),
+    };
+  });
+}
+
+export function variationListingStats(state, calcYouEarn) {
+  const rows = flattenColorSizeVariants(state?.colorGroups).filter((r) => rowEnabled(r.size));
+  const sells = rows
+    .map((r) => Number(r.size.discounted_price))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const mrps = rows
+    .map((r) => Number(r.size.original_price))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const stocks = rows
+    .map((r) => Number(r.size.stock))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  const colorIds = new Set(
+    (state?.colorGroups || []).map((g) => String(groupColorId(g) || "")).filter(Boolean),
+  );
+  const sizeIds = new Set(
+    rows.map((r) => String(rowSizeId(r.size))).filter(Boolean),
+  );
+  const totalStock = stocks.reduce((a, b) => a + b, 0);
+  let youEarnTotal = 0;
+  if (typeof calcYouEarn === "function") {
+    for (const r of rows) {
+      const unit = Number(calcYouEarn(r.size)) || 0;
+      const qty = Number(r.size.stock);
+      youEarnTotal += unit * (Number.isFinite(qty) && qty > 0 ? qty : 0);
+    }
+  }
+  return {
+    colorCount: colorIds.size,
+    sizeCount: sizeIds.size,
+    variantCount: rows.length,
+    totalStock,
+    baseMrp: mrps.length ? Math.max(...mrps) : Number(state?.original_price) || 0,
+    minSell: sells.length ? Math.min(...sells) : Number(state?.discounted_price) || 0,
+    maxSell: sells.length ? Math.max(...sells) : Number(state?.discounted_price) || 0,
+    youEarnTotal: Math.round(youEarnTotal * 100) / 100,
+    generated: rows.length > 0,
+  };
+}
+
+export function customAttrValues(attr) {
+  if (Array.isArray(attr?.values) && attr.values.length) {
+    return attr.values.map((v) => String(v || "").trim()).filter(Boolean);
+  }
+  return String(attr?.valuesText || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
+}
+
+export function customRowKey(row) {
+  return (row?.attributes || [])
+    .map((a) => `${a.attribute_name || ""}:${a.attribute_value || ""}`)
+    .join("|");
+}
+
+export function customValueMediaKey(attrName, value) {
+  return `${String(attrName || "").trim()}::${String(value || "").trim()}`;
+}
+
+export function deriveCustomAttrsFromRows(rows) {
+  const map = new Map();
+  for (const row of rows || []) {
+    for (const a of row.attributes || []) {
+      const name = String(a.attribute_name || "").trim();
+      const id = a.attribute_id || "";
+      const key = String(id || name);
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, {
+          attribute_id: id || "",
+          name,
+          values: [],
+          valuesText: "",
+        });
+      }
+      const bucket = map.get(key);
+      const val = String(a.attribute_value || "").trim();
+      if (val && !bucket.values.some((v) => v.toLowerCase() === val.toLowerCase())) {
+        bucket.values.push(val);
+      }
+    }
+  }
+  return [...map.values()].map((a) => ({
+    ...a,
+    valuesText: a.values.join(", "),
+  }));
+}
+
+export function customListingStats(state, calcYouEarn) {
+  const rows = (state?.customRows || []).filter((r) => r.enabled !== false && r.attributes?.length);
+  const sells = rows
+    .map((r) => Number(r.discounted_price))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const mrps = rows
+    .map((r) => Number(r.original_price))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const stocks = rows
+    .map((r) => Number(r.stock))
+    .filter((n) => Number.isFinite(n) && n >= 0);
+  const totalStock = stocks.reduce((a, b) => a + b, 0);
+  let youEarnTotal = 0;
+  if (typeof calcYouEarn === "function") {
+    for (const r of rows) {
+      const unit = Number(calcYouEarn(r)) || 0;
+      const qty = Number(r.stock);
+      youEarnTotal += unit * (Number.isFinite(qty) && qty > 0 ? qty : 0);
+    }
+  }
+  return {
+    variantCount: rows.length,
+    totalStock,
+    baseMrp: mrps.length ? Math.max(...mrps) : Number(state?.original_price) || 0,
+    minSell: sells.length ? Math.min(...sells) : Number(state?.discounted_price) || 0,
+    maxSell: sells.length ? Math.max(...sells) : Number(state?.discounted_price) || 0,
+    youEarnTotal: Math.round(youEarnTotal * 100) / 100,
+    generated: rows.length > 0,
+  };
 }

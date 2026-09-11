@@ -2,16 +2,17 @@ import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 import { getApiErrorMessage } from "../utils/apiError";
 
-export const getAllColors = async () => {
+export const getAllColors = async ({ silent = false } = {}) => {
   try {
     const response = await apiClient.get("/color/get");
     if (response.data.status === 1) {
       return response.data;
-    } else {
+    } else if (!silent) {
       notifyOnFail(response.data.message);
     }
+    return response.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error fetching colors"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error fetching colors"));
     console.error(error);
   }
 };

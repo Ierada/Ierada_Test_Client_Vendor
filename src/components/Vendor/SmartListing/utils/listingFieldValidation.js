@@ -49,7 +49,7 @@ export function validatePackageDimensions(state) {
   for (const [key, label] of checks) {
     const n = toNum(state[key]);
     if (!Number.isFinite(n) || n <= 0) {
-      errors[key] = `${label} (cm) is required`;
+      errors[key] = `Please fill ${label} (cm) — this field is required before you can request publish.`;
     }
   }
   return errors;
@@ -138,8 +138,8 @@ export function validateVariationRow(row, prefix = "") {
 
 export function validateComboItems(comboItems = []) {
   const errors = {};
-  if (!Array.isArray(comboItems) || comboItems.length < 2) {
-    errors.combo = "Add at least 2 listed products to create a combo";
+  if (!comboItems.length) {
+    errors.combo = "Add at least one product to the combo";
     return errors;
   }
   comboItems.forEach((it, i) => {
@@ -155,21 +155,47 @@ function sizeRowId(s) {
   return s?.size_id || s?.size?.id || "";
 }
 
+export function validateSizeAndColor(state) {
+  const errors = {};
+  const sizeIds = Array.isArray(state.size_ids)
+    ? state.size_ids.filter((id) => id != null && String(id).trim() !== "")
+    : [];
+  const hasSize =
+    sizeIds.length > 0 ||
+    (state.size_id != null && String(state.size_id).trim() !== "") ||
+    (state.listingType === "color_size" &&
+      (state.colorGroups || []).some((g) =>
+        (g.sizes || []).some((s) => sizeRowId(s)),
+      ));
+  const hasColor =
+    (state.color_id != null && String(state.color_id).trim() !== "") ||
+    (state.listingType === "color_size" &&
+      (state.colorGroups || []).some((g) => g.color_id || g.color?.id));
+  if (!hasSize) {
+    errors.size_ids =
+      "Please select a size — this field is required before you can request publish.";
+  }
+  if (!hasColor) {
+    errors.color_id =
+      "Please select a colour — this field is required before you can request publish.";
+  }
+  return errors;
+}
+
 export function validateSmartListingState(state) {
   const errors = {};
-
   if (!String(state.name || "").trim()) errors.name = "Product name is required";
-
   if (!String(state.hsn_code || "").trim()) errors.hsn_code = "HSN code is required";
   Object.assign(errors, validatePackageDimensions(state));
+  Object.assign(errors, validateSizeAndColor(state));
 
-  // Combo is a single-SKU listing flagged as combo (not a BOM of other products)
-  if (
-    state.listingType === "single" ||
-    state.listingType === "combo" ||
-    !state.listingType
-  ) {
+  if (state.listingType === "single" || !state.listingType) {
     Object.assign(errors, validateSingleListingPricing(state));
+  }
+
+  if (state.listingType === "combo") {
+    Object.assign(errors, validateSingleListingPricing(state));
+    Object.assign(errors, validateComboItems(state.comboItems));
   }
 
   if (state.listingType === "color_size") {
@@ -178,6 +204,7 @@ export function validateSmartListingState(state) {
     groups.forEach((g, gi) => {
       (g.sizes || []).forEach((s, si) => {
         if (!sizeRowId(s)) return;
+        if (s.enabled === false || s.status === "out_of_stock") return;
         anyRow = true;
         const rowErr = validateVariationRow(s, `Color ${gi + 1} / size ${si + 1}`);
         Object.assign(errors, rowErr);
@@ -206,6 +233,29 @@ export function firstValidationError(errors) {
   return vals[0] || null;
 }
 
+/** Map a validation key to the AI-review section + input to open. */
+export const REVIEW_ERROR_FOCUS = [
+  { key: "name", section: "product_info", fieldId: "ai-review-name" },
+  { key: "hsn_code", section: "product_info", fieldId: "ai-review-hsn" },
+  { key: "size_ids", section: "pricing", fieldId: "ai-review-size" },
+  { key: "color_id", section: "pricing", fieldId: "ai-review-color" },
+  { key: "package_weight", section: "shipping", fieldId: "ai-review-package_weight" },
+  { key: "package_length", section: "shipping", fieldId: "ai-review-package_length" },
+  { key: "package_width", section: "shipping", fieldId: "ai-review-package_width" },
+  { key: "package_height", section: "shipping", fieldId: "ai-review-package_height" },
+  { key: "original_price", section: "pricing", fieldId: "ai-review-mrp" },
+  { key: "discounted_price", section: "pricing", fieldId: "ai-review-sale" },
+  { key: "stock", section: "pricing", fieldId: "ai-review-stock" },
+  { key: "min_order_qty", section: "pricing", fieldId: "ai-review-min-qty" },
+  { key: "files", phase: "basics", step: "images" },
+  { key: "matrix", phase: "basics", step: "matrix" },
+  { key: "combo", phase: "basics", step: "combo" },
+];
+
+export function firstReviewErrorFocus(errors = {}) {
+  return REVIEW_ERROR_FOCUS.find((row) => errors[row.key]) || null;
+}
+
 /** Both price-rule lines for toast (MRP vs selling). */
 export function formatPriceValidationToast(errors = {}) {
   const parts = [];
@@ -231,6 +281,7 @@ export function firstVariationMatrixError(state) {
       for (let si = 0; si < sizes.length; si++) {
         const s = sizes[si];
         if (!sizeRowId(s)) continue;
+        if (s.enabled === false || s.status === "out_of_stock") continue;
         const msg = firstValidationError(
           validateVariationRow(s, `Color ${gi + 1} / size ${si + 1}`),
         );

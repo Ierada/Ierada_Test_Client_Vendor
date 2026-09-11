@@ -1,5 +1,6 @@
 /** Brand authorization — allowed doc types + review SLA (Ops-confirmed defaults). */
 export const BRAND_AUTH_DOC_TYPES = [
+  { id: "brand_registration", label: "Brand Registration Certificate" },
   { id: "authorization_letter", label: "Brand authorization letter" },
   {
     id: "trademark_certificate",

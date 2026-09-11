@@ -10,10 +10,10 @@ export async function seedDuplicateListingDraft(productId, { mode = "vendor" } =
   const p = res?.data;
   if (!p) throw new Error("Product not found");
 
-  const listingType =
-    p.listing_type === "combo"
-      ? "combo"
-      : p.variationMode === "custom"
+  const isCombo = p.listing_type === "combo";
+  const listingType = isCombo
+    ? "single"
+    : p.variationMode === "custom"
         ? "custom"
         : p.is_variation || p.listing_type === "variation"
           ? "color_size"
@@ -23,6 +23,7 @@ export async function seedDuplicateListingDraft(productId, { mode = "vendor" } =
     brandType: p.brand_type || "generic",
     brand: p.brand || "",
     listingType,
+    isCombo: listingType === "single" && isCombo,
     category_id: p.category_id || "",
     sub_category_id: p.sub_category_id || "",
     inner_sub_category_id: p.inner_sub_category_id || "",
@@ -48,7 +49,11 @@ export async function seedDuplicateListingDraft(productId, { mode = "vendor" } =
     metaKeywords: p.meta_keywords || "",
     files: [],
     colorGroups: [],
+    sizeMedia: {},
+    colorSizeAvailability: {},
     customRows: [],
+    customAttrs: [],
+    customValueMedia: {},
     comboItems: [],
     visibility: "Hidden",
     listing_status: "draft",

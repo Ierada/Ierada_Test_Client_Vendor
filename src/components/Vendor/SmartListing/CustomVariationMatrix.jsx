@@ -34,7 +34,6 @@ export default function CustomVariationMatrix({ state, patch }) {
 
   const generate = () => {
     const prepared = attrs
-      .slice(0, 4)
       .map((a) => ({
         attribute_id: a.attribute_id,
         name:
@@ -49,10 +48,6 @@ export default function CustomVariationMatrix({ state, patch }) {
 
     if (!prepared.length) {
       notifyOnFail("Add at least one attribute with comma-separated values");
-      return;
-    }
-    if (prepared.length > 4) {
-      notifyOnFail("Maximum 4 custom attributes");
       return;
     }
 
@@ -71,7 +66,7 @@ export default function CustomVariationMatrix({ state, patch }) {
         (r.attributes || []).map((a) => a.attribute_value),
       ),
     }));
-    patch({ customRows: generated, customAttrs: attrs.slice(0, 4) });
+    patch({ customRows: generated, customAttrs: attrs });
   };
 
   const updateRow = (ri, partial) => {
@@ -84,7 +79,7 @@ export default function CustomVariationMatrix({ state, patch }) {
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between gap-2">
         <div>
-          <h2 className="font-semibold text-gray-900">Custom variation (max 4 attrs)</h2>
+          <h2 className="font-semibold text-gray-900">Custom variation</h2>
           <p className="text-xs text-gray-500">
             Enter values comma-separated, then Generate matrix.
           </p>
@@ -152,15 +147,13 @@ export default function CustomVariationMatrix({ state, patch }) {
         </div>
       ))}
 
-      {attrs.length < 4 ? (
-        <button
-          type="button"
-          className="text-xs text-primary-100 inline-flex items-center gap-1"
-          onClick={() => setAttrs([...attrs, emptyAttr()])}
-        >
-          <Plus className="w-3.5 h-3.5" /> Attribute
-        </button>
-      ) : null}
+      <button
+        type="button"
+        className="text-xs text-primary-100 inline-flex items-center gap-1"
+        onClick={() => setAttrs([...attrs, emptyAttr()])}
+      >
+        <Plus className="w-3.5 h-3.5" /> Attribute
+      </button>
 
       {rows.length > 48 ? (
         <div className="flex gap-2 text-amber-800 bg-amber-50 border rounded-xl px-3 py-2 text-xs">
@@ -268,7 +261,7 @@ export default function CustomVariationMatrix({ state, patch }) {
                           );
                           e.target.value = "";
                           updateRow(ri, {
-                            media: [...(r.media || []), ...picked].slice(0, 6),
+                            media: [...(r.media || []), ...picked],
                           });
                         }}
                       />

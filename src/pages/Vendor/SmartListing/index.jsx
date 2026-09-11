@@ -2,27 +2,25 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, Link, useParams, useSearchParams } from "react-router-dom";
 import { useAppContext } from "../../../context/AppContext";
 import {
-  ArrowLeft,
-  ArrowRight,
   CheckCircle2,
   Loader2,
-  Package,
-  Sparkles,
-  Upload,
   X,
   AlertCircle,
 } from "lucide-react";
 import { getCategories, getSubCategories, getInnerSubCategories } from "../../../services/api.category";
 import { addProduct, updateProduct, deleteProduct } from "../../../services/api.product";
 import { getAllSizes } from "../../../services/api.size";
-import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
+import { getAllColors } from "../../../services/api.color";
+import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory, generateListing3dImage } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
+import { previewListingSettlement } from "../../../services/api.settlement";
 import { getShippingRates } from "../../../services/api.shippingRate";
 import { saveProductDraft } from "../../../services/api.productDraft";
 import { notifyOnFail, notifyOnSuccess, notifyOnWarning } from "../../../utils/notification/toast";
 import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   firstValidationError,
+  firstReviewErrorFocus,
   firstVariationMatrixError,
   formatPriceValidationToast,
   validateCategoryStepPricing,
@@ -39,10 +37,10 @@ import {
 } from "../../../components/Vendor/SmartListing/utils/draftStorage";
 import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload } from "../../../components/Vendor/SmartListing/utils/aiDraft";
 import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstBands";
-import { BRAND_AUTH_DOC_TYPES, BRAND_AUTH_SLA_BUSINESS_DAYS } from "../../../components/Vendor/SmartListing/utils/brandAuthConfig";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
-import { calcSettlement, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
+import { calcSettlement, applyPlatformFeeRules, omitLiveCommerceRates, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
 import { fileToSuggestPayload } from "../../../components/Vendor/SmartListing/utils/fileToSuggestPayload";
+import { makeStudio3dFile, base64ToJpegFile } from "../../../components/Vendor/SmartListing/utils/studio3dImage";
 import { buildSmartListingFormData, applyAutoListingPolicies } from "../../../components/Vendor/SmartListing/utils/buildFormData";
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
 import {
@@ -50,23 +48,64 @@ import {
   sizeQueryFromListing,
   splitContextualSizes,
   sizePickerOptions,
+  listingSizeIds,
+  applySelectedSizeIdsToColorGroups,
   prefillColorGroupsFromCategorySizes,
   prefillColorGroupsFromSuggestedNames,
   applyParentDefaultsToEmptySizeRows,
+  listingPatchFromPrefillGroups,
+  variationListingStats,
+  customListingStats,
+  selectedVariationColorIds,
 } from "../../../components/Vendor/SmartListing/utils/variationHelpers";
 import {
   stashListingMedia,
   stripFilesForDraft,
   mergeCachedMedia,
+  listingCoverPreviewSrc,
+  fileToCoverPreviewUrl,
+  seedFirstColorFromPrimaryGallery,
 } from "../../../components/Vendor/SmartListing/utils/listingMediaCache";
+import {
+  applyStoredListingFiles,
+  mergeHydratedProductMedia,
+  switchListingTypeMedia,
+  withSyncedMediaBuckets,
+} from "../../../components/Vendor/SmartListing/utils/listingMediaByType";
+import {
+  saveListingFiles,
+  loadListingFiles,
+  clearListingFiles,
+} from "../../../components/Vendor/SmartListing/utils/listingMediaStore";
 import SearchablePicker from "../../../components/Vendor/SmartListing/SearchablePicker";
-import ColorSizeMatrix from "../../../components/Vendor/SmartListing/ColorSizeMatrix";
-import CustomVariationMatrix from "../../../components/Vendor/SmartListing/CustomVariationMatrix";
-import LabeledPhotoBoxes from "../../../components/Vendor/SmartListing/LabeledPhotoBoxes";
+import VariationListingCanvas from "../../../components/Vendor/SmartListing/VariationListingCanvas";
+import CustomVariationCanvas from "../../../components/Vendor/SmartListing/CustomVariationCanvas";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
+import SmartListingSetupForm, {
+  SETUP_STEPS,
+  listingProgressStep,
+  listingSectionFromScroll,
+  scrollToListingSection,
+  ListingPageHeader,
+  SetupStepper,
+  ListingRightRail,
+  ListingStickyFooter,
+} from "../../../components/Vendor/SmartListing/SmartListingSetupForm";
+import {
+  REVIEW_SECTIONS,
+  AiReviewHeader,
+  AiReviewNav,
+  AiReviewFormCard,
+  StorefrontPreviewCard,
+  BankSettlementSummary,
+} from "../../../components/Vendor/SmartListing/AiReviewStep";
 import RequestSpecField from "../../../components/Vendor/SmartListing/RequestSpecField";
 import SpecTemplateHints from "../../../components/Vendor/SmartListing/SpecTemplateHints";
-import SizeChartGuide from "../../../components/Vendor/SmartListing/SizeChartGuide";
+import SizeChartPanel from "../../../components/Vendor/SmartListing/SizeChartPanel";
+import {
+  emptySizeChart,
+  sizeLabelsFromState,
+} from "../../../components/Vendor/SmartListing/utils/sizeChart";
 import { findRestrictedHits } from "../../../components/Vendor/SmartListing/utils/restrictedClaims";
 import {
   getBulkSession,
@@ -78,18 +117,30 @@ import {
 } from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
 
 function basicsStepsFor(listingType) {
-  // Combo is a flag on the single flow (checkbox) — same steps as single
-  const base = ["brand", "type", "images", "category"];
+  const base = [...SETUP_STEPS];
   if (listingType === "color_size" || listingType === "custom") return [...base, "matrix"];
   return base;
 }
 
+function isAi3dLabel(label) {
+  return label === "ai_3d";
+}
+
+function listingPhotoFingerprint(file) {
+  if (!file) return "";
+  return `${file.name}|${file.size}|${file.lastModified}`;
+}
+
+/** Prefer front slot, else first real photo (skip AI 3D shots). */
 function firstListingImageFile(state) {
   const files = state.files || [];
   const labels = state.mediaLabels || [];
-  const frontIdx = labels.findIndex((l) => l?.label === "front");
-  if (frontIdx >= 0 && files[frontIdx] instanceof File) return files[frontIdx];
-  if (files[0] instanceof File) return files[0];
+  const frontIdx = labels.findIndex((l, i) => l?.label === "front" && files[i] instanceof File);
+  if (frontIdx >= 0) return files[frontIdx];
+  for (let i = 0; i < files.length; i += 1) {
+    if (isAi3dLabel(labels[i]?.label)) continue;
+    if (files[i] instanceof File) return files[i];
+  }
   for (const g of state.colorGroups || []) {
     for (const m of g.media || []) {
       if (m instanceof File) return m;
@@ -99,42 +150,11 @@ function firstListingImageFile(state) {
   return null;
 }
 
-const STEP_LABELS = {
-  brand: "Brand",
-  type: "Listing Type",
-  category: "Category",
-  images: "Images",
-  matrix: "Variations",
-  review: "Review",
-};
-
-const REVIEW_SECTIONS = [
-  { id: "pricing", label: "Pricing & Inventory" },
-  { id: "shipping", label: "Shipping Details" },
-  { id: "product_info", label: "Product Information" },
-  { id: "key_features", label: "Key Features" },
-  { id: "description", label: "Product Description" },
-  { id: "specifications", label: "Specifications" },
-  { id: "whats_in_box", label: "What's in the Box" },
-  { id: "benefits", label: "Benefits" },
-  { id: "seo", label: "SEO Information" },
-  { id: "size_chart", label: "Size Chart" },
-];
-
 const LISTING_TYPES = [
-  {
-    id: "single",
-    title: "Single Listing",
-    desc: "One price, one SKU — combo flag on the Images step",
-  },
+  { id: "single", title: "Single Listing", desc: "One price, one SKU" },
   { id: "color_size", title: "Color & Size Variation", desc: "Color × size matrix" },
-  { id: "custom", title: "Custom Variation", desc: "Up to 4 custom attributes" },
+  { id: "custom", title: "Custom Variation", desc: "Any number of custom attributes" },
 ];
-
-/** Type picker card id (combo is a checkbox on Single, not its own card). */
-function listingTypeCardId(listingType) {
-  return listingType === "combo" ? "single" : listingType;
-}
 
 const emptyState = () => ({
   brandType: "",
@@ -151,10 +171,11 @@ const emptyState = () => ({
   subCategoryTitle: "",
   innerSubCategoryTitle: "",
   files: [],
-  mediaLabels: [],
   existingMedia: [],
   deleteMediaIds: [],
-  size_id: "",
+  coverPreviewUrl: "",
+  mediaLabels: [],
+  mediaByListingType: {},
   name: "",
   brand: "",
   shortDescription: "",
@@ -169,6 +190,11 @@ const emptyState = () => ({
   whatsInTheBox: [],
   original_price: "",
   discounted_price: "",
+  size_id: "",
+  size_ids: [],
+  color_id: "",
+  color_ids: [],
+  color_name: "",
   sku: "",
   barcode: "",
   stock: "",
@@ -208,9 +234,19 @@ const emptyState = () => ({
   aiGeneratedSections: [],
   dirtySections: {},
   colorGroups: [],
-  customAttrs: [],
+  skipPrimaryColorImageDefault: false,
+  sizeMedia: {},
+  colorSizeAvailability: {},
+  customAttrs: [
+    { attribute_id: "", name: "", valuesText: "", values: [] },
+    { attribute_id: "", name: "", valuesText: "", values: [] },
+    { attribute_id: "", name: "", valuesText: "", values: [] },
+    { attribute_id: "", name: "", valuesText: "", values: [] },
+  ],
   customRows: [],
+  customValueMedia: {},
   comboItems: [],
+  isCombo: false,
   compliance: {
     sale_unit: "1 piece",
     fssai_license: "",
@@ -227,6 +263,8 @@ const emptyState = () => ({
     dangerous_goods: false,
     drug_disclaimer: false,
   },
+  sizeChart: emptySizeChart("not_applicable"),
+  size_labels: [],
 });
 
 function FieldError({ error, compact = false }) {
@@ -256,11 +294,11 @@ function Field({ label, required, optional, children, error, hint }) {
   const showOptional = optional ?? !required;
   return (
     <label className="block space-y-1.5">
-      <span className="text-sm font-medium text-gray-700">
+      <span className="text-[11px] font-medium text-slate-400">
         {label}
         {required ? <span className="text-red-500"> *</span> : null}
         {showOptional && !required ? (
-          <span className="text-gray-400 font-normal text-xs ml-1.5">optional</span>
+          <span className="text-slate-400 font-normal text-[11px] ml-1">optional</span>
         ) : null}
       </span>
       {children}
@@ -275,9 +313,9 @@ function ListingBanner({ banner, onClose }) {
   if (!banner) return null;
   const isErr = banner.type === "error";
   return (
-    <div className="max-w-7xl mx-auto mt-4 px-4">
+    <div className="max-w-7xl mx-auto mt-3 px-4">
       <div
-        className="flex items-start gap-3 rounded-xl py-3 px-4 text-sm"
+        className="flex items-center gap-2 rounded-lg py-2 px-3 text-[13px]"
         style={
           isErr
             ? {
@@ -294,7 +332,7 @@ function ListingBanner({ banner, onClose }) {
         }
       >
         <span
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
           style={
             isErr
               ? { background: "#fee2e2", color: "#b91c1c" }
@@ -303,7 +341,7 @@ function ListingBanner({ banner, onClose }) {
         >
           !
         </span>
-        <span className="pt-0.5 flex-1 font-medium">{banner.text}</span>
+        <span className="flex-1 font-medium leading-snug">{banner.text}</span>
         <button type="button" className="ml-auto opacity-55 hover:opacity-80" onClick={onClose}>
           <X className="w-4 h-4" />
         </button>
@@ -313,7 +351,7 @@ function ListingBanner({ banner, onClose }) {
 }
 
 const inputCls =
-  "w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-100/30 focus:border-primary-100";
+  "w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#F56C43]/20 focus:border-[#F56C43] bg-white";
 
 function inputClsErr(error) {
   return error
@@ -337,7 +375,7 @@ function PriceRuleChip({ error, okText }) {
   const isErr = !!error;
   return (
     <span
-      className="flex items-start gap-2 rounded-lg px-2.5 py-1.5 text-xs leading-snug"
+      className="flex items-start gap-2 rounded-lg px-2 py-1 text-[11px] leading-snug"
       style={
         isErr
           ? {
@@ -367,41 +405,159 @@ function PriceRuleChip({ error, okText }) {
   );
 }
 
-function PricePairFields({ state, patch, mrpErr, sellErr, mrpLabel = "MRP (₹)", sellLabel = "Selling price (₹)" }) {
+function PricePairFields({ state, patch, mrpErr, sellErr, mrpLabel = "MRP (₹)", sellLabel = "Selling price (₹)", mrpId, sellId, readOnly = false }) {
+  const lockedCls =
+    "w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] bg-slate-50 text-slate-700 cursor-not-allowed focus:outline-none focus:ring-0";
   return (
-    <div className="sm:col-span-2 space-y-2">
-      <div className="grid sm:grid-cols-2 gap-3">
+    <div className="w-full col-span-full space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
         <Field label={mrpLabel} required>
           <input
+            id={mrpId}
             type="number"
             min={mrpMinAttr(state.discounted_price)}
             step="0.01"
-            className={inputClsErr(mrpErr)}
+            readOnly={readOnly}
+            tabIndex={readOnly ? -1 : undefined}
+            className={readOnly ? lockedCls : inputClsErr(mrpErr)}
             value={state.original_price}
-            onChange={(e) => patch({ original_price: e.target.value })}
+            onChange={readOnly ? undefined : (e) => patch({ original_price: e.target.value })}
           />
         </Field>
         <Field label={sellLabel} required>
           <input
+            id={sellId}
             type="number"
             min="1"
             max={sellMaxAttr(state.original_price)}
             step="0.01"
-            className={inputClsErr(sellErr)}
+            readOnly={readOnly}
+            tabIndex={readOnly ? -1 : undefined}
+            className={readOnly ? lockedCls : inputClsErr(sellErr)}
             value={state.discounted_price}
-            onChange={(e) => patch({ discounted_price: e.target.value })}
+            onChange={readOnly ? undefined : (e) => patch({ discounted_price: e.target.value })}
           />
         </Field>
       </div>
+      {readOnly ? null : (
       <div className="grid sm:grid-cols-2 gap-2">
         <PriceRuleChip error={mrpErr} okText="Must be greater than selling price" />
         <PriceRuleChip error={sellErr} okText="Must be less than MRP" />
       </div>
+      )}
       {state.listingType === "color_size" ? (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
           Color × Size listing: publish uses each size row&apos;s MRP, selling price and stock (Variations step). These two fields are defaults only.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false }) {
+  const [colors, setColors] = useState([]);
+  const [sizeSplit, setSizeSplit] = useState({
+    all: [],
+    contextual: [],
+    rest: [],
+    totalContextual: 0,
+  });
+  const sizeOptions = useMemo(() => sizePickerOptions(sizeSplit), [sizeSplit]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cRes, sRes] = await Promise.all([
+          getAllColors({ silent: true }),
+          getAllSizes(sizeQueryFromListing(state), { silent: true }),
+        ]);
+        if (cancelled) return;
+        setColors(cRes?.data || []);
+        setSizeSplit(splitContextualSizes(sRes?.data || [], sRes?.meta, state));
+      } catch {
+        /* pickers stay empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
+
+  return (
+    <div className="w-full col-span-full grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <Field label="Size" required error={fieldErrors.size_ids}>
+        <div id="ai-review-size">
+          <SearchablePicker
+            compact
+            multiple
+            required
+            disabled={readOnly}
+            error={fieldErrors.size_ids ? " " : undefined}
+            value={listingSizeIds(state)}
+            onChange={(ids) => {
+              const size_ids = Array.isArray(ids) ? ids : ids ? [ids] : [];
+              const size_id = size_ids[0] || "";
+              const size_labels = sizeOptions
+                .filter((o) => size_ids.map(String).includes(String(o.id)))
+                .map((o) => o.label)
+                .filter(Boolean);
+              const next = { size_ids, size_id, size_labels };
+              if (state.listingType === "color_size") {
+                next.colorGroups = applySelectedSizeIdsToColorGroups(
+                  state.colorGroups,
+                  size_ids,
+                  state,
+                );
+              }
+              patch(next);
+            }}
+            placeholder="Select size"
+            searchPlaceholder="Search size..."
+            options={sizeOptions}
+          />
+        </div>
+      </Field>
+      <Field label="Colour" required error={fieldErrors.color_id}>
+        <div id="ai-review-color">
+          <SearchablePicker
+            compact
+            required
+            disabled={readOnly}
+            error={fieldErrors.color_id ? " " : undefined}
+            value={state.color_id || ""}
+            onChange={(id) => {
+              const c = colors.find((x) => String(x.id) === String(id));
+              const sid = id ? String(id) : "";
+              const color_ids = sid
+                ? [...new Set([sid, ...selectedVariationColorIds(state)])]
+                : selectedVariationColorIds(state).filter((x) => x !== String(state.color_id || ""));
+              const next = {
+                color_id: sid || color_ids[0] || "",
+                color_ids,
+                color_name: c?.name || "",
+              };
+              if (state.listingType === "color_size") {
+                const groups = state.colorGroups || [];
+                const distinctColors = new Set(
+                  groups.map((g) => g.color_id || g.color?.id).filter(Boolean).map(String),
+                );
+                if (groups.length && distinctColors.size <= 1) {
+                  next.colorGroups = groups.map((g, i) =>
+                    i === 0
+                      ? { ...g, color_id: sid || "", color_name: c?.name || "" }
+                      : g,
+                  );
+                }
+              }
+              patch(next);
+            }}
+            placeholder="Select colour"
+            searchPlaceholder="Search colour…"
+            options={colors.map((c) => ({ id: c.id, label: c.name }))}
+          />
+        </div>
+      </Field>
     </div>
   );
 }
@@ -449,13 +605,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [searchParams] = useSearchParams();
   const freshStart = searchParams.get("fresh") === "1";
   const bulkMode = searchParams.get("bulk") === "1";
+  const openReview = searchParams.get("review") === "1";
   const { user } = useAppContext();
   const { id: editProductId } = useParams();
   const isEditMode = !!editProductId;
   const vendorId = vendorIdProp || user?.id || null;
-  const [phase, setPhase] = useState("basics"); // basics | review
+  const [phase, setPhase] = useState(openReview ? "review" : "basics"); // basics | review
   const [step, setStep] = useState("brand");
-  const [reviewSection, setReviewSection] = useState("pricing");
+  const [reviewSection, setReviewSection] = useState("product_info");
   const [state, setState] = useState(emptyState);
   const isPublishedLive =
     String(state.listing_status || "").toLowerCase() === "published" ||
@@ -475,13 +632,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [generating3d, setGenerating3d] = useState(false);
   const [categorySuggesting, setCategorySuggesting] = useState(false);
   const categorySuggestToken = useRef(0);
+  const categorySuggestFp = useRef("");
   const sizePrefillKeyRef = useRef("");
+  const listingStepLockRef = useRef(false);
   const [saveHint, setSaveHint] = useState("Ready");
   const [banner, setBanner] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  const [supportPhone, setSupportPhone] = useState("9211736358");
   const autosaveTimer = useRef(null);
   const priceToastKey = useRef("");
 
@@ -507,18 +669,38 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   }, [state.original_price, state.discounted_price]);
 
   const patch = useCallback((partial) => {
+    listingStepLockRef.current = false;
     setState((prev) => {
-      const next = { ...prev, ...partial };
+      const resolved = typeof partial === "function" ? partial(prev) : partial;
+      if (!resolved || typeof resolved !== "object") return prev;
+      let next = prev;
+      if (
+        Object.prototype.hasOwnProperty.call(resolved, "listingType") &&
+        String(resolved.listingType || "") !== String(prev.listingType || "")
+      ) {
+        const { listingType: nextType, ...rest } = resolved;
+        next = { ...switchListingTypeMedia(prev, nextType), ...rest };
+        if (nextType !== "single") next.isCombo = false;
+      } else {
+        next = { ...prev, ...resolved };
+      }
+      next = withSyncedMediaBuckets(next);
       stashListingMedia(stableId, next);
       return next;
     });
   }, [stableId]);
 
+  useEffect(() => {
+    if (state.listingType !== "combo" && step !== "combo") return;
+    if (state.listingType === "combo") patch({ listingType: "single", isCombo: true });
+    if (step === "combo") setStep(state.brandType ? "type" : "brand");
+  }, [state.listingType, state.brandType, step, patch]);
+
   const applyColorSizePrefill = useCallback(async (fromState, { suggestedNames } = {}) => {
     if (fromState.listingType !== "color_size") return null;
     if (hasRealSizeRow(fromState.colorGroups)) return null;
     if (!fromState.category_id) return null;
-    const res = await getAllSizes(sizeQueryFromListing(fromState));
+    const res = await getAllSizes(sizeQueryFromListing(fromState), { silent: true });
     if (!res || res.status !== 1) return false;
     const data = res.data || [];
     const meta = res.meta || {};
@@ -541,21 +723,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const session = sessionOverride || getBulkSession();
     const planned = getPlannedType(session);
     const next = emptyState();
-    if (planned === "combo") {
-      next.listingType = "combo";
-      next.comboItems = [];
-    } else if (planned) {
+    if (planned) {
       next.listingType = planned;
     }
     setState(next);
     setPhase("basics");
     setStep("brand");
-    setReviewSection("pricing");
+    setReviewSection("product_info");
     setFieldErrors({});
     if (planned === "combo") {
       setBanner({
         type: "info",
-        text: "This slot is planned as Combo — Single path; confirm combo on the Images step (Brand or Generic both OK).",
+        text: "This slot is planned as Combo — add products that already exist in your catalog. If they are not ready yet, Skip and do singles/variations first.",
       });
     } else if (planned) {
       setBanner({
@@ -570,6 +749,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const resetForNextBulkListing = useCallback(() => {
     clearLocalDraft(stableId);
+    clearListingFiles(stableId);
     const newId = newStableId(mode);
     setStableId(newId);
     applyBulkSlotState();
@@ -595,6 +775,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     clearLocalDraft(stableId);
+    clearListingFiles(stableId);
     const newId = newStableId(mode);
     setStableId(newId);
     applyBulkSlotState(next);
@@ -623,14 +804,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (!bulkMode || isEditMode || !bulkSession) return;
     if ((bulkSession.completed || 0) > 0) return;
     const planned = getPlannedType(bulkSession);
-    if (planned === "combo") {
-      setState((prev) => ({ ...prev, listingType: "combo", comboItems: [] }));
-      setBanner({
-        type: "info",
-        text: "This slot is planned as Combo — Single path; confirm combo on the Images step (Brand or Generic both OK).",
+    if (planned && !state.listingType) {
+      setState((prev) => {
+        const next = withSyncedMediaBuckets(switchListingTypeMedia(prev, planned));
+        stashListingMedia(stableId, next);
+        return next;
       });
-    } else if (planned && !state.listingType) {
-      setState((prev) => ({ ...prev, listingType: planned }));
+      if (planned === "combo") {
+        setBanner({
+          type: "info",
+          text: "This slot is planned as Combo — components must already exist in catalog.",
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on bulk session start
   }, [bulkMode, isEditMode, bulkSession?.id]);
@@ -642,10 +827,30 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   useEffect(() => {
     if (phase !== "basics") return;
-    if (steps.length && step && !steps.includes(step)) {
-      setStep(steps[0]);
-    }
-  }, [steps, step, phase]);
+    if (!SETUP_STEPS.includes(step)) return;
+    if (listingStepLockRef.current) return;
+    const next = listingProgressStep(state);
+    const order = SETUP_STEPS;
+    if (order.indexOf(next) > order.indexOf(step)) setStep(next);
+  }, [
+    phase,
+    step,
+    state.brandType,
+    state.listingType,
+    state.category_id,
+    state.files,
+  ]);
+
+  useEffect(() => {
+    if (phase !== "basics") return;
+    const onScroll = () => {
+      if (!SETUP_STEPS.includes(step) && step !== "brand") return;
+      const id = listingSectionFromScroll();
+      if (id && id !== step) setStep(id);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [phase, step]);
 
   // Load product for Smart edit
   useEffect(() => {
@@ -655,7 +860,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       try {
         const hydrated = await hydrateSmartListingFromProduct(editProductId);
         if (cancelled) return;
-        setState((prev) => ({ ...prev, ...hydrated }));
+        setState((prev) => {
+          const media = mergeHydratedProductMedia(prev, hydrated);
+          const next = withSyncedMediaBuckets({ ...prev, ...hydrated, ...media });
+          stashListingMedia(stableId, next);
+          return next;
+        });
         setPhase("review");
         setReviewSection("product_info");
         setSaveHint("Loaded product for edit");
@@ -708,12 +918,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const local = loadLocalDraft(stableId) || loadLocalDraft();
     if (local?.payload) {
       setState((prev) => {
-        const next = mergeCachedMedia(stableId, { ...prev, ...local.payload }, prev);
+        const payload = { ...omitLiveCommerceRates(local.payload) };
+        if (payload.listingType === "combo") {
+          payload.isCombo = true;
+          payload.listingType = "single";
+        }
+        const next = mergeCachedMedia(stableId, { ...prev, ...payload }, prev);
         stashListingMedia(stableId, next);
         return next;
       });
-      if (local.phase) setPhase(local.phase);
-      if (local.step) setStep(local.step);
+      if (local.phase && local.phase !== "review") setPhase(local.phase);
+      const restoredStep = local.step === "combo" ? "type" : local.step;
+      if (restoredStep && restoredStep !== "combo") setStep(restoredStep);
       if (local.reviewSection && local.reviewSection !== "compliance") {
         setReviewSection(local.reviewSection);
       }
@@ -721,17 +937,94 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     }
   }, [stableId, editProductId, freshStart]);
 
+  // Photos are blobs, so localStorage cannot hold them — pull them back from IndexedDB.
+  useEffect(() => {
+    if (freshStart) return undefined;
+    let cancelled = false;
+    (async () => {
+      const stored = await loadListingFiles(stableId);
+      if (cancelled || !stored) return;
+      setState((prev) => {
+        const next = applyStoredListingFiles(prev, stored);
+        if (!(prev.brandAuthFile instanceof File) && stored.brandAuthFile) {
+          next.brandAuthFile = stored.brandAuthFile;
+        }
+        if (stored.groups.length && (prev.colorGroups || []).length) {
+          const firstColorId = String(selectedVariationColorIds(next)[0] || next.color_id || "");
+          next.colorGroups = prev.colorGroups.map((g) => {
+            const key = g.key ?? g.color_id ?? g.color?.id ?? null;
+            if (
+              firstColorId &&
+              key != null &&
+              String(key) === firstColorId &&
+              !next.skipPrimaryColorImageDefault
+            ) {
+              return g;
+            }
+            if ((g.media || []).some((f) => f instanceof File)) return g;
+            if (key == null) return g;
+            const hit = stored.groups.find((s) => String(s.key) === String(key));
+            if (!hit?.media?.length) return g;
+            return { ...g, media: hit.media };
+          });
+        }
+        const seeded = seedFirstColorFromPrimaryGallery(
+          next,
+          selectedVariationColorIds(next),
+        );
+        if (seeded.changed) next.colorGroups = seeded.colorGroups;
+        if (stored.sizeGroups?.length) {
+          const sizeMedia = { ...(prev.sizeMedia || {}) };
+          stored.sizeGroups.forEach((g) => {
+            if (!g?.key || !g.media?.length) return;
+            const bucket = sizeMedia[g.key] || { media: [], existingMedia: [] };
+            if ((bucket.media || []).some((f) => f instanceof File)) return;
+            sizeMedia[g.key] = { ...bucket, media: g.media };
+          });
+          next.sizeMedia = sizeMedia;
+        }
+        if (stored.customRowGroups?.length && (prev.customRows || []).length) {
+          next.customRows = prev.customRows.map((r, i) => {
+            const key = r.grouping_key ?? String(i);
+            if ((r.media || []).some((f) => f instanceof File)) return r;
+            const hit = stored.customRowGroups.find((s) => String(s.key) === String(key));
+            if (!hit?.media?.length) return r;
+            return { ...r, media: hit.media };
+          });
+        }
+        if (stored.customValueGroups?.length) {
+          const valueMedia = { ...(prev.customValueMedia || {}) };
+          stored.customValueGroups.forEach((g) => {
+            if (!g?.key || !g.media?.length) return;
+            const bucket = valueMedia[g.key] || { media: [], existingMedia: [] };
+            if ((bucket.media || []).some((f) => f instanceof File)) return;
+            valueMedia[g.key] = { ...bucket, media: g.media };
+          });
+          next.customValueMedia = valueMedia;
+        }
+
+        if (next === prev) return prev;
+        stashListingMedia(stableId, next);
+        return next;
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [stableId, freshStart]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const [catRes, subRes, innerRes, settingsRes, ratesRes] =
           await Promise.all([
-            getCategories(),
-            getSubCategories(),
-            getInnerSubCategories(),
-            getSettings(),
-            getShippingRates(),
+            getCategories({ silent: true }),
+            getSubCategories({ silent: true }),
+            getInnerSubCategories({ silent: true }),
+            getSettings({ silent: true }),
+            // Shipping rates need a vendor token; don't block the listing form if this call fails.
+            getShippingRates({ silent: true }).catch(() => null),
           ]);
         if (cancelled) return;
         if (catRes?.status !== 1 && !catRes?.data) {
@@ -767,18 +1060,33 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           })),
         );
         if (settingsRes?.status === 1) {
+          const phone =
+            settingsRes.data.support_phone ||
+            settingsRes.data.contact_phone ||
+            settingsRes.data.phone ||
+            settingsRes.data.helpline;
+          if (phone) setSupportPhone("9211736358");
           patch({
-            platform_fee_pct: settingsRes.data.platform_fee || 0,
-            platform_fee_max: settingsRes.data.platform_fee_max_charge || 0,
+            platform_fee_pct: Number(settingsRes.data.platform_fee) || 0,
+            platform_fee_max: Number(settingsRes.data.platform_fee_max_charge) || 0,
             default_return_window_days:
               settingsRes.data.default_return_window_days ?? 7,
-            platformFee: 0,
           });
         }
-        if (ratesRes?.status === 1) {
+        const ratesPayload = ratesRes?.data;
+        const ratesList = Array.isArray(ratesPayload)
+          ? ratesPayload
+          : Array.isArray(ratesPayload?.data)
+            ? ratesPayload.data
+            : [];
+        if (ratesRes?.status === 1 || ratesList.length) {
           setShippingRates(
-            (ratesRes.data || [])
-              .map((r) => ({ maxWeight: r.maxWeight, charge: r.charge }))
+            ratesList
+              .map((r) => ({
+                maxWeight: Number(r.maxWeight ?? r.max_weight),
+                charge: Number(r.charge),
+              }))
+              .filter((r) => Number.isFinite(r.maxWeight) && Number.isFinite(r.charge))
               .sort((a, b) => a.maxWeight - b.maxWeight),
           );
         }
@@ -845,30 +1153,32 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     patch,
   ]);
 
-  // Volumetric + shipping charge
+  // Volumetric (kg) + shipping charge from Admin weight slabs (chargeable grams).
   useEffect(() => {
     const L = Number(state.package_length) || 0;
     const W = Number(state.package_width) || 0;
     const H = Number(state.package_height) || 0;
-    const vol = L && W && H ? (L * W * H) / 5000 : 0;
-    const weight = Math.max(Number(state.package_weight) || 0, vol);
-    const sale = Number(state.discounted_price) || 0;
+    const volKg = L && W && H ? (L * W * H) / 5000 : 0;
+    const deadGrams = Number(state.package_weight) || 0;
+    const volGrams = volKg * 1000;
+    const chargeableGrams = Math.max(deadGrams, volGrams);
     let charge = 0;
-    // Do not auto-apply rate-card shipping until selling price is entered.
-    if (sale > 0 && !state.free_shipping && shippingRates.length) {
-      const match = shippingRates.find((r) => weight <= r.maxWeight);
+    if (!state.free_shipping && shippingRates.length && chargeableGrams > 0) {
+      const match = shippingRates.find((r) => chargeableGrams <= Number(r.maxWeight));
       charge = match
-        ? match.charge
-        : shippingRates[shippingRates.length - 1]?.charge || 0;
+        ? Number(match.charge) || 0
+        : Number(shippingRates[shippingRates.length - 1]?.charge) || 0;
     }
-    const pct = Number(state.platform_fee_pct) || 0;
-    const maxCap = Number(state.platform_fee_max) || 0;
-    let fee = Math.round(((sale * pct) / 100) * 100) / 100;
-    if (maxCap > 0) fee = Math.min(fee, maxCap);
+    const sale = Number(state.discounted_price) || 0;
+    const fee = applyPlatformFeeRules(
+      sale,
+      state.platform_fee_pct,
+      state.platform_fee_max,
+    );
     patch({
-      volumetric_weight: Math.round(vol * 1000) / 1000,
+      volumetric_weight: Math.round(volKg * 1000) / 1000,
       shipping_charges: charge,
-      platformFee: fee,
+      platformFee: fee.amount,
     });
   }, [
     state.package_length,
@@ -889,6 +1199,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     autosaveTimer.current = setTimeout(async () => {
       const payload = stripFilesForDraft(state);
       stashListingMedia(stableId, state);
+      saveListingFiles(stableId, state);
       saveLocalDraft(stableId, {
         payload,
         phase,
@@ -925,20 +1236,34 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   }, [state, phase, step, reviewSection, stableId, vendorId]);
 
   const previewUrls = useMemo(() => {
-    const fromFiles = (state.files || [])
-      .map((f) => (f instanceof File ? URL.createObjectURL(f) : null))
-      .filter(Boolean);
-    if (fromFiles.length) return fromFiles;
-    return (state.existingMedia || [])
-      .map((m) => m?.url)
-      .filter(Boolean);
-  }, [state.files, state.existingMedia]);
+    return (state.files || []).map((f) =>
+      f instanceof File ? URL.createObjectURL(f) : typeof f === "string" ? f : f?.url || null,
+    );
+  }, [state.files]);
+
+  const coverPreviewSrc = useMemo(
+    () => listingCoverPreviewSrc(state, previewUrls),
+    [state, previewUrls],
+  );
+
+  useEffect(() => {
+    const first = (state.files || []).find((f) => f instanceof File);
+    if (!first) return undefined;
+    let cancelled = false;
+    fileToCoverPreviewUrl(first).then((url) => {
+      if (cancelled || !url || url === state.coverPreviewUrl) return;
+      patch({ coverPreviewUrl: url });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [state.files, state.coverPreviewUrl, patch]);
 
   useEffect(() => {
     return () => {
       previewUrls.forEach((u) => {
         try {
-          if (u) URL.revokeObjectURL(u);
+          if (u && String(u).startsWith("blob:")) URL.revokeObjectURL(u);
         } catch {
           /* ignore */
         }
@@ -946,9 +1271,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     };
   }, [previewUrls]);
 
-  const settlement = useMemo(
-    () =>
-      calcSettlement({
+  const localSettlement = useMemo(
+    () => ({
+      ...calcSettlement({
         mrp: state.original_price,
         sellingPrice: state.discounted_price,
         gstPercent: state.gst,
@@ -956,8 +1281,147 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         platformFee: state.platformFee,
         freeShipping: state.free_shipping,
       }),
-    [state],
+      platform_fee_pct: Number(state.platform_fee_pct) || 0,
+      platform_fee_max: Number(state.platform_fee_max) || 0,
+    }),
+    [
+      state.original_price,
+      state.discounted_price,
+      state.gst,
+      state.shipping_charges,
+      state.platformFee,
+      state.platform_fee_pct,
+      state.platform_fee_max,
+      state.free_shipping,
+    ],
   );
+  const [remoteSettlement, setRemoteSettlement] = useState(null);
+  const settlement = remoteSettlement
+    ? { ...localSettlement, ...remoteSettlement }
+    : localSettlement;
+
+  const footerStats = useMemo(() => {
+    if (state.listingType !== "color_size" && state.listingType !== "custom") return null;
+    const inr2 = (n) => {
+      const v = Number(n);
+      if (!Number.isFinite(v) || v <= 0) return "₹ —";
+      return `₹${v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+    const earnFromRow = (row) =>
+      calcSettlement({
+        mrp: row.original_price,
+        sellingPrice: row.discounted_price,
+        gstPercent: state.gst,
+        shippingCharges: state.shipping_charges,
+        platformFee: state.platformFee,
+        freeShipping: state.free_shipping,
+      }).youEarn;
+    const stats =
+      state.listingType === "custom"
+        ? customListingStats(state, earnFromRow)
+        : variationListingStats(state, earnFromRow);
+    const sellRange =
+      stats.minSell && stats.maxSell && stats.minSell !== stats.maxSell
+        ? `${inr2(stats.minSell)} – ${inr2(stats.maxSell)}`
+        : inr2(stats.minSell || stats.maxSell);
+    return {
+      baseMrp: inr2(stats.baseMrp),
+      sellRange,
+      variantCount: String(stats.variantCount || 0),
+      totalStock: `${stats.totalStock || 0} Units`,
+      youEarn: inr2(stats.youEarnTotal || settlement?.youEarn),
+    };
+  }, [
+    state.listingType,
+    state.colorGroups,
+    state.customRows,
+    state.original_price,
+    state.discounted_price,
+    state.gst,
+    state.shipping_charges,
+    state.platformFee,
+    state.free_shipping,
+    settlement?.youEarn,
+  ]);
+
+  useEffect(() => {
+    const saleRaw = state.discounted_price;
+    const mrpRaw = state.original_price;
+    const sale = Number(saleRaw);
+    const mrp = Number(mrpRaw);
+    const hasSale = saleRaw !== "" && saleRaw != null && Number.isFinite(sale) && sale > 0;
+    const hasMrp = mrpRaw !== "" && mrpRaw != null && Number.isFinite(mrp) && mrp > 0;
+    if (!hasSale && !hasMrp) {
+      setRemoteSettlement(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await previewListingSettlement({
+          original_price: state.original_price,
+          discounted_price: state.discounted_price,
+          gst: state.gst,
+          hsn_code: state.hsn_code,
+          shipping_charges: state.shipping_charges,
+          free_shipping: state.free_shipping,
+          package_weight: state.package_weight,
+          package_length: state.package_length,
+          package_width: state.package_width,
+          package_height: state.package_height,
+          volumetric_weight: state.volumetric_weight,
+          category_id: state.category_id,
+          sub_category_id: state.sub_category_id,
+          inner_sub_category_id: state.inner_sub_category_id,
+          size_ids: listingSizeIds(state),
+          color_id: state.color_id,
+        });
+        if (res?.status === 1 && res.data) {
+          setRemoteSettlement(res.data);
+          const fee = res.data.platformFee;
+          const pct = res.data.platform_fee_pct;
+          const max = res.data.platform_fee_max;
+          const next = {};
+          if (fee != null && Number(fee) !== Number(state.platformFee || 0)) {
+            next.platformFee = fee;
+          }
+          if (pct != null && Number(pct) !== Number(state.platform_fee_pct || 0)) {
+            next.platform_fee_pct = pct;
+          }
+          if (max != null && Number(max) !== Number(state.platform_fee_max || 0)) {
+            next.platform_fee_max = max;
+          }
+          if (
+            res.data.shipping != null &&
+            Number(res.data.shipping) !== Number(state.shipping_charges || 0)
+          ) {
+            next.shipping_charges = res.data.shipping;
+          }
+          if (Object.keys(next).length) patch(next);
+        }
+      } catch {
+        /* keep local calc */
+      }
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [
+    state.original_price,
+    state.discounted_price,
+    state.gst,
+    state.hsn_code,
+    state.shipping_charges,
+    state.free_shipping,
+    state.category_id,
+    state.sub_category_id,
+    state.inner_sub_category_id,
+    state.size_ids,
+    state.size_id,
+    state.color_id,
+    state.package_weight,
+    state.package_length,
+    state.package_width,
+    state.package_height,
+    patch,
+  ]);
 
   const filteredSubs = useMemo(
     () =>
@@ -1011,15 +1475,17 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const runCategorySuggest = useCallback(async ({ force = false } = {}) => {
     const file = firstListingImageFile(state);
-    if (!file || !state.listingType) return;
-    if (!force && state.category_id) return;
+    if (!file) return;
+    const fp = listingPhotoFingerprint(file);
+    if (!force && categorySuggestFp.current === fp) return;
+    categorySuggestFp.current = fp;
     const token = ++categorySuggestToken.current;
     setCategorySuggesting(true);
     try {
       const payload = await fileToSuggestPayload(file);
       const res = await suggestListingCategory({
         ...payload,
-        listing_type: state.listingType,
+        listing_type: state.listingType || "single",
       });
       if (token !== categorySuggestToken.current) return;
       if (res?.status === 1 && res?.data) {
@@ -1044,7 +1510,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         }
         patch({
           ...catPatch,
-          ...(colorGroups ? { colorGroups } : {}),
+          ...(colorGroups ? listingPatchFromPrefillGroups(colorGroups, nextState) : {}),
         });
         setBanner({
           type: "info",
@@ -1071,24 +1537,78 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     } finally {
       if (token === categorySuggestToken.current) setCategorySuggesting(false);
     }
-  }, [state.files, state.mediaLabels, state.colorGroups, state.listingType, state.category_id, patch, applyColorSizePrefill]);
+  }, [
+    state.files,
+    state.mediaLabels,
+    state.colorGroups,
+    state.listingType,
+    state.name,
+    state.original_price,
+    state.discounted_price,
+    state.stock,
+    patch,
+    applyColorSizePrefill,
+  ]);
 
   useEffect(() => {
-    if (!state.listingType || state.category_id) return;
     const file = firstListingImageFile(state);
     if (!file) return;
+    const fp = listingPhotoFingerprint(file);
+    if (categorySuggestFp.current === fp) return;
     runCategorySuggest();
   }, [
-    step,
-    state.listingType,
-    state.category_id,
-    state.files?.length,
-    state.files?.[0]?.name,
-    state.files?.[0]?.lastModified,
+    state.files,
     state.mediaLabels,
     state.colorGroups,
     runCategorySuggest,
   ]);
+
+  const runGenerate3d = useCallback(async () => {
+    const file = firstListingImageFile(state);
+    if (!file) {
+      notifyOnWarning("Upload a product photo first");
+      return;
+    }
+    setGenerating3d(true);
+    try {
+      let outFile = null;
+      try {
+        const payload = await fileToSuggestPayload(file);
+        const res = await generateListing3dImage(payload);
+        const b64 = res?.data?.image_base64 || res?.data?.b64_json;
+        if (res?.status === 1 && b64) {
+          const mime = res.data.mime_type || "image/png";
+          const name = mime.includes("png") ? "ai-3d-studio.png" : "ai-3d-studio.jpg";
+          outFile = base64ToJpegFile(b64, name);
+        }
+      } catch {
+        /* canvas fallback */
+      }
+      if (!outFile) outFile = await makeStudio3dFile(file);
+      const files = [...(state.files || [])];
+      const mediaLabels = [...(state.mediaLabels || [])];
+      while (mediaLabels.length < files.length) {
+        mediaLabels.push({ label: `extra${mediaLabels.length}` });
+      }
+      files.push(outFile);
+      mediaLabels.push({
+        label: "ai_3d",
+        alt_text: `${state.name || "Product"} — 3D studio`,
+      });
+      patch({ files, mediaLabels });
+      setBanner({
+        type: "info",
+        text: "3D studio image added at the end of the gallery.",
+      });
+    } catch (e) {
+      setBanner({
+        type: "error",
+        text: getApiErrorMessage(e, "Could not generate a 3D image."),
+      });
+    } finally {
+      setGenerating3d(false);
+    }
+  }, [state, patch]);
 
   const hasSizeIds = useMemo(
     () => hasRealSizeRow(state.colorGroups),
@@ -1122,11 +1642,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           discounted_price: state.discounted_price,
           stock: state.stock,
           colorGroups: state.colorGroups,
+          color_id: state.color_id,
+          color_name: state.color_name,
+          size_ids: state.size_ids,
+          size_id: state.size_id,
         });
         if (cancelled) return;
         if (groups === false) return;
         sizePrefillKeyRef.current = prefillKey;
-        if (groups) patch({ colorGroups: groups });
+        if (groups) patch(listingPatchFromPrefillGroups(groups, state));
       } catch {
         /* soft */
       }
@@ -1149,36 +1673,56 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const validateBasicsStep = () => {
     const err = {};
-    if (step === "brand" && !state.brandType) err.brandType = "Select brand type";
-    if (step === "brand" && state.brandType === "branded" && !state.brandAuthDocName && !state.brandAuthFile) {
-      err.brandAuth = "Upload brand authorization document";
+    const setupPage = SETUP_STEPS.includes(step);
+    if (setupPage || step === "brand") {
+      if (!state.brandType) err.brandType = "Select brand type";
+      if (state.brandType === "branded" && !state.brandAuthDocName && !state.brandAuthFile) {
+        err.brandAuth = "Upload brand authorization document";
+      }
     }
-    if (step === "type" && !state.listingType) err.listingType = "Select listing type";
-    if (step === "category") {
+    if (setupPage || step === "type") {
+      if (!state.listingType) err.listingType = "Select listing type";
+    }
+    if (setupPage || step === "category") {
       if (!state.category_id) err.category_id = "Required";
       if (!state.sub_category_id) err.sub_category_id = "Required";
       Object.assign(err, validateCategoryStepPricing(state));
     }
-    if (step === "images") {
+    if (setupPage || step === "images") {
       const needsParentImages =
-        state.listingType === "single" || state.listingType === "combo";
-      const hasNew = (state.files || []).some((f) => f instanceof File);
-      const hasExisting = (state.existingMedia || []).length > 0;
-      if (needsParentImages && !hasNew && !hasExisting) {
+        state.listingType === "single" ||
+        state.listingType === "combo" ||
+        state.listingType === "color_size" ||
+        state.listingType === "custom" ||
+        !state.listingType;
+      const photoCount =
+        (state.files || []).length + (state.existingMedia || []).length;
+      if (needsParentImages && photoCount === 0) {
         err.files = "Add at least one product image";
       }
     }
     if (step === "matrix" && state.listingType === "color_size") {
+      const photoCount =
+        (state.files || []).length + (state.existingMedia || []).length;
       const ok = (state.colorGroups || []).some(
         (g) =>
           (g.color_id || g.color?.id) &&
-          (g.sizes || []).some((s) => s.size_id || s.size?.id) &&
-          ((g.media || []).length || (g.existingMedia || []).length),
+          (g.sizes || []).some((s) => s.size_id || s.size?.id),
       );
-      if (!ok) err.matrix = "Add color, size rows, and at least one image per color";
+      if (!ok) err.matrix = "Generate at least one color × size combination";
       else {
-        const matrixPriceErr = firstVariationMatrixError(state);
-        if (matrixPriceErr) err.matrix = matrixPriceErr;
+        const missingColorImages = (state.colorGroups || []).some(
+          (g) =>
+            (g.color_id || g.color?.id) &&
+            !(g.media || []).length &&
+            !(g.existingMedia || []).length,
+        );
+        if (missingColorImages && photoCount === 0) {
+          err.matrix = "Add gallery images or at least one image per color";
+        } else {
+          const matrixPriceErr = firstVariationMatrixError(state);
+          if (matrixPriceErr) err.matrix = matrixPriceErr;
+        }
       }
     }
     if (step === "matrix" && state.listingType === "custom") {
@@ -1207,6 +1751,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     setBanner(null);
+    if (SETUP_STEPS.includes(step)) {
+      const extra = steps.find((s) => !SETUP_STEPS.includes(s));
+      if (extra) {
+        setStep(extra);
+        return;
+      }
+      runAiGenerate();
+      return;
+    }
     const idx = steps.indexOf(step);
     if (idx < steps.length - 1) {
       setStep(steps[idx + 1]);
@@ -1219,13 +1772,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     setBanner(null);
     if (phase === "review") {
       setPhase("basics");
-      const last = steps[steps.length - 1] || "category";
-      setStep(last);
+      setStep(state.listingType === "color_size" || state.listingType === "custom" ? "matrix" : "category");
       return;
     }
-    const idx = steps.indexOf(step);
-    if (idx > 0) setStep(steps[idx - 1]);
-    else navigate("/product/list");
+    if (step === "matrix") {
+      setStep("category");
+      requestAnimationFrame(() => scrollToListingSection("category"));
+      return;
+    }
+    if (SETUP_STEPS.includes(step)) {
+      navigate("/product/list");
+      return;
+    }
+    setStep("category");
   };
 
   const runAiGenerate = async (opts = {}) => {
@@ -1241,6 +1800,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const runId = (runAiGenerate._seq = (runAiGenerate._seq || 0) + 1);
     setAiGenerating(true);
     setBanner(null);
+    setPhase("review");
+    setReviewSection("product_info");
     try {
       let draft = null;
       let source = "local";
@@ -1275,13 +1836,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         const groups = await applyColorSizePrefill(merged, {
           suggestedNames: draft?.suggestedSizes,
         });
-        if (groups && groups !== false) merged.colorGroups = groups;
+        if (groups && groups !== false) {
+          Object.assign(merged, listingPatchFromPrefillGroups(groups, merged));
+        }
       } catch {
         /* category effect still prefills */
       }
       setState(merged);
-      setPhase("review");
-      setReviewSection("pricing");
       notifyOnSuccess(
         source === "local"
           ? "Basic draft ready (AI unavailable — review carefully)"
@@ -1295,8 +1856,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         type: "error",
         text: "Could not auto-generate content. You can fill sections manually.",
       });
-      setPhase("review");
-      setReviewSection("pricing");
     } finally {
       if (runId === runAiGenerate._seq) setAiGenerating(false);
     }
@@ -1305,72 +1864,88 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const discardDraft = async () => {
     const savedId = editProductId || state.productId;
     const msg = savedId
-      ? "Discard this draft? It will be permanently deleted."
-      : "Discard this listing progress? Your local draft will be cleared.";
+      ? "Discard this draft? It will be permanently deleted and cannot be undone."
+      : "Discard this listing? All local progress, images, and variant data will be cleared.";
     if (!window.confirm(msg)) return;
+
+    setDiscarding(true);
     try {
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
       if (savedId) {
         const res = await deleteProduct(savedId);
         if (res?.status !== 1) {
           notifyOnFail(res?.message || "Could not discard draft");
           return;
         }
+        clearLocalDraft(stableId);
+        clearListingFiles(stableId);
+        notifyOnSuccess("Draft discarded");
+        navigate("/product?tab=draft");
+        return;
       }
+
       clearLocalDraft(stableId);
-      notifyOnSuccess(savedId ? "Draft discarded" : "Listing progress cleared");
-      navigate("/product/list?tab=draft");
+      clearListingFiles(stableId);
+      const nextId = newStableId(mode);
+      setStableId(nextId);
+      setState(emptyState());
+      setPhase("basics");
+      setStep("brand");
+      setReviewSection("product_info");
+      setFieldErrors({});
+      setBanner(null);
+      setSaveHint("Draft discarded");
+      notifyOnSuccess("Listing progress cleared");
+      navigate("/product/add?fresh=1", { replace: true });
     } catch (e) {
       notifyOnFail(getApiErrorMessage(e, "Could not discard draft"));
+    } finally {
+      setDiscarding(false);
     }
   };
 
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
       const vErr = validateSmartListingState(state);
-      const hasImages =
-        (state.files || []).some((f) => f instanceof File) ||
-        (state.existingMedia || []).length > 0;
-      if (
-        (state.listingType === "single" || state.listingType === "combo") &&
-        !hasImages
-      ) {
+      if (state.listingType === "single" && !state.files?.length) {
         vErr.files = "Add at least one image before submit";
+      }
+      if (state.listingType === "combo" && !state.files?.length) {
+        vErr.files = "Add at least one cover image for the combo listing";
       }
       const firstErr = firstValidationError(vErr);
       if (firstErr) {
-        if (vErr.matrix) {
+        const focus = firstReviewErrorFocus(vErr);
+        if (focus?.phase === "basics") {
           setPhase("basics");
-          setStep("matrix");
-        } else if (
-          vErr.package_length ||
-          vErr.package_width ||
-          vErr.package_height
-        ) {
+          setStep(
+            focus.step === "matrix" && state.listingType === "combo"
+              ? "combo"
+              : focus.step || "images",
+          );
+        } else if (focus?.section) {
           setPhase("review");
-          setReviewSection("shipping");
-        } else if (vErr.name || vErr.hsn_code) {
-          setPhase("review");
-          setReviewSection("product_info");
-        } else if (
-          vErr.original_price ||
-          vErr.discounted_price ||
-          vErr.stock ||
-          vErr.min_order_qty
-        ) {
-          setPhase("review");
-          setReviewSection("pricing");
+          setReviewSection(focus.section);
+          window.setTimeout(() => {
+            const el = focus.fieldId ? document.getElementById(focus.fieldId) : null;
+            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+            el?.focus();
+          }, 80);
         }
         const text = vErr.matrix
           ? vErr.matrix
           : formatPriceValidationToast(vErr) || firstErr;
         setFieldErrors(vErr);
         setBanner({ type: "error", text });
-        notifyOnFail({ title: "Please check", message: text });
+        notifyOnFail({ title: "Please fill required fields", message: text });
         return;
       }
     }
 
-    // Branded publish gate (single + combo)
+    // branded publish blocked client — need approved auth (server also enforces)
     if (
       !asDraft &&
       state.brandType === "branded" &&
@@ -1393,9 +1968,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         vendor_id: vendorId || state.vendor_id,
         name:
           state.name?.trim() ||
-          [state.brand, state.innerSubCategoryTitle || state.subCategoryTitle || state.categoryTitle]
-            .filter(Boolean)
-            .join(" ") ||
+          state.innerSubCategoryTitle ||
+          state.subCategoryTitle ||
+          state.categoryTitle ||
           "Untitled draft",
       };
 
@@ -1409,6 +1984,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         : await addProduct(formData);
       if (res?.status === 1) {
         clearLocalDraft(stableId);
+        clearListingFiles(stableId);
         const session = bulkSession || getBulkSession();
         const hasMoreBulk =
           bulkMode &&
@@ -1458,17 +2034,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           );
         }
       } else {
-        const msg = res?.message || "Could not save listing. Please fix and retry.";
-        setBanner({ type: "error", text: msg });
-        notifyOnFail(msg);
+        setBanner({
+          type: "error",
+          text: res?.message || "Could not save listing. Please fix and retry.",
+        });
       }
     } catch (error) {
-      const msg = getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally.");
       setBanner({
         type: "error",
-        text: msg,
+        text: getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally."),
       });
-      notifyOnFail(msg);
     } finally {
       setSubmitting(false);
     }
@@ -1498,219 +2073,165 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   return (
     <ListingErrorBoundary>
-    <div className="min-h-screen bg-slate-50 pb-28">
-      <div className="border-b bg-white px-4 py-3 sticky top-0 z-20 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="pl-3 border-l-4 border-primary-100">
-            <p className="text-xs uppercase tracking-wide text-primary-100 font-semibold">
-              Smart Product Listing
-            </p>
-            <h1 className="text-lg font-semibold text-gray-900">
-              {bulkProgress
-                ? `Bulk ${bulkProgress.current} of ${bulkProgress.total}${
-                    bulkProgress.plannedType
-                      ? ` · ${bulkProgress.plannedLabel}`
-                      : " · pick any type"
-                  }`
-                : isEditMode
-                  ? "Edit listing"
-                  : phase === "basics"
-                    ? "Provide Basics"
-                    : state.listingType === "combo"
-                      ? "Review & Submit Combo"
-                      : "Review & Edit AI Generated Information"}
-            </h1>
-            {bulkProgress ? (
-              <p className="text-xs text-gray-500 mt-0.5">
-                Mixed types OK · saved {bulkProgress.saved}
-                {bulkProgress.skipped ? ` · skipped ${bulkProgress.skipped}` : ""}
-                {Object.keys(bulkProgress.remainingByType || {}).length
-                  ? ` · left: ${Object.entries(bulkProgress.remainingByType)
-                      .map(([k, v]) => `${v} ${k === "any" ? "any" : typeLabel(k)}`)
-                      .join(", ")}`
-                  : ""}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
-            {bulkProgress ? (
-              <>
-                <button
-                  type="button"
-                  className="text-primary-100 hover:underline font-medium"
-                  onClick={skipBulkListing}
-                >
-                  Skip this
-                </button>
-                <button
-                  type="button"
-                  className="text-amber-700 hover:underline"
-                  onClick={() => {
-                    if (window.confirm("Stop bulk session? Progress is saved per listing already submitted.")) {
-                      clearBulkSession();
-                      navigate("/bulk-upload");
-                    }
-                  }}
-                >
-                  Exit bulk
-                </button>
-              </>
-            ) : null}
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-            <span>{saveHint}</span>
-            <Link
-              to={
-                isEditMode
-                  ? `/product/edit-classic/${editProductId}`
-                  : "/product/add-classic"
-              }
-              className="text-primary-100 hover:underline"
-            >
-              Classic form
-            </Link>
-          </div>
-        </div>
-        <ListingStepper
-          phase={phase}
-          step={step}
-          steps={steps}
-          onSelect={(id) => {
-            if (id === "review") {
-              setPhase("review");
-              return;
+    <div className={`min-h-screen pb-36 font-inter text-slate-800 ${phase === "review" ? "bg-[#FFF8F4]" : "bg-[#F8FAFC]"}`}>
+      <div className="sticky top-0 z-20 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
+        <ListingPageHeader
+          user={user}
+          supportPhone={supportPhone}
+          listingType={state.listingType}
+          bulkProgress={bulkProgress}
+          skipBulkListing={skipBulkListing}
+          onExitBulk={() => {
+            if (window.confirm("Stop bulk session? Progress is saved per listing already submitted.")) {
+              clearBulkSession();
+              navigate("/bulk-upload");
             }
-            setPhase("basics");
-            setStep(id);
           }}
         />
+        {phase === "basics" ? (
+          <SetupStepper
+            phase={phase}
+            step={step}
+            listingType={state.listingType}
+            state={state}
+            onSelect={(id) => {
+              listingStepLockRef.current = true;
+              if (id === "review") {
+                setPhase("review");
+                return;
+              }
+              setPhase("basics");
+              setStep(id);
+              requestAnimationFrame(() => scrollToListingSection(id));
+            }}
+          />
+        ) : (
+          <AiReviewHeader
+            aiGenerating={aiGenerating}
+            onRegenerate={() => runAiGenerate({ confirmDirty: true })}
+            onEdit={() => {
+              setReviewSection("product_info");
+              requestAnimationFrame(() =>
+                document.getElementById("ai-review-name")?.focus(),
+              );
+            }}
+          />
+        )}
       </div>
 
       {banner ? <ListingBanner banner={banner} onClose={() => setBanner(null)} /> : null}
 
-      <div className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-8 space-y-4">
-          {phase === "basics" ? (
-            <BasicsPanel
-              step={step}
-              state={state}
-              patch={patch}
-              fieldErrors={fieldErrors}
-              categorySuggesting={categorySuggesting}
-              onDetectCategory={() => runCategorySuggest({ force: true })}
-              categories={categories}
-              filteredSubs={filteredSubs}
-              filteredInners={filteredInners}
-              vendorId={vendorId}
-              onBrandTypeSelected={(t) => {
-                if (t === "generic") setStep("type");
-              }}
-            />
-          ) : (
-            <ReviewPanel
-              reviewSection={reviewSection}
-              setReviewSection={setReviewSection}
-              state={state}
-              patch={patch}
-              patchSection={patchSection}
-              runAiGenerate={runAiGenerate}
-              aiGenerating={aiGenerating}
-              fieldErrors={fieldErrors}
-              sizeChartUrl={
-                state.sizeChartUrl ||
-                innerSubCategories.find(
-                  (c) => String(c.id) === String(state.inner_sub_category_id),
-                )?.size_chart_image ||
-                null
-              }
-            />
-          )}
-        </div>
-
-        <aside className="lg:col-span-4 space-y-3 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
-          <RightRail state={state} settlement={settlement} previewUrl={previewUrls[0]} />
-        </aside>
+      <div
+        className={`w-full max-w-[1400px] mx-auto px-4 lg:px-5 py-5 ${
+          phase === "review"
+            ? ""
+            : "grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_272px] gap-4 lg:gap-5"
+        }`}
+      >
+        {phase === "basics" ? (
+          <>
+            <div className="min-w-0">
+              <BasicsPanel
+                step={step}
+                state={state}
+                patch={patch}
+                fieldErrors={fieldErrors}
+                categorySuggesting={categorySuggesting}
+                onDetectCategory={() => runCategorySuggest({ force: true })}
+                onGenerateAi={runGenerate3d}
+                onContinueToAi={goNextBasics}
+                aiGenerating={generating3d}
+                listingAiGenerating={aiGenerating}
+                categories={categories}
+                filteredSubs={filteredSubs}
+                filteredInners={filteredInners}
+                vendorId={vendorId}
+              />
+            </div>
+            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[136px] lg:self-start">
+              <ListingRightRail state={state} settlement={settlement} previewUrl={coverPreviewSrc} />
+            </aside>
+          </>
+        ) : (
+          <ReviewPanel
+            reviewSection={reviewSection}
+            setReviewSection={setReviewSection}
+            state={state}
+            patch={patch}
+            patchSection={patchSection}
+            fieldErrors={fieldErrors}
+            settlement={settlement}
+            previewUrl={coverPreviewSrc}
+            shippingRates={shippingRates}
+            sizeChartUrl={
+              state.sizeChartUrl ||
+              innerSubCategories.find(
+                (c) => String(c.id) === String(state.inner_sub_category_id),
+              )?.size_chart_image ||
+              null
+            }
+          />
+        )}
       </div>
 
-      <footer className="fixed bottom-0 inset-x-0 bg-white border-t z-30">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3 justify-between">
-          <button
-            type="button"
-            onClick={goBack}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" /> Back
-          </button>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {!isPublishedLive &&
-              (isEditMode ||
-                state.productId ||
-                phase === "review" ||
-                state.files?.length ||
-                state.category_id) && (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={discardDraft}
-                className="px-4 py-2 rounded-xl border border-red-200 text-red-700 text-sm font-medium disabled:opacity-50"
-              >
-                Discard draft
-              </button>
-            )}
-            {!isPublishedLive ? (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => submitListing({ asDraft: true })}
-                className="px-4 py-2 rounded-xl border text-sm font-medium disabled:opacity-50"
-              >
-                Save as Draft
-              </button>
-            ) : null}
-            {phase === "basics" ? (
-              <button
-                type="button"
-                disabled={aiGenerating}
-                onClick={goNextBasics}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-100 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {aiGenerating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Writing listing…
-                  </>
-                ) : step === steps[steps.length - 1] ? (
-                  <>
-                    <Sparkles className="w-4 h-4" /> Next: AI Auto Generate
-                  </>
-                ) : (
-                  <>
-                    Next <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            ) : isPublishedLive ? (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => submitListing({ asDraft: false })}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                Save changes
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => submitListing({ asDraft: false })}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                {isEditMode ? "Update & Request Publish" : "Request Publish"}
-              </button>
-            )}
-          </div>
-        </div>
-      </footer>
+      <ListingStickyFooter
+        onBack={goBack}
+        saveHint={saveHint}
+        saving={saving}
+        submitting={submitting}
+        discarding={discarding}
+        isPublishedLive={isPublishedLive}
+        showDraft={!isPublishedLive}
+        showBack={phase === "basics" && step === "matrix"}
+        stats={
+          (state.listingType === "color_size" || state.listingType === "custom") &&
+          (step === "matrix" || phase === "review")
+            ? footerStats
+            : null
+        }
+        onSaveDraft={() => submitListing({ asDraft: true })}
+        onDiscard={discardDraft}
+        phase={phase}
+        primaryVariant={
+          phase === "basics" || (phase === "review" && reviewSection !== "size_chart")
+            ? "next"
+            : "publish"
+        }
+        onPrimary={
+          phase === "basics"
+            ? goNextBasics
+            : phase === "review" && reviewSection !== "size_chart"
+              ? () => {
+                  const idx = REVIEW_SECTIONS.findIndex((s) => s.id === reviewSection);
+                  const next = REVIEW_SECTIONS[idx + 1];
+                  if (next) {
+                    setReviewSection(next.id);
+                    window.requestAnimationFrame(() => {
+                      document
+                        .getElementById("ai-review-form-card")
+                        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    });
+                  }
+                }
+              : () => submitListing({ asDraft: false })
+        }
+        aiGenerating={aiGenerating}
+        primaryLabel={
+          phase === "basics"
+            ? aiGenerating
+              ? "Writing listing…"
+              : SETUP_STEPS.includes(step) && steps.some((s) => !SETUP_STEPS.includes(s))
+                ? "Next →"
+                : "Next: AI Auto Generate →"
+            : phase === "review" && reviewSection !== "size_chart"
+              ? "Next →"
+              : isPublishedLive
+                ? "Save changes"
+                : isEditMode
+                  ? "Update & Request Publish"
+                  : "Request Publish"
+        }
+      />
     </div>
     </ListingErrorBoundary>
   );
@@ -1723,150 +2244,91 @@ function BasicsPanel({
   fieldErrors,
   categorySuggesting,
   onDetectCategory,
+  onGenerateAi,
+  onContinueToAi,
+  aiGenerating,
+  listingAiGenerating,
   categories,
   filteredSubs,
   filteredInners,
   vendorId,
-  onBrandTypeSelected,
 }) {
   const catPriceErr = validateCategoryStepPricing(state);
   const mrpErr = showPriceErr(catPriceErr.original_price, fieldErrors.original_price, state.original_price);
   const sellErr = showPriceErr(catPriceErr.discounted_price, fieldErrors.discounted_price, state.discounted_price);
   const gstErr = showPriceErr(catPriceErr.gst, fieldErrors.gst, state.gst);
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-5">
-      {step === "brand" ? (
-        <>
-          <h2 className="font-semibold text-gray-900">Brand Type</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {["branded", "generic"].map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => {
-                  patch({ brandType: t });
-                  onBrandTypeSelected?.(t);
-                }}
-                className={`text-left rounded-2xl border-2 p-4 transition-colors ${
-                  state.brandType === t
-                    ? "border-primary-100 bg-orange-50 shadow-sm"
-                    : "border-gray-200 hover:border-orange-200"
-                }`}
-              >
-                <div className="font-medium capitalize">{t} Product</div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {t === "branded"
-                    ? "Requires brand authorization document — also for combo listings"
-                    : "No brand certificate required — also for combo listings"}
-                </p>
-              </button>
-            ))}
-          </div>
-          {fieldErrors.brandType ? (
-            <p className="text-xs text-red-600">{fieldErrors.brandType}</p>
-          ) : null}
-          {state.brandType === "generic" ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-1">
-              <p className="text-sm font-medium text-emerald-900">
-                Generic product — no brand certificate needed
-              </p>
-              <p className="text-xs text-emerald-800">
-                Click Next to choose listing type (Single, Color & Size, or Custom).
-              </p>
-            </div>
-          ) : null}
-          {state.brandType === "branded" ? (
-            <div className="space-y-2 border border-dashed border-orange-200 rounded-2xl p-4 bg-orange-50/40">
-              <p className="text-sm font-medium">Brand Authorization</p>
-              <p className="text-xs text-gray-500">
-                Upload one allowed proof. Publish is blocked until Admin approves
-                (SLA: {BRAND_AUTH_SLA_BUSINESS_DAYS} business days). Save as draft meanwhile.
-              </p>
-              <label className="block text-xs font-medium text-gray-700">
-                Document type
-                <select
-                  className={inputCls + " mt-1"}
-                  value={state.brandAuthDocType || "authorization_letter"}
-                  onChange={(e) => patch({ brandAuthDocType: e.target.value })}
-                >
-                  {BRAND_AUTH_DOC_TYPES.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+
+  if (step !== "matrix") {
+    return (
+      <SmartListingSetupForm
+        state={state}
+        patch={patch}
+        fieldErrors={fieldErrors}
+        categories={categories}
+        filteredSubs={filteredSubs}
+        filteredInners={filteredInners}
+        categorySuggesting={categorySuggesting}
+        onDetectCategory={onDetectCategory}
+        onGenerateAi={onGenerateAi}
+        aiGenerating={aiGenerating}
+        pricingBlock={
+          state.category_id ? (
+          <div className="grid sm:grid-cols-2 gap-3 pt-2">
+            <Field label="HSN Code" required>
               <input
-                type="file"
-                accept=".pdf,image/*"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (!f) return;
-                  if (f.size > 5 * 1024 * 1024) {
-                    notifyOnFail("Max 5MB");
-                    return;
-                  }
-                  patch({ brandAuthFile: f, brandAuthDocName: f.name });
-                }}
+                className={inputCls}
+                value={state.hsn_code}
+                onChange={(e) => patch({ hsn_code: e.target.value })}
+                placeholder="Autofill after category, or type"
               />
-              {state.brandAuthDocName ? (
-                <p className="text-xs text-emerald-700">Uploaded: {state.brandAuthDocName}</p>
-              ) : null}
-              {state.brandAuthStatus ? (
-                <p className={`text-xs ${state.brandAuthApproved ? "text-emerald-700" : "text-amber-700"}`}>
-                  Auth status: {state.brandAuthStatus}
-                  {state.brandAuthApproved ? " — publish allowed" : " — save as draft until approved"}
-                </p>
-              ) : null}
-              {fieldErrors.brandAuth ? (
-                <p className="text-xs text-red-600">{fieldErrors.brandAuth}</p>
-              ) : null}
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {step === "type" ? (
-        <>
-          <h2 className="font-semibold text-gray-900">Listing Type</h2>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {LISTING_TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() =>
-                  t.id === "single"
-                    ? patch({
-                        // Keep combo flag if already set (e.g. bulk / Images checkbox); card is still Single
-                        listingType:
-                          state.listingType === "combo" ? "combo" : "single",
-                        comboItems: [],
-                      })
-                    : patch({ listingType: t.id, comboItems: [] })
-                }
-                className={`text-left rounded-2xl border-2 p-4 transition-colors ${
-                  listingTypeCardId(state.listingType) === t.id
-                    ? "border-primary-100 bg-orange-50 shadow-sm"
-                    : "border-gray-200 hover:border-orange-200"
-                }`}
-              >
-                <div className="font-medium">{t.title}</div>
-                <p className="text-xs text-gray-500 mt-1">{t.desc}</p>
-              </button>
-            ))}
+            </Field>
+            <Field label="GST %" optional error={gstErr}>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className={inputClsErr(gstErr)}
+                value={state.gst}
+                onChange={(e) => patch({ gst: e.target.value })}
+              />
+            </Field>
+            <PricePairFields
+              state={state}
+              patch={patch}
+              mrpErr={mrpErr}
+              sellErr={sellErr}
+            />
+            <SizeColorPairFields state={state} patch={patch} fieldErrors={fieldErrors} />
           </div>
-          {fieldErrors.listingType ? (
-            <p className="text-xs text-red-600">{fieldErrors.listingType}</p>
-          ) : null}
-        </>
-      ) : null}
+          ) : null
+        }
+      />
+    );
+  }
 
+  return (
+    <div className={state.listingType === "color_size" || state.listingType === "custom" ? "space-y-5" : "bg-white rounded-2xl border border-gray-100 p-5 shadow-sm space-y-5"}>
       {step === "matrix" ? (
         <>
           {state.listingType === "color_size" ? (
-            <ColorSizeMatrix state={state} patch={patch} />
+            <VariationListingCanvas
+              state={state}
+              patch={patch}
+              fieldError={fieldErrors.matrix}
+              onGenerateAi={onGenerateAi}
+              aiGenerating={aiGenerating}
+              categorySuggesting={categorySuggesting}
+            />
           ) : (
-            <CustomVariationMatrix state={state} patch={patch} />
+            <CustomVariationCanvas
+              state={state}
+              patch={patch}
+              fieldError={fieldErrors.matrix}
+              onGenerateAi={onGenerateAi}
+              onContinueToAi={onContinueToAi}
+              aiGenerating={listingAiGenerating}
+              categorySuggesting={categorySuggesting}
+            />
           )}
           {fieldErrors.matrix ? (
             <p className="text-xs text-red-600">{fieldErrors.matrix}</p>
@@ -1874,272 +2336,61 @@ function BasicsPanel({
         </>
       ) : null}
 
-      {step === "images" ? (
-        <>
-          <h2 className="font-semibold text-gray-900">Upload Product Images</h2>
-          <p className="text-xs text-gray-500">
-            Upload the front photo — category, subcategory, and inner subcategory auto-fill in the background.
-          </p>
-          {categorySuggesting ? (
-            <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Detecting category and inner subcategory from your photo…
-            </p>
-          ) : null}
-          <LabeledPhotoBoxes state={state} patch={patch} fieldError={fieldErrors.files} />
-          {state.listingType === "single" || state.listingType === "combo" ? (
-            <label className="mt-3 flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50/80 px-4 py-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={state.listingType === "combo"}
-                onChange={(e) =>
-                  patch({
-                    listingType: e.target.checked ? "combo" : "single",
-                    comboItems: [],
-                  })
-                }
-              />
-              <span>
-                <span className="block text-sm font-medium text-gray-900">
-                  Is this product a combo?
-                </span>
-                <span className="block text-xs text-gray-500 mt-0.5">
-                  Works for Brand and Generic. Same photos + AI as a single listing. When checked, AI title/specs use combo wording (e.g. Combo / Set of). Saved as listing_type=combo so Admin can identify it.
-                </span>
-              </span>
-            </label>
-          ) : null}
-        </>
-      ) : null}
-
-      {step === "category" ? (
-        <>
-          <h2 className="font-semibold text-gray-900">Category & pricing</h2>
-          {categorySuggesting ? (
-            <p className="text-xs text-primary-100 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 inline-flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Detecting category and inner subcategory from your photo…
-            </p>
-          ) : state.category_id ? (
-            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-              Category pre-filled from your image — adjust below if incorrect.
-            </p>
-          ) : state.files?.length ? (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              Could not auto-detect category — please select manually below.
-            </p>
-          ) : (
-            <p className="text-xs text-gray-500">
-              Go back and upload a clear front photo for automatic category detection.
-            </p>
-          )}
-          {state.files?.length ? (
-            <button
-              type="button"
-              disabled={categorySuggesting}
-              onClick={() => onDetectCategory?.()}
-              className="text-xs font-medium text-primary-100 hover:underline disabled:opacity-50"
-            >
-              {categorySuggesting ? "Detecting…" : "Detect category from photo"}
-            </button>
-          ) : null}
-          <div className="grid gap-3">
-            <Field label="Category" required error={fieldErrors.category_id}>
-              <SearchablePicker
-                value={state.category_id}
-                onChange={(id) =>
-                  patch({
-                    category_id: id,
-                    sub_category_id: "",
-                    inner_sub_category_id: "",
-                    size_id: "",
-                  })
-                }
-                placeholder="Search category"
-                searchPlaceholder="Search category…"
-                options={categories.map((c) => ({ id: c.id, label: c.name }))}
-                error={fieldErrors.category_id}
-              />
-            </Field>
-            <Field label="Sub Category" required error={fieldErrors.sub_category_id}>
-              <SearchablePicker
-                value={state.sub_category_id}
-                onChange={(id) =>
-                  patch({
-                    sub_category_id: id,
-                    inner_sub_category_id: "",
-                    size_id: "",
-                  })
-                }
-                placeholder="Search subcategory"
-                searchPlaceholder="Search subcategory…"
-                options={filteredSubs.map((c) => ({ id: c.id, label: c.name }))}
-                error={fieldErrors.sub_category_id}
-              />
-            </Field>
-            <Field label="Inner Sub Category" optional>
-              <SearchablePicker
-                value={state.inner_sub_category_id}
-                onChange={(id) => patch({ inner_sub_category_id: id, size_id: "" })}
-                placeholder="Search inner subcategory"
-                searchPlaceholder="Search inner subcategory…"
-                options={filteredInners.map((c) => ({ id: c.id, label: c.name }))}
-              />
-            </Field>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <Field label="HSN Code" required>
-                <input
-                  className={inputCls}
-                  value={state.hsn_code}
-                  onChange={(e) => patch({ hsn_code: e.target.value })}
-                  placeholder="Autofill after category, or type"
-                />
-              </Field>
-              <Field label="GST %" optional error={gstErr}>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className={inputClsErr(gstErr)}
-                  value={state.gst}
-                  onChange={(e) => patch({ gst: e.target.value })}
-                />
-              </Field>
-              <PricePairFields
-                state={state}
-                patch={patch}
-                mrpErr={mrpErr}
-                sellErr={sellErr}
-              />
-            </div>
-            {state.listingType === "single" || state.listingType === "combo" ? (
-              <SingleSizeField state={state} patch={patch} />
-            ) : null}
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }
-
-function SingleSizeField({ state, patch }) {
-  const [sizeOptions, setSizeOptions] = useState([]);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!state.category_id && !state.sub_category_id && !state.inner_sub_category_id) {
-        setSizeOptions([]);
-        return;
-      }
-      try {
-        const res = await getAllSizes(sizeQueryFromListing(state));
-        if (cancelled) return;
-        // Full catalog with search; category-linked sizes listed first when present.
-        const split = splitContextualSizes(res?.data || [], res?.meta, state);
-        setSizeOptions(sizePickerOptions(split));
-      } catch {
-        if (!cancelled) setSizeOptions([]);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
-
-  const ready = Boolean(
-    state.inner_sub_category_id || state.sub_category_id || state.category_id,
-  );
-
-  return (
-    <Field
-      label="Size (optional)"
-      hint="All catalog sizes with search. Category-linked sizes appear first when mapped."
-    >
-      <SearchablePicker
-        value={state.size_id || ""}
-        onChange={(id) => patch({ size_id: id || "" })}
-        placeholder={ready ? "Select size" : "Select category first"}
-        searchPlaceholder="Search size…"
-        options={sizeOptions}
-        allowClear
-        tone="brand"
-        emptyText={
-          ready
-            ? "No sizes in catalog — add sizes in Size & Color, or leave blank"
-            : "Select category to load sizes"
-        }
-        disabled={!ready}
-      />
-    </Field>
-  );
-}
-
-function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSection, runAiGenerate, aiGenerating, fieldErrors = {}, sizeChartUrl }) {
+function ReviewPanel({
+  reviewSection,
+  setReviewSection,
+  state,
+  patch,
+  patchSection,
+  fieldErrors = {},
+  sizeChartUrl,
+  settlement,
+  previewUrl,
+  shippingRates = [],
+}) {
   const ai = (id) => state.aiGeneratedSections?.includes(id);
   const dirty = (id) => !!(state.dirtySections || {})[id];
   const priceErr = livePriceErr(state, fieldErrors);
+  const sections = REVIEW_SECTIONS;
+  const activeMeta = sections.find((s) => s.id === reviewSection) || sections[0];
+
   useEffect(() => {
     if (reviewSection === "compliance") setReviewSection("shipping");
   }, [reviewSection, setReviewSection]);
-  return (
-    <div className="grid md:grid-cols-12 gap-4">
-      <nav className="md:col-span-4 space-y-1">
-        {REVIEW_SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setReviewSection(s.id)}
-            className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between ${
-              reviewSection === s.id
-                ? "bg-orange-50 text-primary-100 font-semibold border border-orange-100"
-                : "hover:bg-orange-50/50 border border-transparent"
-            }`}
-          >
-            {s.label}
-            <span className="flex gap-1">
-              {dirty(s.id) ? (
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full">Edited</span>
-              ) : null}
-              {ai(s.id) ? (
-                <span className="text-[10px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">AI</span>
-              ) : null}
-            </span>
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={aiGenerating}
-          onClick={() => runAiGenerate({ confirmDirty: true })}
-          className="w-full mt-3 inline-flex items-center justify-center gap-2 text-sm border rounded-xl py-2 disabled:opacity-50"
-        >
-          {aiGenerating ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" /> Generating…
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" /> Regenerate All
-            </>
-          )}
-        </button>
-      </nav>
-      <div className="md:col-span-8 bg-white rounded-2xl border p-5 space-y-4">
-        {ai(reviewSection) ? (
-          <span className="inline-flex text-xs bg-emerald-100 text-emerald-800 px-2 py-1 rounded-full">
-            AI Generated
-          </span>
-        ) : null}
 
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_272px] gap-4 lg:gap-5">
+      <AiReviewNav
+        sections={sections}
+        reviewSection={reviewSection}
+        setReviewSection={setReviewSection}
+        isAi={ai}
+        isDirty={dirty}
+      />
+      <div className="min-w-0">
+        <AiReviewFormCard
+          title={activeMeta.label}
+          aiGenerated={ai(reviewSection)}
+          hideHeader={reviewSection === "size_chart"}
+        >
         {reviewSection === "product_info" ? (
           <div className="grid gap-3">
             <Field label="Product Name" required>
-              <input className={inputCls} value={state.name} onChange={(e) => patch({ name: e.target.value })} />
+              <textarea
+                id="ai-review-name"
+                className={`${inputCls} min-h-[48px] h-[52px] max-h-[88px] resize-y leading-snug`}
+                rows={2}
+                value={state.name}
+                onChange={(e) => patch({ name: e.target.value })}
+              />
             </Field>
             <Field label="Short Description">
               <textarea
-                className={inputCls}
-                rows={5}
+                className={`${inputCls} min-h-[176px] h-44 resize-y leading-relaxed`}
+                rows={8}
                 value={state.shortDescription}
                 onChange={(e) => patch({ shortDescription: e.target.value })}
                 placeholder="3–5 lines — product-specific summary for shoppers"
@@ -2149,17 +2400,10 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               <Field label="Brand">
                 <input className={inputCls} value={state.brand} onChange={(e) => patch({ brand: e.target.value })} />
               </Field>
-              <Field label="Country of Origin">
-                <input
-                  className={inputCls}
-                  value={state.countryOfOrigin}
-                  onChange={(e) => patch({ countryOfOrigin: e.target.value })}
-                />
-              </Field>
               <Field label="HSN Code" required>
-                <input className={inputCls} value={state.hsn_code} onChange={(e) => patch({ hsn_code: e.target.value })} />
+                <input id="ai-review-hsn" className={inputClsErr(fieldErrors.hsn_code)} value={state.hsn_code} onChange={(e) => patch({ hsn_code: e.target.value })} />
               </Field>
-              <Field label="GST %" error={priceErr.gst}>
+              <Field label="GST Percentage" error={priceErr.gst}>
                 <input
                   type="number"
                   min="0"
@@ -2169,12 +2413,13 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                   onChange={(e) => patch({ gst: e.target.value })}
                 />
               </Field>
-              <PricePairFields
-                state={state}
-                patch={patch}
-                mrpErr={priceErr.original_price}
-                sellErr={priceErr.discounted_price}
-              />
+              <Field label="Country of Origin">
+                <input
+                  className={inputCls}
+                  value={state.countryOfOrigin}
+                  onChange={(e) => patch({ countryOfOrigin: e.target.value })}
+                />
+              </Field>
               {state.gst_mixed ? (
                 <p className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                   Mixed GST ({state.gst_raw || "multi-slab"}): rate follows sale price vs ₹1000 slab (textile 5%/12%, footwear 12%/18%). Current applied: {state.gst}%.
@@ -2195,8 +2440,9 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         {reviewSection === "description" ? (
           <Field label="Product Description">
             <textarea
-              className={inputCls}
-              rows={8}
+              id="ai-review-description"
+              className={`${inputCls} min-h-[320px] h-80 resize-y leading-relaxed`}
+              rows={14}
               value={state.productDetails?.replace(/<[^>]+>/g, "") || ""}
               onChange={(e) =>
                 patch({
@@ -2204,6 +2450,10 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                   generalInfo: `<p>${e.target.value}</p>`,
                 })
               }
+              onInput={(e) => {
+                e.currentTarget.style.height = "auto";
+                e.currentTarget.style.height = `${Math.max(320, e.currentTarget.scrollHeight)}px`;
+              }}
             />
           </Field>
         ) : null}
@@ -2238,15 +2488,10 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "whats_in_box" ? (
-          <div className="space-y-2">
-            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-              Manual only — list each item the buyer receives. AI never fills this section.
-            </p>
-            <BoxEditor
-              items={state.whatsInTheBox}
-              onChange={(whatsInTheBox) => patch({ whatsInTheBox })}
-            />
-          </div>
+          <BoxEditor
+            items={state.whatsInTheBox}
+            onChange={(whatsInTheBox) => patch({ whatsInTheBox })}
+          />
         ) : null}
 
         {reviewSection === "benefits" ? (
@@ -2258,7 +2503,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "pricing" ? (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <PricePairFields
               state={state}
               patch={patch}
@@ -2266,12 +2511,25 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               sellErr={priceErr.discounted_price}
               mrpLabel="MRP"
               sellLabel="Selling Price"
+              mrpId="ai-review-mrp"
+              sellId="ai-review-sale"
+              readOnly
             />
+            {state.listingType === "color_size" || state.listingType === "custom" ? (
+              <p className="w-full col-span-full text-xs text-slate-500 bg-[#FFF5F0] border border-[#FDE4D8] rounded-lg px-3 py-2">
+                {state.listingType === "custom"
+                  ? "Custom attributes, MRP, selling price and stock for each SKU were set on Configure Custom Variations."
+                  : "Color, size, MRP, selling price and stock for each SKU were set on Configure Variation."}
+              </p>
+            ) : (
+              <SizeColorPairFields state={state} patch={patch} fieldErrors={fieldErrors} readOnly />
+            )}
             <Field label="SKU">
               <input className={inputCls} value={state.sku} onChange={(e) => patch({ sku: e.target.value })} />
             </Field>
             <Field label="Stock" required error={priceErr.stock}>
               <input
+                id="ai-review-stock"
                 type="number"
                 min="1"
                 step="1"
@@ -2292,6 +2550,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
             </Field>
             <Field label="Min Order Qty" error={priceErr.min_order_qty}>
               <input
+                id="ai-review-min-qty"
                 type="number"
                 min="1"
                 step="1"
@@ -2300,9 +2559,6 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 onChange={(e) => patch({ min_order_qty: e.target.value })}
               />
             </Field>
-            {state.listingType === "single" || state.listingType === "combo" ? (
-              <SingleSizeField state={state} patch={patch} />
-            ) : null}
             <Field label="Condition">
               <select
                 className={inputCls}
@@ -2331,49 +2587,40 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
         ) : null}
 
         {reviewSection === "size_chart" ? (
-          <SizeChartGuide
+          <SizeChartPanel
+            sizeChart={state.sizeChart}
             sizeChartUrl={sizeChartUrl}
-            categoryHint={[state.innerSubCategoryTitle, state.subCategoryTitle, state.categoryTitle].filter(Boolean).join(" ")}
+            aiSuggested={ai("size_chart")}
+            categoryHint={[state.innerSubCategoryTitle, state.subCategoryTitle, state.categoryTitle, state.name].filter(Boolean).join(" ")}
+            sizeLabels={sizeLabelsFromState(state)}
+            onChange={(sizeChart) =>
+              patchSection
+                ? patchSection("size_chart", { sizeChart })
+                : patch({ sizeChart })
+            }
           />
         ) : null}
 
         {reviewSection === "seo" ? (
           <div className="grid gap-3">
-            <p className="text-xs text-gray-500 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
-              SEO is auto-generated by AI from the product title and listing content. This section is view-only.
-            </p>
             <Field label="Meta Title">
-              <input
-                className={`${inputCls} bg-gray-100 text-gray-700 cursor-not-allowed`}
-                value={state.metaTitle}
-                readOnly
-                disabled
-              />
+              <input className={inputCls} value={state.metaTitle} onChange={(e) => patch({ metaTitle: e.target.value })} />
             </Field>
             <Field label="Meta Description">
               <textarea
-                className={`${inputCls} bg-gray-100 text-gray-700 cursor-not-allowed`}
+                className={inputCls}
                 rows={3}
                 value={state.metaDescription}
-                readOnly
-                disabled
+                onChange={(e) => patch({ metaDescription: e.target.value })}
               />
             </Field>
             <Field label="Meta Keywords">
               <input
-                className={`${inputCls} bg-gray-100 text-gray-700 cursor-not-allowed`}
+                className={inputCls}
                 value={state.metaKeywords}
-                readOnly
-                disabled
+                onChange={(e) => patch({ metaKeywords: e.target.value })}
               />
             </Field>
-            {Array.isArray(state.tags) && state.tags.length ? (
-              <Field label="Tags">
-                <p className="text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2">
-                  {state.tags.join(", ")}
-                </p>
-              </Field>
-            ) : null}
             {(() => {
               const hits = findRestrictedHits(
                 [state.metaTitle, state.metaDescription, state.metaKeywords, state.name, state.productDetails].join(" "),
@@ -2381,7 +2628,7 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
               if (!hits.length) return null;
               return (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                  Soft warning — avoid restricted claims: {hits.join(", ")}. Regenerate AI draft to refresh SEO.
+                  Soft warning — avoid restricted claims: {hits.join(", ")}. AI draft already scrubs these; please revise before publish.
                 </p>
               );
             })()}
@@ -2390,10 +2637,11 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
 
         {reviewSection === "shipping" ? (
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Weight (g)" required>
+            <Field label="Weight (g)" required error={fieldErrors.package_weight}>
               <input
+                id="ai-review-package_weight"
                 type="number"
-                className={inputCls}
+                className={inputClsErr(fieldErrors.package_weight)}
                 value={state.package_weight}
                 onChange={(e) => patch({ package_weight: e.target.value })}
               />
@@ -2416,27 +2664,51 @@ function ReviewPanel({ reviewSection, setReviewSection, state, patch, patchSecti
                 key={k}
                 label={k.replace("package_", "").toUpperCase() + " (cm)"}
                 required
+                optional={false}
                 error={fieldErrors[k]}
               >
                 <input
+                  id={`ai-review-${k}`}
                   type="number"
-                  min="0.1"
-                  step="0.1"
+                  min="0.01"
+                  step="0.01"
                   className={inputClsErr(fieldErrors[k])}
                   value={state[k]}
                   onChange={(e) => patch({ [k]: e.target.value })}
                 />
               </Field>
             ))}
+            <Field
+              label="Shipping charges (₹)"
+              optional={false}
+              hint={
+                shippingRates.length
+                  ? "From Admin → Settings → Fulfillment (weight slabs in grams). Chargeable weight is max(dead weight g, volumetric kg × 1000)."
+                  : "No rows in Admin → Settings → Fulfillment yet. Add weight slabs there (max weight g + charge ₹)."
+              }
+            >
+              <input
+                className={`${inputCls} bg-gray-100 text-gray-600 cursor-not-allowed`}
+                value={state.shipping_charges ?? 0}
+                readOnly
+                disabled
+                tabIndex={-1}
+              />
+            </Field>
             <Field label="Ships From">
               <input className={inputCls} value={state.shipsFrom} onChange={(e) => patch({ shipsFrom: e.target.value })} />
             </Field>
-            <p className="sm:col-span-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+            <p className="sm:col-span-2 text-xs text-gray-600 bg-[#FFF5F0] border border-[#FDE4D8] rounded-lg px-3 py-2">
               Ships to Pan India, delivery time, return window ({state.return_window_days ?? 7} days for returnable categories), COD, shipping charges, and replacement rules are applied automatically from admin settings and your category.
             </p>
           </div>
         ) : null}
+        </AiReviewFormCard>
       </div>
+      <aside className="w-full space-y-3 lg:sticky lg:top-[148px] lg:self-start">
+        <StorefrontPreviewCard state={state} previewUrl={previewUrl} settlement={settlement} />
+        <BankSettlementSummary state={state} settlement={settlement} />
+      </aside>
     </div>
   );
 }
@@ -2468,7 +2740,8 @@ function ListEditor({ label, values, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-primary-100"
+        className="text-sm font-semibold"
+        style={{ color: "#F56C43" }}
         onClick={() => onChange([...list, ""])}
       >
         + Add
@@ -2507,7 +2780,8 @@ function SpecEditor({ specs, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-primary-100"
+        className="text-sm font-semibold"
+        style={{ color: "#F56C43" }}
         onClick={() => onChange([...list, { feature: "", specification: "" }])}
       >
         + Add row
@@ -2546,149 +2820,12 @@ function BoxEditor({ items, onChange }) {
       ))}
       <button
         type="button"
-        className="text-sm text-primary-100"
+        className="text-sm font-semibold"
+        style={{ color: "#F56C43" }}
         onClick={() => onChange([...list, { title: "", details: "" }])}
       >
         + Add item
       </button>
-    </div>
-  );
-}
-
-function ListingStepper({ phase, step, steps, onSelect }) {
-  const flowSteps = [...steps, "review"];
-  const activeId = phase === "review" ? "review" : step;
-  const activeIdx = Math.max(0, flowSteps.indexOf(activeId));
-
-  return (
-    <div className="max-w-7xl mx-auto px-4 pb-3 overflow-x-auto border-t border-slate-100 pt-3">
-      <ol className="flex items-center gap-0.5 min-w-max">
-        {flowSteps.map((id, idx) => {
-          const done = idx < activeIdx;
-          const active = idx === activeIdx;
-          const label = STEP_LABELS[id] || id;
-          return (
-            <li key={id} className="flex items-center">
-              {idx > 0 ? (
-                <span
-                  className={`w-6 sm:w-10 h-0.5 shrink-0 ${done ? "bg-primary-100" : "bg-gray-200"}`}
-                  aria-hidden
-                />
-              ) : null}
-              <button
-                type="button"
-                onClick={() => onSelect?.(id)}
-                className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full border text-[11px] sm:text-xs whitespace-nowrap ${
-                  active
-                    ? "bg-primary-100 text-white border-primary-100 font-medium"
-                    : done
-                      ? "bg-orange-50 text-primary-100 border-orange-200"
-                      : "bg-white text-gray-400 border-gray-200"
-                }`}
-              >
-                <span
-                  className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                    active
-                      ? "bg-white/25 text-white"
-                      : done
-                        ? "bg-primary-100 text-white"
-                        : "bg-gray-100 text-gray-500"
-                  }`}
-                >
-                  {done ? "✓" : idx + 1}
-                </span>
-                {label}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
-function RightRail({ state, settlement, previewUrl }) {
-  const off = settlement.discountPct > 0 ? `${settlement.discountPct}% OFF` : null;
-  return (
-    <>
-      <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-3 space-y-2">
-        <h3 className="font-semibold text-sm flex items-center gap-2 text-primary-100">
-          <Package className="w-4 h-4" /> Preview on IERADA
-        </h3>
-        <div className="relative h-36 sm:h-40 rounded-xl bg-slate-100 overflow-hidden flex items-center justify-center">
-          {previewUrl ? (
-            <img
-              src={previewUrl}
-              alt={state.name || "Product"}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <Upload className="w-8 h-8 text-gray-300" />
-          )}
-          {off ? (
-            <span className="absolute top-2 left-2 bg-emerald-100 text-emerald-800 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-              {off}
-            </span>
-          ) : null}
-        </div>
-        <p className="text-[11px] text-amber-700">★★★★☆ 4.2 · IERADA preview</p>
-        <p className="font-medium text-sm line-clamp-2">{state.name || "Product name"}</p>
-        <p className="text-xs text-gray-500 line-clamp-2">{state.shortDescription || "Short description"}</p>
-        <p className="text-sm">
-          <span className="font-bold text-primary-100 text-base">
-            ₹{settlement.sale || "—"}
-          </span>{" "}
-          {settlement.mrp > settlement.sale ? (
-            <span className="text-gray-400 line-through text-xs">₹{settlement.mrp}</span>
-          ) : null}
-        </p>
-      </div>
-      <div className="bg-white rounded-2xl border p-3 space-y-1.5 text-sm">
-        <h3 className="font-semibold text-sm">Bank Settlement Summary</h3>
-        <Row k="MRP" v={settlement.mrp} />
-        <Row k="Sale" v={settlement.sale} />
-        <Row k="Discount %" v={`${settlement.discountPct}%`} raw />
-        <Row k="GST breakup" v={settlement.gstAmount} />
-        <Row k="TDS (2%)" v={settlement.tds} />
-        <Row k="Shipping (seller)" v={settlement.shipping} />
-        <Row k="Platform fee" v={settlement.platformFee} />
-        <div className="rounded-xl bg-orange-50 border border-orange-100 px-3 py-2">
-          <Row k="Listing Price" v={settlement.listingPrice} highlight />
-        </div>
-        <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
-          <Row k="You Earn" v={settlement.youEarn} strong />
-        </div>
-        <p className="text-[11px] text-gray-400 pt-1">
-          Rates are provisional until Ops confirms commission/TDS rules.
-        </p>
-      </div>
-      <div className="bg-amber-50 border border-amber-100 rounded-2xl p-3 text-xs text-amber-900 space-y-1">
-        <p className="font-semibold">Listing Tips</p>
-        <p>Use clear primary photo on white/clean background.</p>
-        <p>Confirm HSN/GST after category select.</p>
-        <p>Save draft anytime — resume won’t create duplicates.</p>
-      </div>
-    </>
-  );
-}
-
-function Row({ k, v, strong, raw, highlight }) {
-  return (
-    <div className="flex justify-between gap-2">
-      <span className={highlight ? "text-primary-100 font-semibold" : "text-gray-500"}>
-        {k}
-      </span>
-      <span
-        className={
-          strong
-            ? "font-semibold text-emerald-700"
-            : highlight
-              ? "font-semibold text-primary-100"
-              : ""
-        }
-      >
-        {raw ? v : `₹${v ?? 0}`}
-      </span>
     </div>
   );
 }

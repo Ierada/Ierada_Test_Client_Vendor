@@ -1,5 +1,13 @@
 import { calcSettlement, suggestSku, slugify, TDS_RATE } from "./settlementCalc";
-import { buildColorSizeRows } from "./variationHelpers";
+import { mediaBucketsForListingMeta, withSyncedMediaBuckets } from "./listingMediaByType";
+import {
+  buildColorSizeRows,
+  customAttrValues,
+  listingSizeIds,
+  parseColorSizeMediaKey,
+  sizeMediaGroupingKey,
+  selectedVariationColorIds,
+} from "./variationHelpers";
 
 function appendFilesAndMedia(fd, state) {
   const allFiles = [];
@@ -19,6 +27,24 @@ function appendFilesAndMedia(fd, state) {
       if (indices.length) {
         variationMedia.push({
           grouping_key: Number(g.color_id),
+          file_indices: indices.map((i) => start + i),
+        });
+      }
+    });
+    Object.entries(state.sizeMedia || {}).forEach(([key, bucket]) => {
+      const groupingKey = sizeMediaGroupingKey(key);
+      if (!groupingKey) return;
+      const start = allFiles.length;
+      const indices = [];
+      (bucket?.media || []).forEach((f) => {
+        if (f instanceof File) {
+          indices.push(allFiles.length - start);
+          allFiles.push(f);
+        }
+      });
+      if (indices.length) {
+        variationMedia.push({
+          grouping_key: groupingKey,
           file_indices: indices.map((i) => start + i),
         });
       }
@@ -71,7 +97,8 @@ function appendFilesAndMedia(fd, state) {
           : null,
         attribute_value: r.attributes[0]?.attribute_value || null,
         attributes: r.attributes.map((a) => ({
-          attribute_id: Number(a.attribute_id),
+          attribute_id: a.attribute_id ? Number(a.attribute_id) : null,
+          attribute_name: a.attribute_name || "",
           attribute_value: a.attribute_value,
         })),
         grouping_key: String(r.grouping_key ?? i),
@@ -97,17 +124,18 @@ function appendFilesAndMedia(fd, state) {
     }
   }
 
-  // Legacy BOM only: send combo_items when present. Flag-only combos send [].
-  if (state.listingType === "combo") {
-    const lines = (state.comboItems || [])
-      .filter((c) => c?.combo_product_id)
-      .map((c) => ({
-        combo_product_id: Number(c.combo_product_id),
-        variation_id: c.variation_id ? Number(c.variation_id) : null,
-        qty: Math.max(1, Number(c.qty) || 1),
-        discount_percentage: c.discount_percentage ?? null,
-      }));
-    fd.append("combo_items", JSON.stringify(lines));
+  if (state.listingType === "combo" && state.comboItems?.length) {
+    fd.append(
+      "combo_items",
+      JSON.stringify(
+        state.comboItems.map((c) => ({
+          combo_product_id: Number(c.combo_product_id),
+          variation_id: c.variation_id ? Number(c.variation_id) : null,
+          qty: Math.max(1, Number(c.qty) || 1),
+          discount_percentage: c.discount_percentage ?? null,
+        })),
+      ),
+    );
   }
 
   allFiles.forEach((file) => fd.append("files", file));
@@ -175,6 +203,7 @@ export function applyAutoListingPolicies(partial, context = {}) {
 }
 
 export function buildSmartListingFormData(state, { asDraft = false, requestPublish = false } = {}) {
+  const synced = withSyncedMediaBuckets(state);
   const fd = new FormData();
   const settlement = calcSettlement({
     mrp: state.original_price,
@@ -194,6 +223,8 @@ export function buildSmartListingFormData(state, { asDraft = false, requestPubli
       : state.listing_status ||
         (visibility === "Published" ? "published" : "hidden");
 
+  const selectedSizeIds = listingSizeIds(state);
+
   const listing_meta = {
     stock_management_mode: state.stock_management_mode || "self",
     allow_backorders: !!state.allow_backorders,
@@ -210,7 +241,36 @@ export function buildSmartListingFormData(state, { asDraft = false, requestPubli
     return_shipping_payer: state.return_shipping_payer || "seller",
     brand_auth_doc_name: state.brandAuthDocName || null,
     smart_listing: true,
-    size_id: state.size_id ? Number(state.size_id) : null,
+    size_id: selectedSizeIds[0] ? Number(selectedSizeIds[0]) : null,
+    size_ids: selectedSizeIds.map((id) => Number(id)).filter(Boolean),
+    size_media: Object.entries(state.sizeMedia || {}).map(([key, bucket]) => {
+      const { colorId, sizeId } = parseColorSizeMediaKey(key);
+      const isPair = key.includes(":");
+      return {
+        color_id: isPair ? colorId || null : key,
+        size_id: isPair ? sizeId || null : null,
+        existing: (bucket?.existingMedia || [])
+          .filter((m) => m?.id || m?.url)
+          .map((m) => ({ id: m.id || null, url: m.url || "" })),
+      };
+    }),
+    color_size_availability: state.colorSizeAvailability || {},
+    variant_status: Object.fromEntries(
+      (state.colorGroups || []).flatMap((g) =>
+        (g.sizes || []).map((s) => {
+          const colorId = g.color_id || g.color?.id;
+          const sizeId = s.size_id || s.size?.id;
+          if (!colorId || !sizeId) return null;
+          return [
+            `${colorId}:${sizeId}`,
+            s.status || (s.enabled === false ? "out_of_stock" : "in_stock"),
+          ];
+        }).filter(Boolean),
+      ),
+    ),
+    color_id: state.color_id ? Number(state.color_id) : null,
+    color_ids: selectedVariationColorIds(state).map((id) => Number(id)).filter(Boolean),
+    color_name: state.color_name || "",
     compliance: {
       fssai_license: state.compliance?.fssai_license || "",
       manufacturer_name: state.compliance?.manufacturer_name || "",
@@ -229,6 +289,21 @@ export function buildSmartListingFormData(state, { asDraft = false, requestPubli
     },
     dirty_sections: state.dirtySections || {},
     ai_sections: state.aiGeneratedSections || [],
+    sizeChart: state.sizeChart || null,
+    size_labels: Array.isArray(state.size_labels) ? state.size_labels : [],
+    custom_attrs: (state.customAttrs || []).map((a) => ({
+      attribute_id: a.attribute_id || null,
+      name: a.name || "",
+      values: customAttrValues(a),
+    })),
+    custom_value_media: Object.entries(state.customValueMedia || {}).map(([key, bucket]) => ({
+      key,
+      existing: (bucket?.existingMedia || [])
+        .filter((m) => m?.id || m?.url)
+        .map((m) => ({ id: m.id || null, url: m.url || "" })),
+    })),
+    media_by_listing_type: mediaBucketsForListingMeta(synced.mediaByListingType),
+    is_combo: !!state.isCombo,
   };
 
   const sku = state.sku?.trim() || suggestSku(state.name, state.brand);
