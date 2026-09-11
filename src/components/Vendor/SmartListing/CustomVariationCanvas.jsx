@@ -5,7 +5,11 @@ import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
-import { resolveMediaUrl } from "./utils/listingMediaCache";
+import {
+  primaryGalleryPhotoEntries,
+  resolveMediaUrl,
+  seedFirstCustomValueFromPrimaryGallery,
+} from "./utils/listingMediaCache";
 import {
   cartesianCustomRows,
   customAttrValues,
@@ -222,7 +226,11 @@ function CoverGallery({
     ? customValueMediaKey(variationName, selectedValue)
     : "";
   const variationBucket = variationKey ? valueMedia?.[variationKey] || { media: [], existingMedia: [] } : null;
-  const photoEntries = usingVariation ? variationEntries(variationBucket) : listingPhotos;
+  const isPrimaryVariation = Boolean(
+    usingVariation && variationValues[0] && selectedValue === variationValues[0],
+  );
+  const photoEntries =
+    usingVariation && !isPrimaryVariation ? variationEntries(variationBucket) : listingPhotos;
   const extras = photoEntries.slice(1);
   const leftExtras = extras.filter((_, i) => i % 2 === 0);
   const rightExtras = extras.filter((_, i) => i % 2 === 1);
@@ -253,7 +261,7 @@ function CoverGallery({
     const next = [...photoEntries];
     const [picked] = next.splice(photoIndex, 1);
     next.unshift(picked);
-    if (usingVariation) {
+    if (usingVariation && !isPrimaryVariation) {
       reorderValueMedia(variationName, selectedValue, next);
       return;
     }
@@ -266,7 +274,7 @@ function CoverGallery({
       notifyOnFail("JPG, PNG up to 5MB each");
       return;
     }
-    if (usingVariation) {
+    if (usingVariation && !isPrimaryVariation) {
       addValueMedia(variationName, selectedValue, images);
       return;
     }
@@ -278,7 +286,7 @@ function CoverGallery({
 
   const removeAt = (idx) => {
     const entry = photoEntries[idx];
-    if (usingVariation) {
+    if (usingVariation && !isPrimaryVariation) {
       if (entry?.kind) removeValueMedia(variationName, selectedValue, entry.kind, entry.fi);
       return;
     }
@@ -299,7 +307,9 @@ function CoverGallery({
       </h3>
       <p className="text-[12px] mt-1 leading-snug" style={{ color: MUTED }}>
         {usingVariation
-          ? `Showing ${selectedValue} photos. Side thumbs are this variation’s images; pick a variation below the cover.`
+          ? isPrimaryVariation
+            ? `Showing ${selectedValue} photos from the primary gallery. Later values can have their own images.`
+            : `Showing ${selectedValue} photos. Side thumbs are this variation’s images; pick a variation below the cover.`
           : "Upload as many images as you need. First image will be used as cover."}
         {categorySuggesting ? " Detecting category…" : ""}
       </p>
@@ -365,9 +375,12 @@ function CoverGallery({
 
           {usingVariation ? (
             <div className="mt-2 flex flex-wrap gap-2">
-              {variationValues.map((value) => {
+              {variationValues.map((value, valueIndex) => {
                 const key = customValueMediaKey(variationName, value);
-                const first = variationEntries(valueMedia?.[key])[0];
+                const first =
+                  valueIndex === 0
+                    ? listingPhotos[0]
+                    : variationEntries(valueMedia?.[key])[0];
                 const src = first ? entrySrc(first) : "";
                 const active = value === selectedValue;
                 return (
@@ -601,7 +614,14 @@ function AttributeValueMultiSelect({ options, selected, onToggle, onAddCustom, d
   );
 }
 
-function VariantImagesPanel({ imageGroups, valueMedia, addValueMedia, removeValueMedia }) {
+function VariantImagesPanel({
+  imageGroups,
+  valueMedia,
+  addValueMedia,
+  removeValueMedia,
+  lockedKey = "",
+  lockedThumbs = [],
+}) {
   return (
     <aside className="bg-white p-4 min-w-0" style={cardStyle}>
       <h3 className="text-[15px] font-extrabold inline-flex items-center gap-1.5 leading-tight" style={{ color: NAVY }}>
@@ -622,19 +642,22 @@ function VariantImagesPanel({ imageGroups, valueMedia, addValueMedia, removeValu
             <div className="grid grid-cols-2 gap-2">
               {group.values.map((value) => {
                 const key = customValueMediaKey(group.name, value);
+                const locked = key === lockedKey;
                 const bucket = valueMedia[key] || { media: [], existingMedia: [] };
-                const thumbs = [
-                  ...(bucket.existingMedia || []).map((existing, fi) => ({
-                    src: resolveMediaUrl(existing.url),
-                    kind: "existing",
-                    fi,
-                  })),
-                  ...(bucket.media || []).map((file, fi) => ({
-                    src: file instanceof File ? URL.createObjectURL(file) : "",
-                    kind: "file",
-                    fi,
-                  })),
-                ];
+                const thumbs = locked
+                  ? lockedThumbs
+                  : [
+                      ...(bucket.existingMedia || []).map((existing, fi) => ({
+                        src: resolveMediaUrl(existing.url),
+                        kind: "existing",
+                        fi,
+                      })),
+                      ...(bucket.media || []).map((file, fi) => ({
+                        src: file instanceof File ? URL.createObjectURL(file) : "",
+                        kind: "file",
+                        fi,
+                      })),
+                    ];
                 const cover = thumbs[0];
                 return (
                   <div key={value} className="rounded-lg overflow-hidden min-w-0" style={{ border: `1px solid ${CARD_BORDER}` }}>
@@ -645,14 +668,20 @@ function VariantImagesPanel({ imageGroups, valueMedia, addValueMedia, removeValu
                       {cover?.src ? (
                         <>
                           <img src={cover.src} alt="" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            className="absolute top-1 right-1 bg-black/50 text-white rounded p-0.5"
-                            onClick={() => removeValueMedia(group.name, value, cover.kind, cover.fi)}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          {locked ? null : (
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 bg-black/50 text-white rounded p-0.5"
+                              onClick={() => removeValueMedia(group.name, value, cover.kind, cover.fi)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
                         </>
+                      ) : locked ? (
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-semibold px-2 text-center" style={{ backgroundColor: PEACH, color: MUTED }}>
+                          Uses primary gallery
+                        </div>
                       ) : (
                         <label className="w-full h-full flex items-center justify-center cursor-pointer" style={{ backgroundColor: PEACH }}>
                           <Plus className="w-4 h-4" style={{ color: ORANGE }} />
@@ -669,19 +698,25 @@ function VariantImagesPanel({ imageGroups, valueMedia, addValueMedia, removeValu
                         </label>
                       )}
                     </div>
-                    <label className="flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold cursor-pointer" style={{ color: ORANGE }}>
-                      + Add More
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => {
-                          addValueMedia(group.name, value, e.target.files);
-                          e.target.value = "";
-                        }}
-                      />
-                    </label>
+                    {locked ? (
+                      <p className="py-1.5 text-[11px] font-semibold text-center" style={{ color: MUTED }}>
+                        Primary photos
+                      </p>
+                    ) : (
+                      <label className="flex items-center justify-center gap-1 py-1.5 text-[11px] font-semibold cursor-pointer" style={{ color: ORANGE }}>
+                        + Add More
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            addValueMedia(group.name, value, e.target.files);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
                 );
               })}
@@ -759,6 +794,17 @@ export default function CustomVariationCanvas({
     .join(";");
 
   useEffect(() => {
+    const seeded = seedFirstCustomValueFromPrimaryGallery(state);
+    if (seeded.changed) patch({ customValueMedia: seeded.customValueMedia });
+  }, [
+    state.listingType,
+    state.files,
+    state.existingMedia,
+    attrSignature,
+    patch,
+  ]);
+
+  useEffect(() => {
     const ready = attrs
       .map((a) => ({
         attribute_id: a.attribute_id,
@@ -774,14 +820,18 @@ export default function CustomVariationCanvas({
     if (!generated.length) return;
     const prevByKey = new Map((rows || []).map((r) => [customRowKey(r), r]));
     const base = state.sku || "SKU";
+    const taken = new Set();
     generated = generated.map((r) => {
       const prev = prevByKey.get(customRowKey(r));
+      const keep = String(prev?.sku || "").trim();
       const sku =
-        prev?.sku ||
-        suggestVariantSku(
-          base,
-          (r.attributes || []).map((a) => a.attribute_value),
-        );
+        keep && !taken.has(keep)
+          ? (taken.add(keep), keep)
+          : suggestVariantSku(
+              base,
+              (r.attributes || []).map((a) => a.attribute_value),
+              taken,
+            );
       const fromValues = mediaForCustomRow(r, valueMedia);
       return {
         ...r,
@@ -1006,10 +1056,27 @@ export default function CustomVariationCanvas({
                     const sellErr = r.enabled ? liveFieldError(mrpSell.discounted_price, r.discounted_price) : null;
                     const stockErr = r.enabled ? liveFieldError(validateStockQty(r.stock, "Stock"), r.stock) : null;
                     const combo = (r.attributes || []).map((a) => a.attribute_value).join(" / ");
-                    const thumbs = [
-                      ...(r.existingMedia || []).map((m) => resolveMediaUrl(m.url)),
-                      ...(r.media || []).map((f) => (f instanceof File ? URL.createObjectURL(f) : "")),
-                    ].filter(Boolean);
+                    const usesPrimary =
+                      variationGroup &&
+                      (r.attributes || []).some(
+                        (a) =>
+                          a.attribute_name === variationGroup.name &&
+                          a.attribute_value === variationGroup.values[0],
+                      );
+                    const thumbs = (
+                      usesPrimary
+                        ? primaryGalleryPhotoEntries(state).map((entry) =>
+                            entry.file instanceof File
+                              ? URL.createObjectURL(entry.file)
+                              : resolveMediaUrl(entry.existing?.url),
+                          )
+                        : [
+                            ...(r.existingMedia || []).map((m) => resolveMediaUrl(m.url)),
+                            ...(r.media || []).map((f) =>
+                              f instanceof File ? URL.createObjectURL(f) : "",
+                            ),
+                          ]
+                    ).filter(Boolean);
                     return (
                       <tr key={r.grouping_key || ri} className={`border-b ${r.enabled ? "" : "opacity-50"}`}>
                         <td className="py-2 pr-2 text-[11px] max-w-[220px]" style={{ color: NAVY }}>
@@ -1109,6 +1176,19 @@ export default function CustomVariationCanvas({
           valueMedia={valueMedia}
           addValueMedia={addValueMedia}
           removeValueMedia={removeValueMedia}
+          lockedKey={
+            variationGroup
+              ? customValueMediaKey(variationGroup.name, variationGroup.values[0])
+              : ""
+          }
+          lockedThumbs={primaryGalleryPhotoEntries(state).map((entry, fi) => ({
+            src:
+              entry.file instanceof File
+                ? URL.createObjectURL(entry.file)
+                : resolveMediaUrl(entry.existing?.url),
+            kind: entry.file ? "file" : "existing",
+            fi,
+          }))}
         />
       </div>
 

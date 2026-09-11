@@ -66,21 +66,35 @@ export function buildColorSizeRows(colorGroups) {
   return rows;
 }
 
-export function suggestVariantSku(baseSku, parts) {
-  const base = String(baseSku || "SKU")
-    .replace(/\s+/g, "")
-    .toUpperCase()
-    .slice(0, 24);
-  const suffix = (parts || [])
-    .map((p) =>
-      String(p || "")
-        .replace(/\s+/g, "")
-        .toUpperCase()
-        .slice(0, 8),
-    )
-    .filter(Boolean)
-    .join("-");
-  return suffix ? `${base}-${suffix}` : base;
+function normalizeSkuBase(baseSku) {
+  return (
+    String(baseSku || "SKU")
+      .replace(/\s+/g, "")
+      .replace(/[^A-Z0-9-]/gi, "")
+      .toUpperCase()
+      .slice(0, 16) || "SKU"
+  );
+}
+
+export function buildUniqueSku(baseSku, parts = [], taken = new Set()) {
+  const base = normalizeSkuBase(baseSku);
+  const tokens = (parts || []).map((p) => skuToken(p, 6)).filter(Boolean);
+  let candidate = tokens.length
+    ? `${base}-${tokens.join("-")}`
+    : `${base}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  if (!taken.has(candidate)) {
+    taken.add(candidate);
+    return candidate;
+  }
+  let n = 2;
+  while (taken.has(`${candidate}-${n}`)) n += 1;
+  const unique = `${candidate}-${n}`;
+  taken.add(unique);
+  return unique;
+}
+
+export function suggestVariantSku(baseSku, parts, taken = new Set()) {
+  return buildUniqueSku(baseSku, parts, taken);
 }
 
 const FREE_SIZE_NAME_RE = /Free Size|One Size|^OS$|Universal|Free size/i;
@@ -309,27 +323,37 @@ export function prefillColorGroupsFromSuggestedNames(names, sizes, state) {
   return buildPrefillColorGroups(matched, state);
 }
 
-/** Copy parent MRP/sell/stock onto size rows that still have those fields empty. */
-export function applyParentDefaultsToEmptySizeRows(colorGroups, state) {
+/**
+ * A row still carries the parent default when it is empty or still holds the
+ * previous default. Typing "1000" fires once per keystroke, so rows must keep
+ * following the parent instead of freezing on the first character.
+ */
+function stillOnParentDefault(rowValue, previousValue) {
+  if (emptyPrice(rowValue)) return true;
+  if (emptyPrice(previousValue)) return false;
+  return String(rowValue) === String(previousValue);
+}
+
+/** Copy parent MRP/sell/stock onto size rows that still carry the parent default. */
+export function applyParentDefaultsToEmptySizeRows(colorGroups, state, previous = {}) {
   const groups = colorGroups || [];
   let changed = false;
+  const apply = (row, key) => {
+    const value = state[key];
+    if (emptyPrice(value)) return;
+    if (String(row[key] ?? "") === String(value)) return;
+    if (!stillOnParentDefault(row[key], previous[key])) return;
+    row[key] = value;
+    changed = true;
+  };
   const next = groups.map((g) => ({
     ...g,
     sizes: (g.sizes || []).map((s) => {
       if (!(s.size_id || s.size?.id)) return s;
       const row = { ...s };
-      if (emptyPrice(row.original_price) && !emptyPrice(state.original_price)) {
-        row.original_price = state.original_price;
-        changed = true;
-      }
-      if (emptyPrice(row.discounted_price) && !emptyPrice(state.discounted_price)) {
-        row.discounted_price = state.discounted_price;
-        changed = true;
-      }
-      if (emptyPrice(row.stock) && !emptyPrice(state.stock)) {
-        row.stock = state.stock;
-        changed = true;
-      }
+      apply(row, "original_price");
+      apply(row, "discounted_price");
+      apply(row, "stock");
       return row;
     }),
   }));
@@ -376,13 +400,8 @@ function skuToken(name, max = 3) {
   return compact.slice(0, max);
 }
 
-export function suggestColorSizeSku(baseSku, colorName, sizeName) {
-  const base = String(baseSku || "SKU")
-    .replace(/\s+/g, "")
-    .toUpperCase()
-    .slice(0, 12) || "SKU";
-  const parts = [skuToken(colorName, 3), skuToken(sizeName, 4)].filter(Boolean);
-  return parts.length ? `${base}-${parts.join("-")}` : base;
+export function suggestColorSizeSku(baseSku, colorName, sizeName, taken = new Set()) {
+  return buildUniqueSku(baseSku, [colorName, sizeName], taken);
 }
 
 function groupColorId(g) {
@@ -425,22 +444,83 @@ export function parseColorSizeMediaKey(key) {
 
 export function availableSizeIdsForColor(colorId, sizeIds, availability) {
   const ids = (sizeIds || []).map(String).filter(Boolean);
-  const picked = availability?.[String(colorId)];
-  if (!Array.isArray(picked) || !picked.length) return ids;
+  const key = String(colorId || "");
+  if (!key) return [];
+  const picked = availability?.[key];
+  if (!Array.isArray(picked)) return [];
+  if (!picked.length) return [];
   const allow = new Set(picked.map(String));
-  return ids.filter((id) => allow.has(id));
+  const listed = ids.filter((id) => allow.has(id));
+  return listed.length ? listed : picked.map(String).filter(Boolean);
 }
 
-/** New / unsaved colors offer every selected size until the seller turns one off. */
-export function withDefaultColorAvailability(availability, colorIds, sizeIds) {
+export function unionSizeIdsFromAvailability(availability, colorIds = []) {
+  const ids = [];
+  const seen = new Set();
+  const keys = (colorIds || []).length
+    ? colorIds.map(String)
+    : Object.keys(availability || {});
+  for (const key of keys) {
+    for (const id of availability?.[String(key)] || []) {
+      const sid = String(id || "");
+      if (!sid || seen.has(sid)) continue;
+      seen.add(sid);
+      ids.push(sid);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Category Size picker is the default for the first color.
+ * Later colors stay empty until sizes are added on the variations step.
+ * A color that already has a list keeps it, including an empty one the seller
+ * cleared on the variations step.
+ */
+export function seedFirstColorSizesFromListing(availability, colorIds, sizeIds) {
+  const first = String(colorIds?.[0] || "");
+  const sizes = (sizeIds || []).map(String).filter(Boolean);
+  if (!first || !sizes.length) return availability || {};
+  if (Array.isArray(availability?.[first])) return availability || {};
+  return { ...(availability || {}), [first]: [...sizes] };
+}
+
+/**
+ * Category Size picker is the master size list. The first color mirrors it and
+ * every other color drops sizes that are no longer listed, so a stale pick can
+ * never leak back into the Size field as an extra size.
+ */
+export function applyListingSizeIdsToAvailability(availability, colorIds, sizeIds) {
   const ids = (sizeIds || []).map(String).filter(Boolean);
+  const first = String(colorIds?.[0] || "");
+  const allow = new Set(ids);
+  const next = {};
+  let changed = false;
+  for (const [key, value] of Object.entries(availability || {})) {
+    const listed = (Array.isArray(value) ? value : []).map(String).filter(Boolean);
+    const kept = listed.filter((id) => allow.has(id));
+    next[key] = kept;
+    if (kept.length !== listed.length) changed = true;
+  }
+  if (first && ids.length) {
+    const current = next[first] || [];
+    if (current.length !== ids.length || ids.some((id, i) => current[i] !== id)) {
+      next[first] = [...ids];
+      changed = true;
+    }
+  }
+  return changed ? next : availability || {};
+}
+
+/** New colors start with no sizes — each color gets sizes only when they are added for that color. */
+export function withDefaultColorAvailability(availability, colorIds, _sizeIds) {
   const next = { ...(availability || {}) };
   let changed = false;
   for (const colorId of colorIds || []) {
     const key = String(colorId);
     if (!key) continue;
-    if (!Array.isArray(next[key]) || next[key].length === 0) {
-      next[key] = [...ids];
+    if (!Array.isArray(next[key])) {
+      next[key] = [];
       changed = true;
     }
   }
@@ -472,7 +552,12 @@ export function listingPatchFromPrefillGroups(groups, state = {}) {
   if (!groups) return {};
   const existing = listingSizeIds(state);
   const size_ids = existing.length ? existing : sizeIdsFromColorGroups(groups);
-  const color_ids = selectedVariationColorIds({ ...state, colorGroups: groups });
+  const fromGroups = (groups || [])
+    .map((g) => String(g?.color_id || g?.color?.id || ""))
+    .filter(Boolean);
+  const color_ids = fromGroups.length
+    ? [...new Set(fromGroups)]
+    : selectedVariationColorIds({ ...state, colorGroups: groups });
   return {
     colorGroups: groups,
     size_ids,
@@ -483,10 +568,11 @@ export function listingPatchFromPrefillGroups(groups, state = {}) {
 }
 
 export function selectedVariationColorIds(state) {
+  const fromList = Array.isArray(state?.color_ids)
+    ? state.color_ids.map((id) => String(id || "")).filter(Boolean)
+    : [];
+  if (fromList.length) return [...new Set(fromList)];
   const ids = [];
-  for (const id of Array.isArray(state?.color_ids) ? state.color_ids : []) {
-    if (id) ids.push(String(id));
-  }
   if (state?.color_id) ids.push(String(state.color_id));
   for (const g of state?.colorGroups || []) {
     const id = groupColorId(g);
@@ -537,6 +623,7 @@ export function generateColorSizeCombinations({
   const sizeById = new Map((sizes || []).map((z) => [String(z.id), z]));
 
   const colorless = (existingGroups || []).find((g) => !groupColorId(g));
+  const taken = new Set();
 
   return idsC.map((colorId, colorIndex) => {
     const prev = byColor.get(colorId) || (colorIndex === 0 ? colorless : null) || {};
@@ -566,12 +653,17 @@ export function generateColorSizeCombinations({
         const existing = prevBySize.get(sizeId);
         const size = sizeById.get(sizeId);
         const sizeName = size?.name || existing?.size?.name || "";
+        const keep = String(existing?.sku || "").trim();
+        const sku =
+          keep && !taken.has(keep)
+            ? (taken.add(keep), keep)
+            : suggestColorSizeSku(baseSku, colorName, sizeName || sizeId, taken);
         if (existing) {
           return {
             ...existing,
             size_id: sizeId,
             size: { id: sizeId, name: sizeName },
-            sku: existing.sku || suggestColorSizeSku(baseSku, colorName, sizeName),
+            sku,
             status: existing.status || (rowEnabled(existing) ? "in_stock" : "out_of_stock"),
           };
         }
@@ -581,7 +673,7 @@ export function generateColorSizeCombinations({
           stock: defaults.stock ?? "",
           original_price: defaults.original_price ?? "",
           discounted_price: defaults.discounted_price ?? "",
-          sku: suggestColorSizeSku(baseSku, colorName, sizeName),
+          sku,
           barcode: "",
           status: "in_stock",
           enabled: true,
@@ -608,8 +700,7 @@ export function combinationSignature(colorGroups = []) {
       const cid = String(groupColorId(g) || "");
       const name = String(g.color_name || g.color?.name || "");
       const sizes = (g.sizes || [])
-        .map((s) => String(rowSizeId(s) || ""))
-        .filter(Boolean)
+        .map((s) => `${rowSizeId(s) || ""}:${String(s.sku || "")}`)
         .join(",");
       return `${cid}:${name}:${sizes}`;
     })

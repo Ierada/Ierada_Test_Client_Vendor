@@ -5,6 +5,7 @@ import {
   stripMediaBucketsForDraft,
   withSyncedMediaBuckets,
 } from "./listingMediaByType";
+import { customAttrValues, customValueMediaKey } from "./variationHelpers";
 
 const cache = new Map();
 
@@ -165,6 +166,8 @@ export function mergeCachedMedia(id, payload, prev = {}) {
     .filter(Boolean);
   const seeded = seedFirstColorFromPrimaryGallery(next, colorIds);
   if (seeded.changed) next.colorGroups = seeded.colorGroups;
+  const customSeeded = seedFirstCustomValueFromPrimaryGallery(next);
+  if (customSeeded.changed) next.customValueMedia = customSeeded.customValueMedia;
 
   return next;
 }
@@ -241,9 +244,8 @@ function gallerySignature(state) {
     .join("|");
 }
 
-export function firstColorMirrorsPrimaryGallery(state, group) {
-  if (state?.skipPrimaryColorImageDefault) return false;
-  if (group && group.usesPrimaryCoverDefault === false) return false;
+export function firstColorMirrorsPrimaryGallery(state, _group) {
+  if (state?.listingType && state.listingType !== "color_size") return false;
   return true;
 }
 
@@ -262,56 +264,20 @@ export function seedFirstColorFromPrimaryGallery(state, colorIds = []) {
   }
 
   const photos = primaryGalleryPhotoEntries(state);
-  const galleryFp = primaryGalleryFingerprints(state);
   const nextFp = gallerySignature(state);
 
   let gi = groups.findIndex(
     (g) => String(g.color_id || g.color?.id) === firstColorId,
   );
   if (gi < 0) {
-    groups.push({
-      color_id: firstColorId,
-      color_name: state?.color_name || "",
-      color_code: "",
-      media: [],
-      existingMedia: [],
-      sizes: [],
-      usesPrimaryCoverDefault: true,
-    });
-    gi = groups.length - 1;
+    return { colorGroups: groups, changed: false };
   }
 
   const g = groups[gi];
-  // First takeover drops leftover per-color uploads. Later extras (added via +) stay.
-  const keepExtras = g.usesPrimaryCoverDefault === true;
-  const extrasMedia = keepExtras
-    ? (g.media || []).filter((f) => {
-        const fp = mediaFingerprint(f);
-        return fp && !galleryFp.has(fp);
-      })
-    : [];
-  const extrasExisting = keepExtras
-    ? (g.existingMedia || []).filter((m) => {
-        const fp = mediaFingerprint(m);
-        return fp && !galleryFp.has(fp);
-      })
-    : [];
+  const media = photos.map((p) => p.file).filter((f) => f instanceof File);
+  const existingMedia = photos.map((p) => p.existing).filter(Boolean);
 
-  const media = [
-    ...photos.map((p) => p.file).filter((f) => f instanceof File),
-    ...extrasMedia,
-  ].slice(0, 8);
-  const existingMedia = [
-    ...photos.map((p) => p.existing).filter(Boolean),
-    ...extrasExisting,
-  ].slice(0, 8);
-
-  const nextSig = [
-    nextFp,
-    extrasMedia.map((f) => mediaFingerprint(f)).join(","),
-    extrasExisting.map((m) => mediaFingerprint(m)).join(","),
-  ].join("#");
-  if (g.usesPrimaryCoverDefault && g.primaryCoverFingerprint === nextSig) {
+  if (g.usesPrimaryCoverDefault && g.primaryCoverFingerprint === nextFp) {
     return { colorGroups: groups, changed: false };
   }
 
@@ -320,9 +286,52 @@ export function seedFirstColorFromPrimaryGallery(state, colorIds = []) {
     media,
     existingMedia,
     usesPrimaryCoverDefault: true,
-    primaryCoverFingerprint: nextSig,
+    primaryCoverFingerprint: nextFp,
   };
   return { colorGroups: groups, changed: true };
+}
+
+export function firstCustomVariationTarget(state) {
+  const groups = (state?.customAttrs || [])
+    .map((a) => ({
+      name: String(a?.name || "").trim(),
+      values: customAttrValues(a),
+    }))
+    .filter((g) => g.name && g.values.length);
+  const group = groups.find((g) => /colou?r/i.test(g.name)) || groups[0] || null;
+  if (!group) return null;
+  return { name: group.name, value: group.values[0] };
+}
+
+/**
+ * First custom attribute value always shows the Primary Gallery photos.
+ */
+export function seedFirstCustomValueFromPrimaryGallery(state) {
+  const valueMedia = { ...(state?.customValueMedia || {}) };
+  if (state?.listingType && state.listingType !== "custom") {
+    return { customValueMedia: valueMedia, changed: false };
+  }
+  const target = firstCustomVariationTarget(state);
+  if (!target) return { customValueMedia: valueMedia, changed: false };
+
+  const photos = primaryGalleryPhotoEntries(state);
+  if (!photos.length) return { customValueMedia: valueMedia, changed: false };
+
+  const key = customValueMediaKey(target.name, target.value);
+  const nextFp = gallerySignature(state);
+  const bucket = valueMedia[key] || { media: [], existingMedia: [] };
+  if (bucket.usesPrimaryCoverDefault && bucket.primaryCoverFingerprint === nextFp) {
+    return { customValueMedia: valueMedia, changed: false };
+  }
+
+  valueMedia[key] = {
+    ...bucket,
+    media: photos.map((p) => p.file).filter((f) => f instanceof File),
+    existingMedia: photos.map((p) => p.existing).filter(Boolean),
+    usesPrimaryCoverDefault: true,
+    primaryCoverFingerprint: nextFp,
+  };
+  return { customValueMedia: valueMedia, changed: true };
 }
 
 /** First photo uploaded against this colour (its own media, then its size buckets). */

@@ -91,8 +91,21 @@ export function switchListingTypeMedia(state, nextListingType) {
   }
   const buckets = cloneMediaBuckets(state?.mediaByListingType);
   buckets[fromKey] = takeGallery(state);
-  const nextGallery = buckets[toKey] || emptyGallery();
-  if (!buckets[toKey]) buckets[toKey] = cloneGallery(nextGallery);
+  let nextGallery = buckets[toKey] ? cloneGallery(buckets[toKey]) : emptyGallery();
+  // Photos uploaded before a listing type was chosen live in `_unset`.
+  // Carry them into the first real type so category auto-detect still sees them.
+  if (
+    fromKey === UNSET_LISTING_TYPE_KEY &&
+    toKey !== UNSET_LISTING_TYPE_KEY &&
+    !galleryHasMedia(nextGallery) &&
+    galleryHasMedia(buckets[fromKey])
+  ) {
+    nextGallery = cloneGallery(buckets[fromKey]);
+    buckets[toKey] = cloneGallery(nextGallery);
+    buckets[fromKey] = emptyGallery();
+  } else if (!buckets[toKey]) {
+    buckets[toKey] = cloneGallery(nextGallery);
+  }
   return {
     ...state,
     listingType: nextListingType,
@@ -103,6 +116,13 @@ export function switchListingTypeMedia(state, nextListingType) {
 
 function galleryHasLiveFiles(gallery) {
   return (gallery?.files || []).some((f) => f instanceof File);
+}
+
+function galleryHasMedia(gallery) {
+  return (
+    galleryHasLiveFiles(gallery) ||
+    (gallery?.existingMedia || []).some((m) => m?.url || m?.id)
+  );
 }
 
 function pickLiveFiles(...galleries) {

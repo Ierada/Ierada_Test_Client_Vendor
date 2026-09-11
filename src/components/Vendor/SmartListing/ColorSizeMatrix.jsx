@@ -122,6 +122,7 @@ export default function ColorSizeMatrix({ state, patch }) {
 
   const autoFillSkus = () => {
     const base = state.sku || "SKU";
+    const taken = new Set();
     const next = groups.map((g) => {
       const colorName =
         colors.find((c) => String(c.id) === String(g.color_id))?.name ||
@@ -132,9 +133,13 @@ export default function ColorSizeMatrix({ state, patch }) {
         sizes: (g.sizes || []).map((s) => {
           const sizeName =
             sizes.find((z) => String(z.id) === String(s.size_id || s.size?.id))?.name || "";
+          const keep = String(s.sku || "").trim();
           return {
             ...s,
-            sku: s.sku || suggestVariantSku(base, [colorName, sizeName]),
+            sku:
+              keep && !taken.has(keep)
+                ? (taken.add(keep), keep)
+                : suggestVariantSku(base, [colorName, sizeName], taken),
             original_price: s.original_price || state.original_price,
             discounted_price: s.discounted_price || state.discounted_price,
           };

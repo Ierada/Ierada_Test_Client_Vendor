@@ -22,8 +22,11 @@ export default function SearchablePicker({
   emptyText = "No matches",
   compact = false,
   multiple = false,
+  defaultOpen = false,
+  hideTrigger = false,
+  onClose,
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [q, setQ] = useState("");
 
   useEffect(() => {
@@ -64,12 +67,16 @@ export default function SearchablePicker({
       .join(", ")} +${selectedOptions.length - 2}`;
   };
 
-  const close = () => setOpen(false);
+  const close = () => {
+    setOpen(false);
+    onClose?.();
+  };
 
   const pick = (id) => {
     if (!multiple) {
       onChange(id);
-      close();
+      // Delay unmount so the same click cannot fall through onto a file input below.
+      window.setTimeout(close, 50);
       return;
     }
     const sid = String(id);
@@ -87,12 +94,13 @@ export default function SearchablePicker({
 
   return (
     <div className="w-full min-w-0">
-      {label ? (
+      {hideTrigger ? null : label ? (
         <p className={`font-medium mb-1 ${compact ? "text-[11px] text-slate-400" : "text-sm text-gray-700"}`}>
           {label}
           {required ? <span className="text-red-500"> *</span> : null}
         </p>
       ) : null}
+      {hideTrigger ? null : (
       <button
         type="button"
         disabled={disabled}
@@ -127,7 +135,8 @@ export default function SearchablePicker({
         ) : null}
         {disabled ? null : <ChevronsUpDown className="w-4 h-4 shrink-0 text-slate-400" />}
       </button>
-      {error ? <p className="text-xs text-red-600 mt-1">{error}</p> : null}
+      )}
+      {hideTrigger ? null : error ? <p className="text-xs text-red-600 mt-1">{error}</p> : null}
 
       {open ? (
         <div className="fixed inset-0 z-[1200] flex items-center justify-center p-4 sm:p-6">
@@ -187,6 +196,7 @@ export default function SearchablePicker({
                   <button
                     key={o.id}
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => pick(o.id)}
                     className="w-full flex items-center gap-3.5 px-5 py-[13px] text-left transition-colors"
                     style={{

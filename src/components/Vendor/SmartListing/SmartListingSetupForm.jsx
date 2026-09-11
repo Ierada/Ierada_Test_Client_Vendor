@@ -1109,43 +1109,40 @@ export function ListingStickyFooter({
         ? saveHint
         : saveHint || "All changes saved";
   const useNextStyle = primaryVariant === "next" || (primaryVariant == null && phase === "basics");
-  const backVisible = showBack || phase !== "basics";
   return (
     <footer
-      className="fixed bottom-0 inset-x-0 bg-white z-30"
+      className="fixed bottom-0 left-0 right-0 lg:left-[72px] bg-white z-30"
       style={{ borderTop: `1px solid ${CARD_BORDER}`, boxShadow: "0 -4px 16px rgba(16, 24, 40, 0.04)" }}
     >
-      <div className="max-w-[1400px] mx-auto px-4 lg:px-5 py-3 flex flex-wrap items-center gap-3 justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          {backVisible ? (
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-sm font-medium text-slate-500 hover:text-slate-800"
-            >
-              ← Back
-            </button>
-          ) : null}
-          <p className="text-[13px] font-medium text-emerald-600 inline-flex items-center gap-2">
-            {saving ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="w-[18px] h-[18px]" />
-            )}
-            <span>{savedText}</span>
-            <span className="text-slate-400 font-normal">Just now</span>
-          </p>
-        </div>
+      <div className="w-full px-4 lg:px-5 py-3 flex items-center gap-3 flex-nowrap overflow-x-auto">
+        <button
+          type="button"
+          onClick={onBack}
+          className="shrink-0 sticky left-0 z-10 bg-white text-sm font-medium text-slate-500 hover:text-slate-800 pr-2"
+        >
+          ← Back
+        </button>
+        <p className="shrink-0 text-[13px] font-medium text-emerald-600 inline-flex items-center gap-2">
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <CheckCircle2 className="w-[18px] h-[18px]" />
+          )}
+          <span>{savedText}</span>
+          <span className="text-slate-400 font-normal">Just now</span>
+        </p>
         {stats ? (
-          <div className="hidden md:flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+          <div className="hidden md:flex flex-1 min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-500 overflow-hidden">
             <FooterStat label="Base MRP" value={stats.baseMrp} />
             <FooterStat label="Selling Price Range" value={stats.sellRange} />
             <FooterStat label="Total Variants" value={stats.variantCount} />
             <FooterStat label="Total Stock" value={stats.totalStock} />
             <FooterStat label="You Earn (Est.)" value={stats.youEarn} accent />
           </div>
-        ) : null}
-        <div className="flex items-center gap-3 flex-wrap justify-end ml-auto">
+        ) : (
+          <div className="flex-1 min-w-0" />
+        )}
+        <div className="flex items-center gap-3 flex-nowrap justify-end ml-auto shrink-0">
           {showDraft ? (
             <>
               <button

@@ -23,11 +23,12 @@ import {
   sizePickerOptions,
   suggestColorSizeSku,
   availableSizeIdsForColor,
+  unionSizeIdsFromAvailability,
+  seedFirstColorSizesFromListing,
   toggleColorSizeAvailability,
   combinationSignature,
   reorderFlattenedVariants,
   patchColorGroupSize,
-  withDefaultColorAvailability,
 } from "./utils/variationHelpers";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 import {
@@ -35,8 +36,6 @@ import {
   seedFirstColorFromPrimaryGallery,
   primaryGalleryPhotoEntries,
   firstColorMirrorsPrimaryGallery,
-  primaryGalleryFingerprints,
-  mediaFingerprint,
 } from "./utils/listingMediaCache";
 import PrimaryProductGallery from "./PrimaryProductGallery";
 
@@ -161,7 +160,7 @@ function VariantImagesPanel({
                 {card.thumbs.map((t, i) => (
                   <div key={i} className="relative w-9 h-9 rounded-md overflow-hidden border bg-white">
                     {t.src ? <img src={t.src} alt="" className="w-full h-full object-cover" /> : null}
-                    {t.locked ? null : (
+                    {t.locked || card.readOnly ? null : (
                       <button
                         type="button"
                         className="absolute top-0 right-0 bg-black/55 text-white p-0.5"
@@ -172,6 +171,17 @@ function VariantImagesPanel({
                     )}
                   </div>
                 ))}
+                {card.readOnly ? null : card.plusOpensSizePicker ? (
+                <button
+                  type="button"
+                  className="w-9 h-9 rounded-md border border-dashed flex items-center justify-center"
+                  style={{ borderColor: DASH, backgroundColor: PEACH }}
+                  title="Add size"
+                  onClick={card.onPlus}
+                >
+                  <Plus className="w-3.5 h-3.5" style={{ color: ORANGE }} />
+                </button>
+                ) : (
                 <label
                   className="w-9 h-9 rounded-md border border-dashed flex items-center justify-center cursor-pointer"
                   style={{ borderColor: DASH, backgroundColor: PEACH }}
@@ -189,6 +199,7 @@ function VariantImagesPanel({
                     }}
                   />
                 </label>
+                )}
               </div>
             </div>
           ))}
@@ -240,7 +251,7 @@ function VariantStockPanel({
     const g = groups.find((row) => String(row.color_id || row.color?.id) === String(colorId));
     const gi = groups.findIndex((row) => String(row.color_id || row.color?.id) === String(colorId));
     const offered = availableSizeIdsForColor(colorId, sizeIds, availability);
-    const cells = sizeIds.map((sizeId) => {
+    const cells = offered.map((sizeId) => {
       const size = sizes.find((z) => String(z.id) === String(sizeId));
       const si = (g?.sizes || []).findIndex(
         (s) => String(s.size_id || s.size?.id) === String(sizeId),
@@ -303,7 +314,7 @@ function VariantStockPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-1.5">
-        {cards.map((card) => (
+        {cards.map((card, cardIndex) => (
           <div
             key={card.colorId}
             className="rounded-md p-1.5 min-w-0"
@@ -327,15 +338,15 @@ function VariantStockPanel({
                   key={cell.sizeId}
                   className="flex items-center justify-between gap-0.5 rounded px-1 py-0.5"
                   style={{
-                    backgroundColor: cell.offered ? "#FAFBFC" : "#F8FAFC",
+                    backgroundColor: cardIndex === 0 || cell.offered ? "#FAFBFC" : "#F8FAFC",
                     border: `1px solid ${CARD_BORDER}`,
-                    opacity: cell.offered ? 1 : 0.45,
+                    opacity: cardIndex === 0 || cell.offered ? 1 : 0.45,
                   }}
                 >
                   <span className="text-[9px] font-semibold leading-none" style={{ color: NAVY }}>
                     {cell.sizeName}
                   </span>
-                  {cell.offered ? (
+                  {cardIndex === 0 || cell.offered ? (
                     <input
                       type="number"
                       min="0"
@@ -346,7 +357,12 @@ function VariantStockPanel({
                       )}
                       value={cell.qty}
                       title={cell.stockErr || undefined}
-                      onChange={(e) => onSetStock(cell.gi, cell.si, e.target.value)}
+                      onChange={(e) =>
+                        onSetStock(cell.gi, cell.si, e.target.value, {
+                          colorId: card.colorId,
+                          sizeId: cell.sizeId,
+                        })
+                      }
                     />
                   ) : (
                     <span className="text-[9px] text-slate-300">—</span>
@@ -377,7 +393,15 @@ function TagChip({ label, swatch, onRemove }) {
         />
       ) : null}
       {label}
-      <button type="button" className="w-3.5 h-3.5 rounded-full text-slate-400 hover:text-slate-700 leading-none" onClick={onRemove}>
+      <button
+        type="button"
+        className="w-3.5 h-3.5 rounded-full text-slate-400 hover:text-slate-700 leading-none"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove();
+        }}
+      >
         ×
       </button>
     </span>
@@ -407,6 +431,7 @@ export default function VariationListingCanvas({
   const [hasGenerated, setHasGenerated] = useState(() =>
     flattenColorSizeVariants(state.colorGroups || []).some((r) => String(r.size?.sku || "").trim()),
   );
+  const [sizePickerColorId, setSizePickerColorId] = useState(null);
   const colorImagesRef = useRef(null);
   const colorImagesInputRef = useRef(null);
   const sizeImagesRef = useRef(null);
@@ -467,6 +492,19 @@ export default function VariationListingCanvas({
     setSizeIds(categorySizeKey.split(",").filter(Boolean));
   }, [categorySizeKey]);
 
+  useEffect(() => {
+    if (!colorIds.length || !sizeIds.length) return;
+    const next = seedFirstColorSizesFromListing(
+      state.colorSizeAvailability,
+      colorIds,
+      sizeIds,
+    );
+    if (next === state.colorSizeAvailability) return;
+    patch({ colorSizeAvailability: next });
+    // Category Size (e.g. Free size) must show on Attribute 2 for the first color.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorIdsKey, categorySizeKey]);
+
   const setGroups = (colorGroups, extra = {}) => {
     groupsRef.current = colorGroups;
     patch({ colorGroups, ...extra });
@@ -509,27 +547,9 @@ export default function VariationListingCanvas({
       color_ids: colorIds,
       color_id: colorIds[0] || "",
       color_name: firstColor?.name || "",
-      colorSizeAvailability: withDefaultColorAvailability(
-        state.colorSizeAvailability,
-        colorIds,
-        sizeIds,
-      ),
     });
     if (toast) notifyOnSuccess(`${combo} variant combinations generated`);
     return combo;
-  };
-
-  const generate = () => {
-    if (!colorIds.length) {
-      notifyOnFail("Pick at least one color first");
-      return;
-    }
-    const { sizesByColor, next } = buildCombinations();
-    if (!Object.values(sizesByColor).some((ids) => ids.length)) {
-      notifyOnFail("Mark at least one available size for a color");
-      return;
-    }
-    applyCombinations(next, { toast: true });
   };
 
   useEffect(() => {
@@ -544,7 +564,10 @@ export default function VariationListingCanvas({
 
   useEffect(() => {
     if (!colorIds.length) return;
-    const { colorGroups, changed } = seedFirstColorFromPrimaryGallery(state, colorIds);
+    const { colorGroups, changed } = seedFirstColorFromPrimaryGallery(
+      { ...state, colorGroups: groupsRef.current },
+      colorIds,
+    );
     if (!changed) return;
     groupsRef.current = colorGroups;
     patch({ colorGroups });
@@ -567,8 +590,99 @@ export default function VariationListingCanvas({
     });
   };
 
-  const setVariantStock = (gi, si, qty) => {
-    updateSize(gi, si, { stock: qty, ...stockStatusPatch(qty) });
+  const setVariantStock = (gi, si, qty, meta = {}) => {
+    const extra = stockStatusPatch(qty);
+    if (gi >= 0 && si >= 0) {
+      updateSize(gi, si, { stock: qty, ...extra });
+      return;
+    }
+    const colorId = String(meta.colorId || "");
+    const sizeId = String(meta.sizeId || "");
+    if (!colorId || !sizeId) return;
+    patch((prev) => {
+      const current = [...(prev.colorGroups || groupsRef.current || [])];
+      const color = colors.find((c) => String(c.id) === colorId);
+      let index = current.findIndex(
+        (g) => String(g.color_id || g.color?.id) === colorId,
+      );
+      if (index < 0) {
+        current.push({
+          color_id: colorId,
+          color_name: color?.name || "",
+          media: [],
+          existingMedia: [],
+          sizes: [],
+        });
+        index = current.length - 1;
+      }
+      const g = current[index];
+      const sizeRows = [...(g.sizes || [])];
+      const size = sizes.find((z) => String(z.id) === sizeId);
+      const sizeName = size?.name || "";
+      const sIndex = sizeRows.findIndex(
+        (s) => String(s.size_id || s.size?.id) === sizeId,
+      );
+      if (sIndex < 0) {
+        sizeRows.push({
+          size_id: sizeId,
+          size: { id: sizeId, name: sizeName },
+          stock: qty,
+          original_price: prev.original_price ?? "",
+          discounted_price: prev.discounted_price ?? "",
+          sku: suggestColorSizeSku(baseSku, g.color_name || color?.name || "", sizeName),
+          barcode: "",
+          status: extra.status || "in_stock",
+          enabled: extra.enabled !== false,
+          ...extra,
+        });
+      } else {
+        sizeRows[sIndex] = { ...sizeRows[sIndex], stock: qty, ...extra };
+      }
+      current[index] = { ...g, sizes: sizeRows };
+      groupsRef.current = current;
+      return { colorGroups: current };
+    });
+  };
+
+  const addSizeId = (id, colorId = null) => {
+    const sid = String(id || "");
+    const target = String(colorId || colorIds[0] || "");
+    if (!sid || !target) return;
+    const current = Array.isArray(state.colorSizeAvailability?.[target])
+      ? state.colorSizeAvailability[target].map(String)
+      : [];
+    if (current.includes(sid)) return;
+    const nextAvail = {
+      ...state.colorSizeAvailability,
+      [target]: [...current, sid],
+    };
+    const nextIds = unionSizeIdsFromAvailability(nextAvail, colorIds);
+    setSizeIds(nextIds);
+    patch({
+      size_ids: nextIds,
+      size_id: nextIds[0] || "",
+      colorSizeAvailability: nextAvail,
+    });
+  };
+
+  const removeSizeFromColor = (id, colorId) => {
+    const sid = String(id || "");
+    const target = String(colorId || colorIds[0] || "");
+    if (!sid || !target) return;
+    const current = Array.isArray(state.colorSizeAvailability?.[target])
+      ? state.colorSizeAvailability[target].map(String)
+      : [];
+    const nextAvail = {
+      ...state.colorSizeAvailability,
+      [target]: current.filter((x) => x !== sid),
+    };
+    const nextIds = unionSizeIdsFromAvailability(nextAvail, colorIds);
+    setSizeIds(nextIds);
+    patch({
+      size_ids: nextIds,
+      size_id: nextIds[0] || "",
+      colorSizeAvailability: nextAvail,
+    });
   };
 
   const fillEmptyStockFromParent = () => {
@@ -606,16 +720,24 @@ export default function VariationListingCanvas({
 
   const applyColorIds = (nextIds) => {
     const unique = [...new Set((nextIds || []).map(String).filter(Boolean))];
+    const keep = new Set(unique);
     const first = colors.find((c) => String(c.id) === String(unique[0]));
+    const current = groupsRef.current || [];
+    const colorGroups = current.filter((g) => keep.has(String(g.color_id || g.color?.id)));
+    groupsRef.current = colorGroups;
+    const nextAvail = { ...(state.colorSizeAvailability || {}) };
+    for (const id of unique) {
+      if (!Array.isArray(nextAvail[id])) nextAvail[id] = [];
+    }
+    for (const key of Object.keys(nextAvail)) {
+      if (!keep.has(key)) delete nextAvail[key];
+    }
     patch({
       color_ids: unique,
       color_id: unique[0] || "",
       color_name: first?.name || "",
-      colorSizeAvailability: withDefaultColorAvailability(
-        state.colorSizeAvailability,
-        unique,
-        sizeIds,
-      ),
+      colorGroups,
+      colorSizeAvailability: nextAvail,
     });
   };
 
@@ -707,33 +829,19 @@ export default function VariationListingCanvas({
         : "";
 
   const galleryEntries = primaryGalleryPhotoEntries(state);
-  const galleryFp = primaryGalleryFingerprints(state);
 
   const colorImageCards = colorIds.map((id, colorIndex) => {
     const gi = groups.findIndex((g) => String(g.color_id || g.color?.id) === String(id));
     const g = gi >= 0 ? groups[gi] : null;
     const color = colors.find((c) => String(c.id) === String(id));
     const label = color?.name || g?.color_name || "Color";
-    const mirrorGallery = colorIndex === 0 && firstColorMirrorsPrimaryGallery(state, g);
-    const extraThumbs =
-      mirrorGallery && g?.usesPrimaryCoverDefault !== true
-        ? []
-        : [
-            ...(g?.existingMedia || []).map((m, fi) => ({ existing: m, fi })),
-            ...(g?.media || []).map((file, fi) => ({ file, fi })),
-          ].filter((t) => {
-            const fp = mediaFingerprint(t.file || t.existing);
-            return fp && !galleryFp.has(fp);
-          });
-    const thumbs = mirrorGallery
-      ? [
-          ...galleryEntries.map((entry, fi) =>
-            entry.file
-              ? { file: entry.file, fi, locked: true }
-              : { existing: entry.existing, fi, locked: true },
-          ),
-          ...extraThumbs,
-        ]
+    const isPrimaryVariant = colorIndex === 0;
+    const thumbs = isPrimaryVariant
+      ? galleryEntries.map((entry, fi) =>
+          entry.file
+            ? { file: entry.file, fi, locked: true }
+            : { existing: entry.existing, fi, locked: true },
+        )
       : [
           ...(g?.existingMedia || []).map((m, fi) => ({ existing: m, fi })),
           ...(g?.media || []).map((file, fi) => ({ file, fi })),
@@ -741,6 +849,7 @@ export default function VariationListingCanvas({
     return {
       id,
       label,
+      readOnly: isPrimaryVariant,
       swatch: (
         <span
           className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -751,9 +860,9 @@ export default function VariationListingCanvas({
         />
       ),
       thumbs: thumbs.map((t) => ({ ...t, src: thumbSrc(t) })),
-      onAdd: (files) => addMediaToColor(id, files),
+      onAdd: isPrimaryVariant ? () => {} : (files) => addMediaToColor(id, files),
       onRemove: (t) => {
-        if (gi < 0) return;
+        if (isPrimaryVariant || gi < 0) return;
         const clearingDefault = !!g?.usesPrimaryCoverDefault;
         if (t.existing) {
           const mediaId = t.existing.id;
@@ -783,11 +892,12 @@ export default function VariationListingCanvas({
     };
   });
 
-  const sizeImageCards = colorIds.map((colorId) => {
+  const sizeImageCards = colorIds.map((colorId, colorIndex) => {
     const color = colors.find((c) => String(c.id) === String(colorId));
     const g = groups.find((row) => String(row.color_id || row.color?.id) === String(colorId));
     const colorName = color?.name || g?.color_name || "Color";
     const key = String(colorId);
+    const isPrimarySizeSection = colorIndex === 0;
     const bucket = sizeMediaMap[key] || { media: [], existingMedia: [] };
     const available = availableSizeIdsForColor(colorId, sizeIds, state.colorSizeAvailability);
     const thumbs = [
@@ -797,6 +907,7 @@ export default function VariationListingCanvas({
     return {
       id: key,
       label: colorName,
+      readOnly: isPrimarySizeSection,
       swatch: (
         <span
           className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -806,11 +917,22 @@ export default function VariationListingCanvas({
           }}
         />
       ),
-      extra: sizeIds.length ? (
+      extra: available.length ? (
         <div className="flex flex-wrap gap-1 mb-1.5">
-          {sizeIds.map((sizeId) => {
+          {available.map((sizeId) => {
             const size = sizes.find((z) => String(z.id) === String(sizeId));
-            const on = available.includes(String(sizeId));
+            const on = isPrimarySizeSection || available.includes(String(sizeId));
+            if (isPrimarySizeSection) {
+              return (
+                <span
+                  key={sizeId}
+                  className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold leading-none"
+                  style={{ backgroundColor: PEACH, color: NAVY, border: `1px solid ${PEACH_BORDER}` }}
+                >
+                  {size?.name || "Size"}
+                </span>
+              );
+            }
             return (
               <button
                 key={sizeId}
@@ -821,7 +943,9 @@ export default function VariationListingCanvas({
                     ? { backgroundColor: PEACH, color: NAVY, border: `1px solid ${PEACH_BORDER}` }
                     : { backgroundColor: "#fff", color: MUTED, border: `1px solid ${CARD_BORDER}` }
                 }
-                onClick={() =>
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   patch({
                     colorSizeAvailability: toggleColorSizeAvailability(
                       state.colorSizeAvailability,
@@ -829,8 +953,8 @@ export default function VariationListingCanvas({
                       sizeId,
                       sizeIds,
                     ),
-                  })
-                }
+                  });
+                }}
               >
                 {size?.name || "Size"}
               </button>
@@ -839,10 +963,12 @@ export default function VariationListingCanvas({
         </div>
       ) : (
         <p className="text-[10px] mb-1.5" style={{ color: MUTED }}>
-          Add sizes in Attribute Builder, then mark which ones this color offers.
+          Add sizes in Configure Product Variations.
         </p>
       ),
       thumbs: thumbs.map((t) => ({ ...t, src: thumbSrc(t) })),
+      plusOpensSizePicker: !isPrimarySizeSection,
+      onPlus: isPrimarySizeSection ? undefined : () => setSizePickerColorId(String(colorId)),
       onAdd: (files) => addMediaToSize(colorId, files),
       onRemove: (t) => {
         if (t.existing) {
@@ -884,7 +1010,10 @@ export default function VariationListingCanvas({
   }
 
   const colorCount = colorIds.length;
-  const sizeCount = sizeIds.length;
+  const firstColorSizeIds = colorIds[0]
+    ? availableSizeIdsForColor(colorIds[0], sizeIds, state.colorSizeAvailability)
+    : [];
+  const sizeCount = firstColorSizeIds.length;
   const comboCount = colorIds.reduce(
     (n, id) => n + availableSizeIdsForColor(id, sizeIds, state.colorSizeAvailability).length,
     0,
@@ -957,30 +1086,19 @@ export default function VariationListingCanvas({
                   compact
                   value=""
                   allowClear={false}
-                  onChange={(id) => {
-                    if (!id) return;
-                    const sid = String(id);
-                    if (sizeIds.includes(sid)) return;
-                    const next = [...sizeIds, sid];
-                    setSizeIds(next);
-                    patch({ size_ids: next, size_id: next[0] || "" });
-                  }}
+                  onChange={(id) => addSizeId(id)}
                   placeholder="Add size"
                   searchPlaceholder="Search size…"
-                  options={sizeOptions.filter((o) => !sizeIds.includes(String(o.id)))}
+                  options={sizeOptions.filter((o) => !firstColorSizeIds.includes(String(o.id)))}
                 />
               }
-              tags={sizeIds.map((id) => {
+              tags={firstColorSizeIds.map((id) => {
                 const z = sizes.find((x) => String(x.id) === String(id));
                 return (
                   <TagChip
                     key={id}
                     label={z?.name || id}
-                    onRemove={() => {
-                      const next = sizeIds.filter((x) => String(x) !== String(id));
-                      setSizeIds(next);
-                      patch({ size_ids: next, size_id: next[0] || "" });
-                    }}
+                    onRemove={() => removeSizeFromColor(id, colorIds[0])}
                   />
                 );
               })}
@@ -997,15 +1115,6 @@ export default function VariationListingCanvas({
             >
               + Add Attribute
             </button>
-            <button
-              type="button"
-              onClick={generate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-[13px] font-semibold"
-              style={{ backgroundColor: ORANGE }}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Generate Variant Combinations
-            </button>
           </div>
         </section>
 
@@ -1019,7 +1128,7 @@ export default function VariationListingCanvas({
           {fieldError ? <p className="text-xs text-red-600 mb-1.5">{fieldError}</p> : null}
           {variants.length === 0 ? (
             <p className="text-[13px] text-slate-500 py-6 text-center">
-              Select colors and sizes, then generate variant combinations.
+              Select colors and sizes to build variant combinations.
             </p>
           ) : (
             <>
@@ -1054,12 +1163,22 @@ export default function VariationListingCanvas({
                               s.status === "out_of_stock"
                                 ? null
                                 : liveFieldError(validateStockQty(s.stock, "Stock"), s.stock);
-                            const thumbs = [
-                              ...(g.existingMedia || []).map((m) => resolveMediaUrl(m.url)),
-                              ...(g.media || [])
-                                .map((f) => (f instanceof File ? URL.createObjectURL(f) : f?.url))
-                                .filter(Boolean),
-                            ];
+                            const isPrimaryVariant =
+                              String(g.color_id || g.color?.id) === String(colorIds[0]);
+                            const thumbs = isPrimaryVariant
+                              ? galleryEntries
+                                  .map((entry) =>
+                                    entry.file instanceof File
+                                      ? URL.createObjectURL(entry.file)
+                                      : resolveMediaUrl(entry.existing?.url),
+                                  )
+                                  .filter(Boolean)
+                              : [
+                                  ...(g.existingMedia || []).map((m) => resolveMediaUrl(m.url)),
+                                  ...(g.media || [])
+                                    .map((f) => (f instanceof File ? URL.createObjectURL(f) : f?.url))
+                                    .filter(Boolean),
+                                ];
                             const status = s.status || (s.enabled === false ? "out_of_stock" : "in_stock");
                             const imageLabel = `${thumbs.length} image${thumbs.length === 1 ? "" : "s"}`;
                             const flatIndex = variants.findIndex((r) => r.gi === row.gi && r.si === row.si);
@@ -1189,6 +1308,16 @@ export default function VariationListingCanvas({
                                             className="w-6 h-6 rounded object-cover border border-gray-100"
                                           />
                                         ))}
+                                        {isPrimaryVariant ? (
+                                          <span
+                                            className="text-[10px] font-semibold whitespace-nowrap"
+                                            style={{ color: MUTED }}
+                                            title="Uses Primary Product Gallery photos"
+                                          >
+                                            {imageLabel}
+                                          </span>
+                                        ) : (
+                                          <>
                                         <label
                                           className="text-[10px] font-semibold whitespace-nowrap cursor-pointer underline-offset-2 hover:underline"
                                           style={{ color: thumbs.length ? MUTED : ORANGE }}
@@ -1222,6 +1351,8 @@ export default function VariationListingCanvas({
                                             }}
                                           />
                                         </label>
+                                          </>
+                                        )}
                                       </div>
                                     </td>
                                   </tr>
@@ -1301,18 +1432,18 @@ export default function VariationListingCanvas({
                     />
                   </svg>
                 </span>
-                All combinations generated below
+                All combinations listed below
               </p>
             ) : (
               <p className="text-[10px] mt-2.5" style={{ color: MUTED }}>
-                Generate to fill the table.
+                Combinations update as you add colors and sizes.
               </p>
             )}
           </aside>
           <VariantImagesPanel
             title="Variant Images by Color"
-            help="The first color starts with your Primary Gallery cover photo. Add more photos for that color, and upload photos for every other color yourself."
-            subtitle="The first color uses every Primary Gallery photo. Add images for the other colors yourself."
+            help="The first color always uses every Primary Gallery photo and cannot be edited here. Upload photos for the other colors yourself."
+            subtitle="Variant 1 mirrors the Primary Product Gallery. Add images for the other colors yourself."
             cards={colorImageCards}
             emptyHint="Select colors in Attribute Builder to add images per color."
             panelRef={colorImagesRef}
@@ -1320,13 +1451,33 @@ export default function VariationListingCanvas({
           />
           <VariantImagesPanel
             title="Variant Images by Size"
-            help="One cell per color, in the same order as Variant Images by Color. Tap sizes to mark which ones that color offers."
-            subtitle="All sizes for a color sit in one cell. Turn sizes on or off for each color, then upload photos."
+            help="Tap + to add a size from the same size picker as Attribute 2. Then tap a size chip to turn it on or off for this color."
+            subtitle="Tap + to add a size. Tap a size chip to turn it on or off for this color."
             cards={sizeImageCards}
             emptyHint="Select colors in Attribute Builder. Each color gets one size cell for availability and photos."
             panelRef={sizeImagesRef}
             firstInputRef={sizeImagesInputRef}
           />
+          {sizePickerColorId ? (
+            <SearchablePicker
+              hideTrigger
+              defaultOpen
+              value=""
+              allowClear={false}
+              placeholder="Add size"
+              searchPlaceholder="Search size…"
+              options={sizeOptions.filter(
+                (o) =>
+                  !availableSizeIdsForColor(
+                    sizePickerColorId,
+                    sizeIds,
+                    state.colorSizeAvailability,
+                  ).includes(String(o.id)),
+              )}
+              onChange={(id) => addSizeId(id, sizePickerColorId)}
+              onClose={() => setSizePickerColorId(null)}
+            />
+          ) : null}
           <VariantStockPanel
             colorIds={colorIds}
             sizeIds={sizeIds}

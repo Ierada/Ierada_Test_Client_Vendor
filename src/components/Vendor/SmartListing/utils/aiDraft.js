@@ -1,15 +1,31 @@
 import { scrubRestrictedText } from "./restrictedClaims";
 import { fileToSuggestPayload } from "./fileToSuggestPayload";
 import { inferLocalSizeChart, sellerSizeChartPayload } from "./sizeChart";
+import { listingCoverPreviewSrc, resolveMediaUrl } from "./listingMediaCache";
 
 const PLATFORM_BRAND_RE = /\bierada\b/gi;
+const IERADA_SEO_SUFFIX = " | Ierada";
+const DEVANAGARI_RE = /[\u0900-\u097F]+/g;
+const JUNK_BRAND_RE = /^(vendor|admin|seller|shop|n\/a|na|unknown)$/i;
 
 export function scrubPlatformBranding(text) {
   return String(text || "")
     .replace(PLATFORM_BRAND_RE, "")
+    .replace(DEVANAGARI_RE, "")
     .replace(/carefully listed for\s+shoppers\.?/gi, "")
     .replace(/\s{2,}/g, " ")
+    .replace(/\s+([,&])/g, "$1")
     .trim();
+}
+
+function withIeradaSeoSuffix(text, maxLength) {
+  const stripped = String(text || "")
+    .replace(/\s*\|\s*ierada\s*$/i, "")
+    .replace(/[|\s]+$/g, "")
+    .trim();
+  const budget = Math.max(0, maxLength - IERADA_SEO_SUFFIX.length);
+  const body = stripped.slice(0, budget).trim();
+  return `${body}${IERADA_SEO_SUFFIX}`;
 }
 
 function categoryPathFrom(state) {
@@ -18,19 +34,24 @@ function categoryPathFrom(state) {
     .join(" › ");
 }
 
+function isUsableBrandValue(value) {
+  const s = String(value || "").trim();
+  return Boolean(s) && !JUNK_BRAND_RE.test(s);
+}
+
 export function resolveListingBrand(state, vendorContext = {}) {
-  if (state.brandType === "branded" && state.brand?.trim()) {
+  if (state.brandType === "branded" && isUsableBrandValue(state.brand)) {
     return scrubPlatformBranding(state.brand.trim());
   }
   const shop =
     vendorContext.shop_name ||
     vendorContext.shopName ||
-    vendorContext.name ||
     state.vendorShopName ||
     "";
-  if (shop.trim()) return scrubPlatformBranding(shop.trim());
+  if (isUsableBrandValue(shop)) return scrubPlatformBranding(shop.trim());
   const vendorBrand = vendorContext.brand_name || state.vendorBrandName || "";
-  if (vendorBrand.trim()) return scrubPlatformBranding(vendorBrand.trim());
+  if (isUsableBrandValue(vendorBrand)) return scrubPlatformBranding(vendorBrand.trim());
+  if (isUsableBrandValue(state.brand)) return scrubPlatformBranding(state.brand.trim());
   return "";
 }
 
@@ -213,10 +234,16 @@ export function applyListingContentRules(state, vendorContext = {}) {
       ? scrubPlatformBranding(scrubRestrictedText(state.generalInfo))
       : productDetails;
 
-  const metaTitle = scrubPlatformBranding(state.metaTitle || name).slice(0, 60);
-  const metaDescription = scrubPlatformBranding(
-    state.metaDescription || shortDescription.replace(/\n+/g, " "),
-  ).slice(0, 160);
+  const metaTitle = withIeradaSeoSuffix(
+    scrubPlatformBranding(state.metaTitle || name),
+    60,
+  );
+  const metaDescription = withIeradaSeoSuffix(
+    scrubPlatformBranding(
+      state.metaDescription || shortDescription.replace(/\n+/g, " "),
+    ),
+    155,
+  );
   const metaKeywords = scrubPlatformBranding(
     state.metaKeywords ||
       [brand, categoryPath, name].filter(Boolean).join(", "),
@@ -453,17 +480,79 @@ export function mergeAiDraft(
   return applyListingContentRules(next, vendorContext);
 }
 
-function firstListingImageFile(state) {
-  for (const f of state.files || []) {
-    if (f instanceof File) return f;
+function isAi3dLabel(label) {
+  const value = typeof label === "string" ? label : label?.label;
+  return String(value || "").toLowerCase() === "ai_3d";
+}
+
+function isListingPhoto(file) {
+  return (
+    file instanceof File ||
+    (typeof Blob !== "undefined" && file instanceof Blob)
+  );
+}
+
+function mediaLabelAt(labels, index) {
+  const label = labels?.[index];
+  return typeof label === "string" ? label : label?.label;
+}
+
+/** Prefer front slot, else first real photo (skip AI 3D shots). */
+export function firstListingImageFile(state) {
+  const files = state.files || [];
+  const labels = state.mediaLabels || [];
+  const frontIdx = labels.findIndex(
+    (_, i) => mediaLabelAt(labels, i) === "front" && isListingPhoto(files[i] || files[i]?.file),
+  );
+  if (frontIdx >= 0) {
+    return isListingPhoto(files[frontIdx]) ? files[frontIdx] : files[frontIdx]?.file;
+  }
+  for (let i = 0; i < files.length; i += 1) {
+    if (isAi3dLabel(labels[i])) continue;
+    if (isListingPhoto(files[i])) return files[i];
+    if (isListingPhoto(files[i]?.file)) return files[i].file;
   }
   for (const g of state.colorGroups || []) {
     for (const m of g.media || []) {
-      if (m instanceof File) return m;
-      if (m?.file instanceof File) return m.file;
+      if (isListingPhoto(m)) return m;
+      if (isListingPhoto(m?.file)) return m.file;
     }
   }
   return null;
+}
+
+function firstListingImageUrl(state) {
+  const existing = Array.isArray(state.existingMedia) ? state.existingMedia : [];
+  const front = existing.find((m) => m?.url && m.label === "front" && !isAi3dLabel(m));
+  const any = existing.find((m) => m?.url && !isAi3dLabel(m));
+  if (front?.url) return resolveMediaUrl(front.url);
+  if (any?.url) return resolveMediaUrl(any.url);
+  const cover = listingCoverPreviewSrc(state);
+  if (cover && !cover.startsWith("blob:")) return cover;
+  return "";
+}
+
+async function fileFromImageUrl(url) {
+  const res = await fetch(url, { mode: "cors" });
+  if (!res.ok) throw new Error("listing photo fetch failed");
+  const blob = await res.blob();
+  const type = blob.type.startsWith("image/") ? blob.type : "image/jpeg";
+  return new File([blob], "listing-photo.jpg", { type });
+}
+
+export async function resolveListingImageFile(state) {
+  const photo = firstListingImageFile(state);
+  if (photo instanceof File) return photo;
+  if (photo && typeof Blob !== "undefined" && photo instanceof Blob) {
+    return new File([photo], "listing-photo.jpg", { type: photo.type || "image/jpeg" });
+  }
+  const url = firstListingImageUrl(state);
+  if (!url) return null;
+  try {
+    return await fileFromImageUrl(url);
+  } catch {
+    return null;
+  }
 }
 
 function mediaLabelNames(state) {
@@ -536,12 +625,12 @@ export async function buildListingAiPayload(state, vendorContext = {}) {
     vendorShopName:
       vendorContext.shop_name ||
       vendorContext.shopName ||
-      vendorContext.name ||
+      state.vendorShopName ||
       "",
-    vendorBrandName: vendorContext.brand_name || "",
+    vendorBrandName: vendorContext.brand_name || state.vendorBrandName || "",
   };
 
-  const file = firstListingImageFile(state);
+  const file = await resolveListingImageFile(state);
   if (file) {
     try {
       const img = await fileToSuggestPayload(file);

@@ -35,7 +35,8 @@ import {
   saveLocalDraft,
   clearLocalDraft,
 } from "../../../components/Vendor/SmartListing/utils/draftStorage";
-import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload } from "../../../components/Vendor/SmartListing/utils/aiDraft";
+import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload, firstListingImageFile } from "../../../components/Vendor/SmartListing/utils/aiDraft";
+import apiClient from "../../../axios.config";
 import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstBands";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
 import { calcSettlement, applyPlatformFeeRules, omitLiveCommerceRates, suggestSku } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
@@ -57,6 +58,8 @@ import {
   variationListingStats,
   customListingStats,
   selectedVariationColorIds,
+  seedFirstColorSizesFromListing,
+  applyListingSizeIdsToAvailability,
 } from "../../../components/Vendor/SmartListing/utils/variationHelpers";
 import {
   stashListingMedia,
@@ -122,32 +125,9 @@ function basicsStepsFor(listingType) {
   return base;
 }
 
-function isAi3dLabel(label) {
-  return label === "ai_3d";
-}
-
-function listingPhotoFingerprint(file) {
+function listingPhotoFingerprint(file, listingType) {
   if (!file) return "";
-  return `${file.name}|${file.size}|${file.lastModified}`;
-}
-
-/** Prefer front slot, else first real photo (skip AI 3D shots). */
-function firstListingImageFile(state) {
-  const files = state.files || [];
-  const labels = state.mediaLabels || [];
-  const frontIdx = labels.findIndex((l, i) => l?.label === "front" && files[i] instanceof File);
-  if (frontIdx >= 0) return files[frontIdx];
-  for (let i = 0; i < files.length; i += 1) {
-    if (isAi3dLabel(labels[i]?.label)) continue;
-    if (files[i] instanceof File) return files[i];
-  }
-  for (const g of state.colorGroups || []) {
-    for (const m of g.media || []) {
-      if (m instanceof File) return m;
-      if (m?.file instanceof File) return m.file;
-    }
-  }
-  return null;
+  return `${listingType || ""}|${file.name || "photo"}|${file.size}|${file.lastModified || 0}`;
 }
 
 const LISTING_TYPES = [
@@ -509,6 +489,11 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
                   size_ids,
                   state,
                 );
+                next.colorSizeAvailability = applyListingSizeIdsToAvailability(
+                  state.colorSizeAvailability,
+                  selectedVariationColorIds(state),
+                  size_ids,
+                );
               }
               patch(next);
             }}
@@ -549,6 +534,11 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
                       : g,
                   );
                 }
+                next.colorSizeAvailability = seedFirstColorSizesFromListing(
+                  state.colorSizeAvailability,
+                  color_ids,
+                  listingSizeIds(state),
+                );
               }
               patch(next);
             }}
@@ -610,6 +600,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const { id: editProductId } = useParams();
   const isEditMode = !!editProductId;
   const vendorId = vendorIdProp || user?.id || null;
+  const [vendorProfile, setVendorProfile] = useState({});
   const [phase, setPhase] = useState(openReview ? "review" : "basics"); // basics | review
   const [step, setStep] = useState("brand");
   const [reviewSection, setReviewSection] = useState("product_info");
@@ -638,7 +629,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [categorySuggesting, setCategorySuggesting] = useState(false);
   const categorySuggestToken = useRef(0);
   const categorySuggestFp = useRef("");
+  const categorySuggestInflight = useRef("");
   const sizePrefillKeyRef = useRef("");
+  const parentDefaultsRef = useRef({ original_price: "", discounted_price: "", stock: "" });
   const listingStepLockRef = useRef(false);
   const [saveHint, setSaveHint] = useState("Ready");
   const [banner, setBanner] = useState(null);
@@ -668,6 +661,36 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     priceToastKey.current = msg;
     notifyOnWarning({ title: "Please check prices", message: msg });
   }, [state.original_price, state.discounted_price]);
+
+  useEffect(() => {
+    if (!vendorId) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get(`/vendor/getById/${vendorId}`);
+        if (cancelled) return;
+        const payload = res?.data;
+        const v = payload?.data?.vendor || payload?.vendor || {};
+        setVendorProfile({
+          shop_name: v.shop_name || "",
+          brand_name: v.brand_name || "",
+        });
+      } catch {
+        /* JWT name is not the shop — leave profile empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId]);
+
+  const vendorContext = useMemo(
+    () => ({
+      shop_name: vendorProfile.shop_name || "",
+      brand_name: vendorProfile.brand_name || "",
+    }),
+    [vendorProfile.shop_name, vendorProfile.brand_name],
+  );
 
   const patch = useCallback((partial) => {
     listingStepLockRef.current = false;
@@ -1499,9 +1522,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const runCategorySuggest = useCallback(async ({ force = false } = {}) => {
     const file = firstListingImageFile(state);
     if (!file) return;
-    const fp = listingPhotoFingerprint(file);
-    if (!force && categorySuggestFp.current === fp) return;
-    categorySuggestFp.current = fp;
+    const fp = listingPhotoFingerprint(file, state.listingType);
+    if (!force && (categorySuggestFp.current === fp || categorySuggestInflight.current === fp)) {
+      return;
+    }
+    categorySuggestInflight.current = fp;
     const token = ++categorySuggestToken.current;
     setCategorySuggesting(true);
     try {
@@ -1512,6 +1537,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       });
       if (token !== categorySuggestToken.current) return;
       if (res?.status === 1 && res?.data) {
+        categorySuggestFp.current = fp;
         const d = res.data;
         const catPatch = {
           category_id: String(d.category_id),
@@ -1558,7 +1584,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         });
       }
     } finally {
-      if (token === categorySuggestToken.current) setCategorySuggesting(false);
+      if (token === categorySuggestToken.current) {
+        setCategorySuggesting(false);
+        if (categorySuggestInflight.current === fp) categorySuggestInflight.current = "";
+      }
     }
   }, [
     state.files,
@@ -1576,13 +1605,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   useEffect(() => {
     const file = firstListingImageFile(state);
     if (!file) return;
-    const fp = listingPhotoFingerprint(file);
-    if (categorySuggestFp.current === fp) return;
+    const fp = listingPhotoFingerprint(file, state.listingType);
+    if (categorySuggestFp.current === fp || categorySuggestInflight.current === fp) {
+      return;
+    }
     runCategorySuggest();
   }, [
     state.files,
     state.mediaLabels,
     state.colorGroups,
+    state.listingType,
     runCategorySuggest,
   ]);
 
@@ -1673,9 +1705,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       state.sub_category_id || "",
       state.inner_sub_category_id || "",
     ].join("|");
+    const previousDefaults = parentDefaultsRef.current;
+    parentDefaultsRef.current = {
+      original_price: state.original_price,
+      discounted_price: state.discounted_price,
+      stock: state.stock,
+    };
     if (hasSizeIds) {
       sizePrefillKeyRef.current = prefillKey;
-      const filled = applyParentDefaultsToEmptySizeRows(state.colorGroups, state);
+      const filled = applyParentDefaultsToEmptySizeRows(
+        state.colorGroups,
+        state,
+        previousDefaults,
+      );
       if (filled) patch({ colorGroups: filled });
       return;
     }
@@ -1857,7 +1899,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       let source = "local";
       try {
         const res = await generateListingAiDraft(
-          await buildListingAiPayload(state, user),
+          await buildListingAiPayload(state, vendorContext),
         );
         if (runId !== runAiGenerate._seq) return;
         if (res?.status === 1 && res?.data?.draft) {
@@ -1879,7 +1921,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       const merged = mergeAiDraft(state, {
         forceOverwrite: confirmedOverwrite,
         draft,
-        vendorContext: user || {},
+        vendorContext,
       });
       if (!merged.sku) merged.sku = suggestSku(merged.name, merged.brand);
       try {
@@ -2124,7 +2166,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   return (
     <ListingErrorBoundary>
     <div className={`min-h-screen pb-36 font-inter text-slate-800 ${phase === "review" ? "bg-[#FFF8F4]" : "bg-[#F8FAFC]"}`}>
-      <div className="sticky top-0 z-20 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
+      <div className="sticky top-[132px] z-10 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
         <ListingPageHeader
           user={user}
           supportPhone={supportPhone}
@@ -2198,7 +2240,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 vendorId={vendorId}
               />
             </div>
-            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[108px] lg:self-start">
+            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[240px] lg:self-start">
               <ListingRightRail state={state} settlement={settlement} previewUrl={coverPreviewSrc} />
             </aside>
           </>
@@ -2805,7 +2847,7 @@ function SpecEditor({ specs, onChange }) {
   return (
     <div className="space-y-2">
       {list.map((row, i) => (
-        <div key={i} className="grid grid-cols-2 gap-2">
+        <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
           <input
             className={inputCls}
             placeholder="Feature"
@@ -2826,6 +2868,15 @@ function SpecEditor({ specs, onChange }) {
               onChange(next);
             }}
           />
+          <button
+            type="button"
+            className="w-9 h-9 rounded-lg inline-flex items-center justify-center text-red-500 hover:bg-red-50"
+            title="Delete this specification"
+            aria-label="Delete specification row"
+            onClick={() => onChange(list.filter((_, j) => j !== i))}
+          >
+            <X className="w-4 h-4" strokeWidth={2.5} />
+          </button>
         </div>
       ))}
       <button

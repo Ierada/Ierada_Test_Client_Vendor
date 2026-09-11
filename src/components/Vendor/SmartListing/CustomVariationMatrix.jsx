@@ -56,6 +56,7 @@ export default function CustomVariationMatrix({ state, patch }) {
       notifyOnFail(`Would create ${generated.length} rows — trim values (soft cap ~48).`);
     }
     const base = state.sku || "SKU";
+    const taken = new Set();
     generated = generated.map((r) => ({
       ...r,
       original_price: state.original_price || "",
@@ -64,6 +65,7 @@ export default function CustomVariationMatrix({ state, patch }) {
       sku: suggestVariantSku(
         base,
         (r.attributes || []).map((a) => a.attribute_value),
+        taken,
       ),
     }));
     patch({ customRows: generated, customAttrs: attrs });
