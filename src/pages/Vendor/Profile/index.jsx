@@ -868,7 +868,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#fa8b4b]">
+    <div className="min-h-screen bg-[#F5F6F8]">
       {/* Top bar */}
 <div className="bg-white border-b border-gray-200">
   <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 flex items-center justify-between gap-4">
