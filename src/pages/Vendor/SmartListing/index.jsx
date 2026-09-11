@@ -1883,7 +1883,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         clearLocalDraft(stableId);
         clearListingFiles(stableId);
         notifyOnSuccess("Draft discarded");
-        navigate("/product?tab=draft");
+        navigate("/product", { replace: true });
         return;
       }
 
@@ -1899,7 +1899,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       setBanner(null);
       setSaveHint("Draft discarded");
       notifyOnSuccess("Listing progress cleared");
-      navigate("/product/add?fresh=1", { replace: true });
+      navigate("/product", { replace: true });
     } catch (e) {
       notifyOnFail(getApiErrorMessage(e, "Could not discard draft"));
     } finally {
