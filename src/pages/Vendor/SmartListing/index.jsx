@@ -2148,7 +2148,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 vendorId={vendorId}
               />
             </div>
-            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[136px] lg:self-start">
+            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[108px] lg:self-start">
               <ListingRightRail state={state} settlement={settlement} previewUrl={coverPreviewSrc} />
             </aside>
           </>
@@ -2705,7 +2705,7 @@ function ReviewPanel({
         ) : null}
         </AiReviewFormCard>
       </div>
-      <aside className="w-full space-y-3 lg:sticky lg:top-[148px] lg:self-start">
+      <aside className="w-full space-y-3 lg:sticky lg:top-[116px] lg:self-start">
         <StorefrontPreviewCard state={state} previewUrl={previewUrl} settlement={settlement} />
         <BankSettlementSummary state={state} settlement={settlement} />
       </aside>

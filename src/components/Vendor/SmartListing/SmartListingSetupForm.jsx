@@ -214,11 +214,11 @@ export function ListingPageHeader({
   const name = sellerDisplayName(user);
   const initial = (name.charAt(0) || "S").toUpperCase();
   return (
-    <div className="bg-white px-4 lg:px-5 pt-4 pb-2">
-      <div className="max-w-[1400px] mx-auto flex flex-wrap items-center justify-between gap-3">
+    <div className="bg-white px-4 lg:px-5 pt-2 pb-1">
+      <div className="max-w-[1400px] mx-auto flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1
-            className="text-[22px] sm:text-[24px] font-extrabold tracking-tight leading-none inline-flex items-center gap-2 flex-wrap"
+            className="text-[18px] sm:text-[20px] font-extrabold tracking-tight leading-none inline-flex items-center gap-2 flex-wrap"
             style={{ color: NAVY }}
           >
             Smart Product Listing
@@ -239,7 +239,7 @@ export function ListingPageHeader({
             </p>
           ) : null}
         </div>
-        <div className="flex items-center gap-5 sm:gap-7">
+        <div className="flex items-center gap-4 sm:gap-5">
           {bulkProgress ? (
             <div className="flex items-center gap-3 text-xs">
               <button type="button" className="text-primary-100 font-medium" onClick={skipBulkListing}>
@@ -267,7 +267,7 @@ export function ListingPageHeader({
             className="relative text-slate-400 hover:text-slate-600"
             aria-label="Notifications"
           >
-            <Bell className="w-[22px] h-[22px]" strokeWidth={1.75} />
+            <Bell className="w-5 h-5" strokeWidth={1.75} />
             {notificationCount > 0 ? (
               <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-primary-100 text-white text-[9px] font-bold flex items-center justify-center">
                 {notificationCount > 9 ? "9+" : notificationCount}
@@ -279,18 +279,18 @@ export function ListingPageHeader({
               <img
                 src={user.profile_pic || user.avatar}
                 alt=""
-                className="w-11 h-11 rounded-full object-cover"
+                className="w-8 h-8 rounded-full object-cover"
               />
             ) : (
               <div
-                className="w-11 h-11 rounded-full text-white flex items-center justify-center text-lg font-bold"
+                className="w-8 h-8 rounded-full text-white flex items-center justify-center text-sm font-bold"
                 style={{ backgroundColor: ORANGE }}
               >
                 {initial}
               </div>
             )}
             <div className="hidden sm:block leading-tight">
-              <p className="text-[15px] font-bold" style={{ color: NAVY }}>
+              <p className="text-[13px] font-bold" style={{ color: NAVY }}>
                 {name}
               </p>
               <p className="text-[12px] text-slate-400 mt-0.5">{sellerIdLabel(user)}</p>
@@ -323,7 +323,7 @@ export function SetupStepper({
   const activeIdx = Math.max(0, flow.findIndex((s) => s.id === activeId));
 
   return (
-    <div className="bg-white px-4 lg:px-5 pb-5 pt-1 border-b border-[#F1F5F9]">
+    <div className="bg-white px-4 lg:px-5 pb-2 pt-0 border-b border-[#F1F5F9]">
       <div className="max-w-[1400px] mx-auto overflow-x-auto">
         <ol className={`flex items-start ${isVariation ? "min-w-[860px]" : "min-w-[640px]"}`}>
           {flow.map((meta, idx) => {
@@ -348,7 +348,7 @@ export function SetupStepper({
                   <button
                     type="button"
                     onClick={() => onSelect?.(meta.id)}
-                    className="w-9 h-9 rounded-full shrink-0 text-[15px] font-bold flex items-center justify-center transition-colors"
+                    className="w-7 h-7 rounded-full shrink-0 text-[13px] font-bold flex items-center justify-center transition-colors"
                     style={
                       active
                         ? { backgroundColor: ORANGE, color: "#fff" }
@@ -363,7 +363,7 @@ export function SetupStepper({
                               }
                     }
                   >
-                    {done && isVariation ? <Check className="w-4 h-4" strokeWidth={3} /> : meta.n}
+                    {done && isVariation ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : meta.n}
                   </button>
                   <span
                     className="h-px flex-1"
@@ -380,14 +380,14 @@ export function SetupStepper({
                   />
                 </div>
                 <p
-                  className="mt-2.5 text-[12px] sm:text-[13px] text-center px-1 leading-snug whitespace-nowrap"
+                  className="mt-1 text-[11px] sm:text-[12px] text-center px-1 leading-snug whitespace-nowrap"
                   style={
                     active
                       ? {
                           color: ORANGE,
                           fontWeight: 600,
                           textDecoration: "underline",
-                          textUnderlineOffset: "4px",
+                          textUnderlineOffset: "3px",
                           textDecorationThickness: "1.5px",
                         }
                       : done && isVariation
