@@ -57,7 +57,11 @@ const VendorLayout = () => {
         />
       </div>
 
-      <div className="relative flex flex-1 flex-col min-w-0 lg:pl-[72px] bg-[#FFF3EF]">
+      <div
+        className={`relative flex flex-1 flex-col min-w-0 lg:pl-[72px] ${
+          smartListingCanvas ? "bg-[#F8FAFC]" : "bg-[#FFF3EF]"
+        }`}
+      >
         {smartListingCanvas ? null : (
           <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
         )}
