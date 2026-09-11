@@ -47,17 +47,17 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
   const unreadCount = notifications?.filter((n) => n.unread).length;
 
   return (
-    <header className="lg:left-[72px] h-20 fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
-      <div className="flex items-center justify-end h-full px-6">
+    <header className="lg:left-[72px] h-10 fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
+      <div className="flex items-center justify-end h-full px-4">
         {/* Menu Toggle Button - Only visible on mobile */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+          className="lg:hidden p-1 rounded-lg hover:bg-gray-100 transition-colors"
         >
           {sidebarOpen ? (
-            <X className="w-6 h-6 text-gray-700" />
+            <X className="w-5 h-5 text-gray-700" />
           ) : (
-            <Menu className="w-6 h-6 text-gray-700" />
+            <Menu className="w-5 h-5 text-gray-700" />
           )}
         </button>
 
@@ -82,7 +82,7 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
         </div> */}
 
         {/* Right Section - Icons and User Profile */}
-        <div className="flex items-center space-x-4 ml-6">
+        <div className="flex items-center space-x-2 ml-3">
           {/* Message Icon */}
           {/* <button className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
             <Mail className="w-6 h-6 text-gray-600" />
@@ -95,11 +95,11 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
           <div className="relative" ref={notificationRef}>
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-full hover:bg-gray-100 transition-colors"
+              className="relative p-1 rounded-full hover:bg-gray-100 transition-colors"
             >
-              <Bell className="w-6 h-6 text-gray-600" />
+              <Bell className="w-5 h-5 text-gray-600" />
               {unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
+                <span className="absolute top-0.5 right-0.5 flex items-center justify-center min-w-[14px] h-[14px] bg-red-500 text-white text-[9px] font-semibold rounded-full px-0.5">
                   {unreadCount}
                 </span>
               )}
@@ -160,11 +160,11 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
           </div>
 
           {/* Divider */}
-          <div className="hidden md:block w-px h-10 bg-gray-200" />
+          <div className="hidden md:block w-px h-5 bg-gray-200" />
 
           {/* User Profile Section */}
-          <div className="hidden md:flex items-center gap-3">
-            <div className="relative w-11 h-11 rounded-full flex-shrink-0">
+          <div className="hidden md:flex items-center gap-2">
+            <div className="relative w-7 h-7 rounded-full flex-shrink-0">
               {user?.avatar ? (
                 <img
                   src={user?.avatar}
@@ -176,14 +176,14 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
               )}
             </div>
             <div className="flex flex-col justify-center">
-              <h2 className="font-semibold text-gray-900 text-sm leading-tight">
+              <h2 className="font-semibold text-gray-900 text-xs leading-tight">
                 {user?.shopName || user?.shop_name || user?.name || "Selling Partner"}
               </h2>
             </div>
           </div>
 
           {/* Mobile User Profile */}
-          <div className="md:hidden relative w-10 h-10 rounded-full flex-shrink-0">
+          <div className="md:hidden relative w-7 h-7 rounded-full flex-shrink-0">
             {user?.avatar ? (
               <img
                 src={user?.avatar}

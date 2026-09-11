@@ -59,7 +59,7 @@ const VendorLayout = () => {
       >
         <VendorHeader sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
-        <main className="flex-grow min-w-0 mt-20">
+        <main className="flex-grow min-w-0 mt-10">
           <div className="mx-auto max-w-screen-2xl">
             {isVendorProductSectionPath(location.pathname) ? (
               <SectionPills

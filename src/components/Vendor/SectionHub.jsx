@@ -22,7 +22,7 @@ export function SectionPills({ hubPath, hubLabel = "Overview", items = [] }) {
   };
 
   return (
-    <nav className="sticky top-20 z-30 flex flex-wrap gap-2 bg-[#F5F6F8] px-4 pb-3 pt-3">
+    <nav className="sticky top-10 z-30 flex shrink-0 flex-wrap gap-2 bg-[#F5F6F8] px-4 pb-3 pt-3">
       <Link to={hubPath} className={pillClass(path === hubPath)}>
         {hubLabel}
       </Link>

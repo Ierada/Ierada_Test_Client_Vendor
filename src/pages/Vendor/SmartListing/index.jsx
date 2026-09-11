@@ -2166,7 +2166,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   return (
     <ListingErrorBoundary>
     <div className={`min-h-screen pb-36 font-inter text-slate-800 ${phase === "review" ? "bg-[#FFF8F4]" : "bg-[#F8FAFC]"}`}>
-      <div className="sticky top-[132px] z-10 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
+      <div className="sticky top-[96px] z-10 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
         <ListingPageHeader
           user={user}
           supportPhone={supportPhone}
