@@ -1,23 +1,26 @@
-import React, { useEffect } from "react";
-import { FaEllipsisH } from "react-icons/fa";
-import { useState } from "react";
-import { IoToggle } from "react-icons/io5";
-import { IoToggleOutline, IoToggleSharp } from "react-icons/io5";
-import { MdOutlinePhoneAndroid } from "react-icons/md";
-import { MdOutlineLaptopChromebook } from "react-icons/md";
-import { MdToggleOff } from "react-icons/md";
-import { MdToggleOn } from "react-icons/md";
-import { changePassword } from "../../../services/api.auth";
+import React, { useEffect, useState } from "react";
 import { FiCheckCircle, FiCircle } from "react-icons/fi";
+import {
+  MdOutlineEmail,
+  MdOutlinePhone,
+  MdOutlineCalendarToday,
+  MdOutlineShield,
+  MdOutlineVisibility,
+  MdOutlineVisibilityOff,
+} from "react-icons/md";
+import { BiSolidUser } from "react-icons/bi";
+import { BsShieldLock } from "react-icons/bs";
+import { changePassword } from "../../../services/api.auth";
+import { getVendorDetails } from "../../../services/api.vendor";
 import { useAppContext } from "../../../context/AppContext";
 import { endVendorSessionAndRedirect } from "../../../utils/userIdentifier";
 import { markAuthSessionEnded } from "../../../utils/authSession";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { toast } from "react-toastify";
-// import { notifyOnSuccess, notifyOnFail } from '../utils/notification/toast';
 
 const Setting = () => {
   const { user } = useAppContext();
+  const [vendorData, setVendorData] = useState(null);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     Password: "",
@@ -28,66 +31,70 @@ const Setting = () => {
     minLength: false,
     hasLowercase: false,
     hasUppercase: false,
+    hasNumberOrSpecial: false,
     notSameAsOld: false,
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [toggles, setToggles] = useState({
-    itemUpdate: true,
-    itemComment: false,
-    buyerReview: true,
-    ratingReminders: false,
-    meetups: true,
-    companyNews: true,
-    newLaunches: false,
-    monthlyChanges: false,
-    newsletter: false,
-    followNotifications: true,
-  });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (user?.id) {
+      getVendorDetails(user.id)
+        .then((res) => {
+          if (res?.status === 1 && res.data) setVendorData(res.data);
+        })
+        .catch(() => {});
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     const newPass = formData.newPassword;
     const currentPass = formData.Password;
-
     setPasswordValidations({
       minLength: newPass.length >= 8,
       hasLowercase: /[a-z]/.test(newPass),
       hasUppercase: /[A-Z]/.test(newPass),
+      hasNumberOrSpecial: /[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(newPass),
       notSameAsOld: newPass !== currentPass && currentPass !== "",
     });
   }, [formData.newPassword, formData.Password]);
 
-  const handleToggle = (name) => {
-    setToggles((prev) => ({
-      ...prev,
-      [name]: !prev[name],
-    }));
+  const getPasswordStrength = () => {
+    const p = formData.newPassword;
+    if (!p) return { label: "", score: 0, color: "" };
+    let score = 0;
+    if (p.length >= 8) score++;
+    if (p.length >= 12) score++;
+    if (/[a-z]/.test(p) && /[A-Z]/.test(p)) score++;
+    if (/[0-9]/.test(p)) score++;
+    if (/[^a-zA-Z0-9]/.test(p)) score++;
+
+    if (score <= 2) return { label: "Weak", score: 1, color: "bg-red-500" };
+    if (score <= 3) return { label: "Fair", score: 2, color: "bg-orange-400" };
+    if (score <= 4) return { label: "Strong", score: 3, color: "bg-green-500" };
+    return { label: "Very Strong", score: 4, color: "bg-emerald-600" };
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prevData) => ({
-      ...prevData,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
   const validateForm = () => {
     const newErrors = {};
-    const validations = Object.values(passwordValidations);
-    const allValid = validations.every((v) => v);
+    if (!formData.Password) newErrors.Password = "Current password is required";
+    if (!formData.newPassword) newErrors.newPassword = "New password is required";
+    if (!formData.confirmPassword) newErrors.confirmPassword = "Confirm password is required";
 
-    // Existing validations
-    if (!formData.Password) newErrors.Password = "Password is required";
-    if (!formData.newPassword)
-      newErrors.newPassword = "New Password is required";
-    if (!formData.confirmPassword)
-      newErrors.confirmPassword = "Confirm Password is required";
-
-    // Add password requirements error
+    const allValid = Object.values(passwordValidations).every((v) => v);
     if (formData.newPassword && !allValid) {
       newErrors.newPassword = "Password doesn't meet requirements";
+    }
+    if (formData.newPassword && formData.confirmPassword && formData.newPassword !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
     }
 
     setErrors(newErrors);
@@ -97,345 +104,286 @@ const Setting = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateForm()) return;
-
-    if (
-      !formData.Password ||
-      !formData.newPassword ||
-      !formData.confirmPassword
-    ) {
-      notifyOnFail("All fields are required.");
-      return;
-    }
-
-    if (formData.newPassword !== formData.confirmPassword) {
-      alert("New password and confirm password must match.");
-      return;
-    }
-
+    setSubmitting(true);
     try {
       const response = await changePassword(user.id, formData);
-
       if (response?.status === 1) {
         setFormData({ Password: "", newPassword: "", confirmPassword: "" });
-        // Old JWT is invalidated server-side via password_changed_at — force re-login
-        // so dashboard calls do not spam "Error reaching the server".
         markAuthSessionEnded();
-        toast.info(
-          "Please login again with your new password.",
-          { toastId: "password-changed-relogin", autoClose: 4000 },
-        );
+        toast.info("Please login again with your new password.", {
+          toastId: "password-changed-relogin",
+          autoClose: 4000,
+        });
         setTimeout(() => {
           endVendorSessionAndRedirect({ redirect: true, replace: true });
         }, 800);
       } else if (response?.message) {
         notifyOnFail(response.message);
       }
-    } catch (err) {
-      // changePassword already toasts API errors
-    }
+    } catch {}
+    setSubmitting(false);
   };
 
+  const handleCancel = () => {
+    setFormData({ Password: "", newPassword: "", confirmPassword: "" });
+    setErrors({});
+  };
+
+  const strength = getPasswordStrength();
+  const sellerName = vendorData?.shop_name || `${vendorData?.vendor?.first_name || ""} ${vendorData?.vendor?.last_name || ""}`.trim() || "—";
+  const memberSince = vendorData?.created_at
+    ? new Date(vendorData.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })
+    : "—";
+
+  const allValid = Object.values(passwordValidations).every((v) => v);
+
   return (
-    <div className="min-h-screen mb-4  text-[black]">
-      <h1 className="text-[35px] text-txtPage font-semibold font-satoshi mb-6">
-        Settings
-      </h1>
+    <div className="min-h-screen mb-4 text-[black]">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-[32px] text-txtPage font-semibold font-satoshi">Settings</h1>
+        <p className="text-[#6B7280] text-[14px] font-satoshi">Manage your account, security and preferences.</p>
+      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="col-span-2 grid grid-cols-1 gap-8">
-          <div
-            className="bg-white md:p-8 p-2 rounded-md shadow-1
-          "
-          >
-            <h2 className="lg:text-[16px] md:text-[12px] font-satoshi font-medium  mb-8">
-              Change password
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-24">
-              <form onSubmit={handleSubmit}>
-                <div className="space-y-10 flex flex-col justify-between ">
-                  {/* Current Password */}
-                  <div className="relative">
-                    <label className="block">
-                      <span className="text-[16px] font-satoshi font-medium">
-                        Current password
-                      </span>
-                    </label>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      name="Password"
-                      value={formData.Password}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border-none shadow-sm outline-none focus:outline-none focus:ring-0 focus:border-none bg-[#F8F8F8] pr-10"
-                    />
-                    {errors.Password && (
-                      <span className="text-red-500 text-sm">
-                        {errors.Password}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3  top-10"
-                    >
-                      {showPassword ? (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                          />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* New Password */}
-                  <div className="relative">
-                    <label className="block">
-                      <span className="text-[16px] font-satoshi font-medium">
-                        New password
-                      </span>
-                    </label>
-                    <input
-                      type={showNewPassword ? "text" : "password"}
-                      name="newPassword"
-                      value={formData.newPassword}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border-none shadow-sm outline-none focus:outline-none focus:ring-0 focus:border-none bg-[#F8F8F8] pr-10"
-                    />
-                    {errors.newPassword && (
-                      <span className="text-red-500 text-sm block mt-1">
-                        {errors.newPassword}
-                      </span>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-10"
-                    >
-                      {showNewPassword ? (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                          />
-                        </svg>
-                      )}
-                    </button>
-
-  
-                  </div>
-
-                  {/* Confirm Password */}
-                  <div className="relative">
-                    <label className="block">
-                      <span className="text-[16px] font-satoshi font-medium">
-                        Confirm password
-                      </span>
-                    </label>
-                    <input
-                      type={showConfirmPassword ? "text" : "password"}
-                      name="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                      className="mt-1 block w-full rounded-md border-none shadow-sm outline-none focus:outline-none focus:ring-0 focus:border-none bg-[#F8F8F8] pr-10"
-                    />
-                    {errors.confirmPassword && (
-                      <span className="text-red-500 text-sm">
-                        {errors.confirmPassword}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setShowConfirmPassword(!showConfirmPassword)
-                      }
-                      className="absolute right-3 top-10"
-                    >
-                      {showConfirmPassword ? (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                          />
-                        </svg>
-                      ) : (
-                        <svg
-                          className="h-5 w-5 text-gray-600"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                          />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex justify-center mt-12">
-                  <button
-                    type="submit"
-                    className="   bg-[#0164CE] text-white py-2 px-4 rounded-md font-satoshi text-[14px] font-medium "
-                  >
-                    Change password
-                  </button>
-                </div>
-              </form>
-
-              <div className="mt-2 text-sm space-y-1">
-  <p className="text-[#565E6C] font-medium">Password requirements:</p>
-  <ul className="space-y-1">
-    <li className={`flex items-center ${passwordValidations.minLength ? 'text-green-500' : 'text-[#565E6C]'}`}>
-      {passwordValidations.minLength ? <FiCheckCircle className="mr-1" /> : <FiCircle className="mr-1" />}
-      Minimum 8 characters
-    </li>
-    <li className={`flex items-center ${passwordValidations.hasLowercase ? 'text-green-500' : 'text-[#565E6C]'}`}>
-      {passwordValidations.hasLowercase ? <FiCheckCircle className="mr-1" /> : <FiCircle className="mr-1" />}
-      At least one lowercase
-    </li>
-    <li className={`flex items-center ${passwordValidations.hasUppercase ? 'text-green-500' : 'text-[#565E6C]'}`}>
-      {passwordValidations.hasUppercase ? <FiCheckCircle className="mr-1" /> : <FiCircle className="mr-1" />}
-      At least one uppercase
-    </li>
-    <li className={`flex items-center ${passwordValidations.notSameAsOld ? 'text-green-500' : 'text-[#565E6C]'}`}>
-      {passwordValidations.notSameAsOld ? <FiCheckCircle className="mr-1" /> : <FiCircle className="mr-1" />}
-      Not same as current
-    </li>
-  </ul>
-</div>
-            </div>
-
-            {/* <div className="flex justify-center mt-12">
-              <button
-                type="submit"
-                className="   bg-[#0164CE] text-white py-2 px-4 rounded-md font-satoshi text-[14px] font-medium "
-              >
-                Change password
-              </button>
-            </div> */}
+      {/* Profile Info Bar */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-4 mb-6 flex flex-wrap items-center gap-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+            <BiSolidUser className="w-5 h-5 text-orange-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Seller Name</p>
+            <p className="text-[13px] font-semibold text-gray-800">{sellerName}</p>
           </div>
         </div>
 
-        {/* Notifications */}
-        {/* <div className="bg-white md:p-5 p-3 rounded-md shadow-1 w-full  max-w-sm">
-          <div className="bg-white col-span-3">
-            <h1 className="text-[24px] font-semibold mb-2 text-[#2B3674]">
-              Notifications
-            </h1>
-            <div className="bg-white p-4 ">
-              {[
-                { label: "Item update notifications", name: "itemUpdate" },
-                { label: "Item comment notifications", name: "itemComment" },
-                { label: "Buyer review notifications", name: "buyerReview" },
-                {
-                  label: "Rating reminders notifications",
-                  name: "ratingReminders",
-                },
-                { label: "Meetups near you notifications", name: "meetups" },
-                { label: "Company news notifications", name: "companyNews" },
-                { label: "New launches and projects", name: "newLaunches" },
-                { label: "Monthly product changes", name: "monthlyChanges" },
-                { label: "Subscribe to newsletter", name: "newsletter" },
-                {
-                  label: "Email me when someone follows me",
-                  name: "followNotifications",
-                },
-              ].map((notification, index) => (
-                <div key={index} className="flex items-center space-x-4 mb-2">
-                  <div
-                    onClick={() => handleToggle(notification.name)}
-                    className="cursor-pointer text-2xl"
-                  >
-                    {toggles[notification.name] ? (
-                      <MdToggleOn className="text-[#0164CE]" size={40} />
-                    ) : (
-                      <MdToggleOff className="text-[#D6E1F2] " size={40} />
-                    )}
-                  </div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center">
+            <MdOutlineEmail className="w-5 h-5 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Email</p>
+            <p className="text-[13px] font-semibold text-gray-800">{vendorData?.email || user?.email || "—"}</p>
+          </div>
+        </div>
 
-                  <span className="text-[14px] font-satoshi font-medium text-[#2B3674]">
-                    {notification.label}
-                  </span>
-                </div>
-              ))}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-purple-50 flex items-center justify-center">
+            <MdOutlinePhone className="w-5 h-5 text-purple-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Mobile Number</p>
+            <div className="flex items-center gap-2">
+              <p className="text-[13px] font-semibold text-gray-800">{vendorData?.phone || "—"}</p>
+              {vendorData?.phone && (
+                <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full">Verified</span>
+              )}
             </div>
           </div>
-        </div> */}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center">
+            <MdOutlineShield className="w-5 h-5 text-emerald-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Vendor ID</p>
+            <p className="text-[13px] font-semibold text-gray-800">{vendorData?.vendorId || "—"}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center">
+            <MdOutlineCalendarToday className="w-5 h-5 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-gray-400 font-medium">Member Since</p>
+            <p className="text-[13px] font-semibold text-gray-800">{memberSince}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Change Password Form */}
+        <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-[16px] font-satoshi font-semibold text-gray-800 mb-1">Change Password</h2>
+          <p className="text-[13px] text-gray-400 mb-6">Choose a strong password and keep your account secure.</p>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Current Password */}
+            <div className="relative">
+              <label className="block text-[13px] font-medium text-gray-700 mb-1">Current Password</label>
+              <input
+                type={showPassword ? "text" : "password"}
+                name="Password"
+                value={formData.Password}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-200 bg-[#F8F8F8] px-4 py-2.5 pr-10 text-[14px] outline-none focus:ring-2 focus:ring-orange-200 transition"
+                placeholder="••••••••"
+              />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-9 text-gray-400 hover:text-gray-600">
+                {showPassword ? <MdOutlineVisibilityOff className="w-5 h-5" /> : <MdOutlineVisibility className="w-5 h-5" />}
+              </button>
+              {errors.Password && <span className="text-red-500 text-xs mt-1 block">{errors.Password}</span>}
+            </div>
+
+            {/* New Password */}
+            <div className="relative">
+              <label className="block text-[13px] font-medium text-gray-700 mb-1">New Password</label>
+              <input
+                type={showNewPassword ? "text" : "password"}
+                name="newPassword"
+                value={formData.newPassword}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-200 bg-[#F8F8F8] px-4 py-2.5 pr-10 text-[14px] outline-none focus:ring-2 focus:ring-orange-200 transition"
+                placeholder="••••••••"
+              />
+              <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-9 text-gray-400 hover:text-gray-600">
+                {showNewPassword ? <MdOutlineVisibilityOff className="w-5 h-5" /> : <MdOutlineVisibility className="w-5 h-5" />}
+              </button>
+              {errors.newPassword && <span className="text-red-500 text-xs mt-1 block">{errors.newPassword}</span>}
+            </div>
+
+            {/* Confirm Password */}
+            <div className="relative">
+              <label className="block text-[13px] font-medium text-gray-700 mb-1">Confirm New Password</label>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                className="w-full rounded-lg border border-gray-200 bg-[#F8F8F8] px-4 py-2.5 pr-10 text-[14px] outline-none focus:ring-2 focus:ring-orange-200 transition"
+                placeholder="••••••••"
+              />
+              <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-3 top-9 text-gray-400 hover:text-gray-600">
+                {showConfirmPassword ? <MdOutlineVisibilityOff className="w-5 h-5" /> : <MdOutlineVisibility className="w-5 h-5" />}
+              </button>
+              {errors.confirmPassword && <span className="text-red-500 text-xs mt-1 block">{errors.confirmPassword}</span>}
+            </div>
+
+            {/* Password Strength */}
+            {formData.newPassword && (
+              <div>
+                <p className="text-[12px] text-gray-500 mb-1">
+                  Password Strength: <span className="font-semibold text-gray-700">{strength.label}</span>
+                </p>
+                <div className="flex gap-1">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className={`h-1.5 flex-1 rounded-full transition-colors ${
+                        i <= strength.score ? strength.color : "bg-gray-200"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="bg-[#F47954] text-white py-2.5 px-6 rounded-lg font-satoshi text-[14px] font-medium hover:bg-[#e8683e] transition disabled:opacity-50"
+              >
+                {submitting ? "Updating..." : "Update Password"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="bg-gray-100 text-gray-700 py-2.5 px-6 rounded-lg font-satoshi text-[14px] font-medium hover:bg-gray-200 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+
+          {/* Need Help */}
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center shrink-0 mt-0.5">
+                <BsShieldLock className="w-4 h-4 text-orange-500" />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold text-gray-800">Need Help?</p>
+                <p className="text-[12px] text-gray-400 mb-2">If you're facing any issues, our support team is here to help you.</p>
+                <a
+                  href="mailto:support@ierada.com"
+                  className="inline-block text-[13px] font-medium text-[#F47954] border border-[#F47954] rounded-lg px-4 py-1.5 hover:bg-orange-50 transition"
+                >
+                  Contact Support
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side Panels */}
+        <div className="space-y-6">
+          {/* Password Requirements */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                <FiCheckCircle className="w-4 h-4 text-green-600" />
+              </div>
+              <h3 className="text-[14px] font-semibold text-gray-800">Password Requirements</h3>
+            </div>
+            <p className="text-[12px] text-gray-400 mb-3">Your password must meet the following requirements:</p>
+            <ul className="space-y-2">
+              {[
+                { key: "minLength", label: "Minimum 8 characters" },
+                { key: "hasLowercase", label: "At least one lowercase letter" },
+                { key: "hasUppercase", label: "At least one uppercase letter" },
+                { key: "hasNumberOrSpecial", label: "At least one number or special character" },
+                { key: "notSameAsOld", label: "Not same as current password" },
+              ].map(({ key, label }) => (
+                <li key={key} className="flex items-center gap-2 text-[13px]">
+                  <FiCheckCircle
+                    className={`w-4 h-4 shrink-0 ${
+                      passwordValidations[key] ? "text-green-500" : "text-gray-300"
+                    }`}
+                  />
+                  <span className={passwordValidations[key] ? "text-green-600 font-medium" : "text-gray-500"}>
+                    {label}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Security Tips */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                <MdOutlineShield className="w-4 h-4 text-blue-600" />
+              </div>
+              <h3 className="text-[14px] font-semibold text-gray-800">Security Tips</h3>
+            </div>
+            <ul className="space-y-3">
+              {[
+                "Use a unique password that you don't use on other websites.",
+                "Avoid using personal information like your name or birthdate.",
+                "Change your password regularly to keep your account safe.",
+              ].map((tip, i) => (
+                <li key={i} className="flex items-start gap-2 text-[13px] text-gray-600">
+                  <span className="text-[#F47954] mt-0.5 shrink-0">🔑</span>
+                  {tip}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="mt-8 pt-4 border-t border-gray-100 text-center text-[12px] text-gray-400">
+        © 2024 Ierada Marketplace. All rights reserved.{" "}
+        <span className="mx-1">·</span>
+        <a href="/privacy-policy" className="hover:text-gray-600 underline">Privacy Policy</a>
+        <span className="mx-1">·</span>
+        <a href="/terms" className="hover:text-gray-600 underline">Terms & Conditions</a>
       </div>
     </div>
   );
