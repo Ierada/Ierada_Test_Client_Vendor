@@ -51,9 +51,10 @@ export function isVendorProductWizardPath(pathname) {
   );
 }
 
-/** Smart Listing add/edit: full-bleed canvas (no top header / max-width). */
+/** Full-canvas Smart Listing (no vendor chrome) — excludes classic forms. */
 export function isSmartListingCanvasPath(pathname) {
-  return /^\/product\/(add|edit)(\/|$)/.test(pathname || "");
+  return /^\/product\/(add|edit)(\/|$)/.test(pathname || "") &&
+    !/classic/.test(pathname || "");
 }
 
 export function isVendorProductSectionPath(pathname) {

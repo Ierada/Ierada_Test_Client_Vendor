@@ -45,7 +45,7 @@ export const useReturnsFlow = () => {
       return;
     }
     setLoading(true);
-    const res = await getOrdersByVendorId(user.id).catch(() => null);
+    const res = await getOrdersByVendorId(user.id, { silent: true }).catch(() => null);
     setDbOrders(res?.data?.orders || []);
     setLoading(false);
   }, [user]);

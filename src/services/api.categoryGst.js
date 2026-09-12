@@ -7,7 +7,6 @@ export async function resolveCategoryGst(params) {
     const res = await apiClient.get("/category-gst/resolve", { params });
     return res.data;
   } catch (e) {
-    notifyOnFail(getApiErrorMessage(e, "GST resolve failed"));
     return { status: 0, data: null };
   }
 }

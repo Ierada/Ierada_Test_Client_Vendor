@@ -7,71 +7,56 @@ export const getAllColors = async ({ silent = false } = {}) => {
     const response = await apiClient.get("/color/get");
     if (response.data.status === 1) {
       return response.data;
+    } else if (!silent) {
+      notifyOnFail(response.data.message);
     }
-    if (!silent) notifyOnFail(response.data.message || "Could not load colors.");
     return response.data;
   } catch (error) {
-    if (!silent) notifyOnFail(getApiErrorMessage(error, "Could not load colors."));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error fetching colors"));
     console.error(error);
-    throw error;
   }
 };
 
-export const addColor = async (colorData, { silent = false } = {}) => {
+export const addColor = async (colorData) => {
   try {
-    const name = String(colorData?.name || "").trim();
-    if (!name) {
-      if (!silent) notifyOnFail("Enter a color name.");
-      return;
-    }
-    const response = await apiClient.post("/color/add", { ...colorData, name });
+    const response = await apiClient.post("/color/add", colorData);
     if (response.data.status === 1) {
-      if (!silent) notifyOnSuccess(response.data.message || "Color added.");
+      notifyOnSuccess(response.data.message);
       return response.data;
+    } else {
+      notifyOnFail(response.data.message);
     }
-    if (!silent) notifyOnFail(response.data.message || "Could not add color.");
-    return response.data;
   } catch (error) {
-    if (!silent) {
-      notifyOnFail(getApiErrorMessage(error, "Could not add color."));
-    }
+    notifyOnFail(getApiErrorMessage(error, "Error adding color"));
     console.error(error);
-    throw error;
   }
 };
 
-export const updateColor = async (id, colorData, { silent = false } = {}) => {
+export const updateColor = async (id, colorData) => {
   try {
     const response = await apiClient.put(`/color/update/${id}`, colorData);
     if (response.data.status === 1) {
-      if (!silent) notifyOnSuccess(response.data.message || "Color updated.");
+      notifyOnSuccess(response.data.message);
       return response.data;
+    } else {
+      notifyOnFail(response.data.message);
     }
-    if (!silent) notifyOnFail(response.data.message || "Could not update color.");
-    return response.data;
   } catch (error) {
-    if (!silent) {
-      notifyOnFail(getApiErrorMessage(error, "Could not update color."));
-    }
+    notifyOnFail(getApiErrorMessage(error, "Error updating color"));
     console.error(error);
-    throw error;
   }
 };
 
-export const deleteColor = async (id, { silent = false } = {}) => {
+export const deleteColor = async (id) => {
   try {
     const response = await apiClient.delete(`/color/delete/${id}`);
     if (response.data.status === 1) {
-      if (!silent) notifyOnSuccess(response.data.message || "Color deleted.");
-      return response.data;
+      notifyOnSuccess(response.data.message);
+    } else {
+      notifyOnFail(response.data.message);
     }
-    if (!silent) notifyOnFail(response.data.message || "Could not delete color.");
-    return response.data;
   } catch (error) {
-    if (!silent) {
-      notifyOnFail(getApiErrorMessage(error, "Could not delete color."));
-    }
+    notifyOnFail(getApiErrorMessage(error, "Error deleting color"));
     console.error(error);
-    throw error;
   }
 };

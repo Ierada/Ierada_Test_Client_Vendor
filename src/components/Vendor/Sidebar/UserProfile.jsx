@@ -1,7 +1,7 @@
 import React from "react";
 import { LogOut } from "lucide-react";
 
-const UserProfile = ({ user, onLogout }) => {
+const UserProfile = ({ user, onLogout, expanded = true }) => {
   const fullName =
     [user?.firstName || user?.first_name, user?.lastName || user?.last_name]
       .filter(Boolean)
@@ -9,6 +9,19 @@ const UserProfile = ({ user, onLogout }) => {
       .trim() ||
     user?.name ||
     "Selling Partner";
+
+  if (!expanded) {
+    return (
+      <div className="px-3 pb-4 pt-1 flex justify-center">
+        <div
+          className="w-10 h-10 rounded-full bg-[#FF6012] flex items-center justify-center text-white text-xs font-bold"
+          title={fullName}
+        >
+          {fullName.charAt(0) || "S"}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-4 pb-5 pt-2 font-satoshi">

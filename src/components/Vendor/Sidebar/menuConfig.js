@@ -5,12 +5,17 @@ import {
   Settings,
   ArrowLeftRight,
   HelpCircle,
+  Zap,
+  Package,
+  RotateCcw,
   Bell,
   Wallet,
+  FileText,
+  CreditCard,
+  ScrollText,
+  Percent,
 } from "lucide-react";
 import { BsHandbag } from "react-icons/bs";
-import { VENDOR_ORDERS_SECTION_PREFIXES } from "../../../config/ordersSection";
-import { VENDOR_PAYMENTS_SECTION_PREFIXES } from "../../../config/paymentsSection";
 
 export const vendorMenuConfig = {
   mainMenuItems: [
@@ -20,19 +25,51 @@ export const vendorMenuConfig = {
       text: "Orders",
       icon: BsHandbag,
       path: "/orders",
-      sectionPrefixes: VENDOR_ORDERS_SECTION_PREFIXES,
+      subItems: [
+        { text: "Order Pipeline", icon: Zap, path: "/orders/pipeline" },
+        {
+          text: "Self Ship",
+          icon: Package,
+          path: "/orders/self-ship",
+          badgeColor: "bg-[#FF6012]",
+        },
+        {
+          text: "Returns & RTO",
+          icon: RotateCcw,
+          path: "/orders/returns",
+          badgeColor: "bg-[#F04438]",
+        },
+      ],
     },
-    {
-      text: "Products",
-      icon: ShoppingCart,
-      path: "/product",
-      sectionPrefixes: ["/product", "/bulk-upload"],
-    },
+    { text: "Products", icon: ShoppingCart, path: "/product", sectionPrefixes: ["/product", "/bulk-upload"] },
     {
       text: "Payments",
       icon: Wallet,
       path: "/payments",
-      sectionPrefixes: VENDOR_PAYMENTS_SECTION_PREFIXES,
+      subItems: [
+        { text: "Overview", icon: LayoutDashboard, path: "/payments" },
+        {
+          text: "Settlements",
+          icon: ScrollText,
+          path: "/payments/settlements",
+        },
+        {
+          text: "Transactions",
+          icon: CreditCard,
+          path: "/payments/transactions",
+          badgeColor: "bg-[#FF6012]",
+        },
+        {
+          text: "Payment Advice",
+          icon: FileText,
+          path: "/payments/payment-advice",
+        },
+        {
+          text: "GST & Tax Center",
+          icon: Percent,
+          path: "/payments/gst-center",
+        },
+      ],
     },
     { text: "Report", icon: ArrowLeftRight, path: "/report" },
     { text: "Support", icon: HelpCircle, path: "/support" },

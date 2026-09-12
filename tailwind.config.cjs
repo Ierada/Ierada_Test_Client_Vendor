@@ -30,6 +30,7 @@ module.exports = {
       poppins: ["Poppins", "serif"],
       lato: ["lato", "sans-serif"],
       pacifico: ["Pacifico", "cursive"],
+      inter: ["Inter", "system-ui", "sans-serif"],
     },
     screens: {
       "2xsm": "375px",

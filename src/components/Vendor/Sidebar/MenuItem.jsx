@@ -1,79 +1,204 @@
 import React, { useMemo } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
+import { IoIosArrowDown, IoIosArrowForward } from "react-icons/io";
+import SubMenuItem from "./SubMenuItem";
 
-const MenuItem = ({ item, counts, handleNavigation, expanded = true }) => {
+const preventFocusScroll = (e) => {
+  e.preventDefault();
+};
+
+const MenuItem = ({
+  item,
+  counts,
+  openSubMenus,
+  toggleSubMenu,
+  hoveredSubMenu,
+  setHoveredSubMenu,
+  handleNavigation,
+  expanded = true,
+}) => {
+  const navigate = useNavigate();
   const location = useLocation();
   const Icon = item.icon;
+  const hasSubItems = item.subItems && item.subItems.length > 0;
 
-  const active = useMemo(() => {
-    if (item.sectionPrefixes?.length) {
-      return item.sectionPrefixes.some(
-        (prefix) =>
-          location.pathname === prefix ||
-          location.pathname.startsWith(`${prefix}/`),
-      );
-    }
-    return (
-      location.pathname === item.path ||
-      location.pathname.startsWith(`${item.path}/`)
+  const hasActiveSub = useMemo(() => {
+    return item.subItems?.some(
+      (sub) =>
+        location.pathname === sub.path ||
+        location.pathname.startsWith(`${sub.path}/`),
     );
-  }, [item.path, item.sectionPrefixes, location.pathname]);
+  }, [item.subItems, location.pathname]);
 
-  const badge =
-    item.text === "Orders" ? (
-      <span className="ml-auto bg-[#FF6012] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full leading-none">
-        {counts.orders}
+  const active =
+    item.sectionPrefixes?.some(
+      (prefix) =>
+        location.pathname === prefix ||
+        location.pathname.startsWith(`${prefix}/`),
+    ) ||
+    location.pathname === item.path ||
+    location.pathname.startsWith(`${item.path}/`) ||
+    hasActiveSub;
+
+  const isExpanded =
+    expanded &&
+    (openSubMenus[item.text] || hoveredSubMenu === item.text || hasActiveSub);
+
+  const badgeCount =
+    item.text === "Orders"
+      ? counts.orders
+      : item.text === "Notifications"
+        ? counts.notifications
+        : null;
+
+  const getBadge = () => {
+    if (!expanded || badgeCount == null || Number(badgeCount) <= 0) return null;
+    return (
+      <span
+        className={`text-white text-[10px] min-w-[16px] h-4 px-1 rounded-full inline-flex items-center justify-center ${
+          item.text === "Notifications" ? "bg-[#0096EB]" : "bg-[#FF6012]"
+        }`}
+      >
+        {badgeCount}
       </span>
-    ) : item.text === "Notifications" ? (
-      <span className="ml-auto bg-[#0096EB] text-white text-[11px] font-bold px-2 py-0.5 rounded-full leading-none">
-        {counts.notifications}
-      </span>
-    ) : null;
+    );
+  };
+
+  const handleParentClick = () => {
+    if (hasSubItems && expanded) toggleSubMenu(item.text);
+    if (item.path) {
+      navigate(item.path);
+      handleNavigation();
+    }
+  };
+
+  if (hasSubItems) {
+    return (
+      <li
+        className={`rounded group ${expanded ? "p-2" : "p-1"} ${
+          hasActiveSub ? "bg-[#FF60121C]" : ""
+        }`}
+        onMouseEnter={
+          expanded ? () => setHoveredSubMenu(item.text) : undefined
+        }
+        onMouseLeave={expanded ? () => setHoveredSubMenu(null) : undefined}
+      >
+        <button
+          type="button"
+          title={item.text}
+          onMouseDown={preventFocusScroll}
+          onClick={handleParentClick}
+          className={`text-[#353535] group-hover:text-[#FF6012] text-[15px]
+            font-satoshi font-normal inline-flex items-center w-full
+            transition-colors duration-200 ${
+              expanded ? "justify-between px-2 py-1" : "justify-center px-0 py-1"
+            } ${hasActiveSub ? "text-[#FF6012]" : ""}`}
+        >
+          <div className={`flex items-center ${expanded ? "gap-4" : "gap-0"}`}>
+            <span
+              className={`relative shrink-0 flex items-center justify-center ${
+                expanded
+                  ? ""
+                  : `w-10 h-10 rounded-xl ${hasActiveSub ? "bg-[#FF60121C]" : "hover:bg-gray-50"}`
+              }`}
+            >
+              <Icon className="w-5 h-5 transition-colors duration-200 group-hover:text-[#FF6012]" />
+              {!expanded && badgeCount > 0 ? (
+                <span className="absolute -top-1 -right-1 bg-[#FF6012] text-white text-[9px] min-w-[14px] h-3.5 px-0.5 rounded-full inline-flex items-center justify-center">
+                  {Number(badgeCount) > 9 ? "9+" : badgeCount}
+                </span>
+              ) : null}
+            </span>
+            {expanded ? (
+              <span className="transition-colors duration-200 whitespace-nowrap">
+                {item.text}
+              </span>
+            ) : null}
+          </div>
+          {expanded ? (
+            <span
+              className={`transform transition-transform duration-200 ${
+                isExpanded ? "rotate-180" : ""
+              }`}
+            >
+              <IoIosArrowDown className="w-4 h-4" />
+            </span>
+          ) : null}
+        </button>
+        {isExpanded ? (
+          <ul className="ml-8 mt-2 space-y-1 border-l-2 border-[#FF60121C] pl-3">
+            {item.subItems.map((sub, idx) => (
+              <SubMenuItem
+                key={idx}
+                subItem={sub}
+                counts={counts}
+                subActive={
+                  location.pathname === sub.path ||
+                  location.pathname.startsWith(`${sub.path}/`)
+                }
+                handleNavigation={handleNavigation}
+              />
+            ))}
+          </ul>
+        ) : null}
+      </li>
+    );
+  }
 
   return (
-    <li className="group relative font-satoshi">
+    <li className={`rounded group ${expanded ? "py-2" : "py-1"}`}>
       <NavLink
         to={item.path}
         title={item.text}
+        onMouseDown={preventFocusScroll}
         className={() =>
-          `flex items-center rounded-lg transition-all duration-150 ${
-            expanded ? "gap-3 px-3 py-2.5" : "justify-center px-0 py-2"
-          } ${
-            active
-              ? "bg-[#EEF2F6] text-[#0164CE] font-semibold"
-              : "text-[#475467] hover:bg-gray-50 hover:text-gray-950"
-          }`
+          expanded
+            ? `w-full flex justify-between group-hover:bg-[#FF60121C] group-hover:text-[#FF6012] group-hover:rounded-r-full text-[15px]
+            font-satoshi font-normal items-center gap-2 px-4 py-2 rounded-r-full
+            ${
+              active
+                ? "bg-[#FF60121C] text-[#FF6012] shadow-sm"
+                : "text-[#353535]"
+            }`
+            : `w-full flex items-center justify-center py-1 text-[#353535] group-hover:text-[#FF6012]`
         }
         onClick={handleNavigation}
       >
-        <span
-          className={`relative shrink-0 flex items-center justify-center ${
-            expanded
-              ? ""
-              : `w-10 h-10 rounded-xl ${active ? "bg-[#0164CE14]" : "hover:bg-gray-50"}`
-          }`}
-        >
-          <Icon
-            className={`w-5 h-5 transition-colors ${
-              active
-                ? "text-[#0164CE]"
-                : "text-[#475467] group-hover:text-gray-950"
-            }`}
-          />
-          {!expanded && item.text === "Orders" && counts.orders > 0 ? (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 rounded-full bg-[#FF6012] text-white text-[9px] inline-flex items-center justify-center">
-              {counts.orders > 9 ? "9+" : counts.orders}
+        <>
+          <div className={`flex ${expanded ? "gap-4" : "gap-0"}`}>
+            <span
+              className={`relative shrink-0 flex items-center justify-center ${
+                expanded
+                  ? ""
+                  : `w-10 h-10 rounded-xl ${active ? "bg-[#FF60121C] text-[#FF6012]" : "hover:bg-gray-50"}`
+              }`}
+            >
+              <Icon className="w-5 h-5 transition-colors duration-200 group-hover:text-[#FF6012]" />
+              {!expanded && badgeCount > 0 ? (
+                <span
+                  className={`absolute -top-1 -right-1 text-white text-[9px] min-w-[14px] h-3.5 px-0.5 rounded-full inline-flex items-center justify-center ${
+                    item.text === "Notifications" ? "bg-[#0096EB]" : "bg-[#FF6012]"
+                  }`}
+                >
+                  {Number(badgeCount) > 9 ? "9+" : badgeCount}
+                </span>
+              ) : null}
+            </span>
+            {expanded ? (
+              <>
+                <span className="transition-colors duration-200 whitespace-nowrap truncate max-w-[9.5rem]">
+                  {item.text}
+                </span>
+                {getBadge()}
+              </>
+            ) : null}
+          </div>
+          {expanded && active ? (
+            <span className="bg-white rounded-full p-1 shadow-sm">
+              <IoIosArrowForward className="text-[#FF6012] w-4 h-4" />
             </span>
           ) : null}
-        </span>
-        {expanded ? (
-          <>
-            <span className="text-[14px] font-medium whitespace-nowrap truncate max-w-[9rem]">
-              {item.text}
-            </span>
-            {badge}
-          </>
-        ) : null}
+        </>
       </NavLink>
     </li>
   );

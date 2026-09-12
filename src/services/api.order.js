@@ -2,19 +2,18 @@ import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 import { getApiErrorMessage } from "../utils/apiError";
 
-export const getOrdersByVendorId = async (id) => {
+export const getOrdersByVendorId = async (id, { silent = false } = {}) => {
   try {
     const res = await apiClient.get(`/order/getOrdersByVendorId/${id}`);
     if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-    } else {
-      notifyOnFail(res.data.message);
+      return res.data;
     }
+    if (!silent) notifyOnFail(res.data.message);
     return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
-    // return error.response || error;
+    if (silent) throw error;
   }
 };
 

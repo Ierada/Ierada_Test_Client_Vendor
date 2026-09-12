@@ -25,6 +25,18 @@ const websiteBase = String(config.VITE_BASE_WEBSITE_URL || "")
   .trim()
   .replace(/\/$/, "");
 
+/** Only bounce to the storefront when it is the same origin as this vendor app. */
+const canHandoffToWebsite = () => {
+  if (!websiteBase) return false;
+  if (typeof window === "undefined") return false;
+  try {
+    const target = new URL(websiteBase, window.location.origin);
+    return target.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+};
+
 const kycStepRedirect = (stepKey, token) => {
   const pathMap = {
     pan_card: "/vendor/pan-details",
@@ -34,12 +46,7 @@ const kycStepRedirect = (stepKey, token) => {
   };
   const path = pathMap[stepKey];
   if (!path) return null;
-  if (!websiteBase) {
-    toast.error(
-      "Website URL is not configured. Set VITE_BASE_WEBSITE_URL.",
-    );
-    return null;
-  }
+  if (!canHandoffToWebsite()) return null;
   return `${websiteBase}${path}?token=${encodeURIComponent(token)}`;
 };
 
@@ -69,9 +76,9 @@ const redirectIfPasswordResetNeeded = (token, responseData) => {
   if (!responseData || responseData.isPasswordReset !== false) {
     return false;
   }
-  if (!websiteBase) {
-    toast.error(
-      "Website URL is not configured. Set VITE_BASE_WEBSITE_URL.",
+  if (!canHandoffToWebsite()) {
+    toast.info(
+      "Password change is required on the seller website. Continuing to the dashboard for this local session.",
     );
     return false;
   }

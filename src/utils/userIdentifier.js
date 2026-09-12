@@ -83,10 +83,15 @@ export const setUserCookie = (token, user, role) => {
   const tokenKey = getTokenKey(role);
   const userKey = getUserKey(role);
 
+  // Chrome drops Secure cookies on plain http, which would send the guard
+  // back to /login on every navigation when previewing over http.
+  const isHttps =
+    typeof window !== "undefined" && window.location.protocol === "https:";
+
   Cookies.set(tokenKey, token, {
     expires: COOKIE_EXPIRES_DAYS,
     path: "/",
-    secure: true,
+    secure: isHttps,
     sameSite: "Lax",
   });
 

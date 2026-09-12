@@ -24,8 +24,6 @@ import {
 import {
   getPaymentAdviceBySettlement,
 } from "../../../../services/api.paymentAdvice";
-import { notifyOnFail } from "../../../../utils/notification/toast";
-import { getApiErrorMessage } from "../../../../utils/apiError";
 
 
 // ---------------------------------------------------------------------------
@@ -121,28 +119,20 @@ const Settlements = () => {
       if (filters.cycle !== "all") params.cycle = filters.cycle;
       if (filters.bankName !== "all") params.bankName = filters.bankName;
       if (filters.paymentMode !== "all") params.paymentMode = filters.paymentMode;
-      const response = await getSettlements(params, { silent: true });
-      if (response?.status === 1) {
-        const rows = response.data?.settlements || [];
-        setSettlements(rows);
-        setTabs(response.data?.tabs || []);
-        setTotals(response.data?.summary || {});
-        if (response.data?.pagination) setPagination(response.data.pagination);
-        if (rows.length > 0 && !selectedSettlement) {
-          setSelectedSettlement(rows[0]);
-        } else if (!rows.length) {
+      const response = await getSettlements(params);
+      if (response.status === 1) {
+        setSettlements(response.data.settlements);
+        setTabs(response.data.tabs);
+        setTotals(response.data.summary);
+        setPagination(response.data.pagination);
+        if (response.data.settlements.length > 0 && !selectedSettlement) {
+          setSelectedSettlement(response.data.settlements[0]);
+        } else if (response.data.settlements.length === 0) {
           setSelectedSettlement(null);
         }
-      } else {
-        notifyOnFail(response?.message || "Could not load settlements.");
-        setSettlements([]);
-        setSelectedSettlement(null);
       }
     } catch (error) {
       console.error("Error fetching settlements:", error);
-      notifyOnFail(getApiErrorMessage(error, "Could not load settlements."));
-      setSettlements([]);
-      setSelectedSettlement(null);
     } finally {
       setLoading(false);
     }
@@ -150,15 +140,15 @@ const Settlements = () => {
 
   const fetchSummary = async () => {
     try {
-      const response = await getSettlementSummary({ silent: true });
-      if (response?.status === 1) {
-        const data = response.data || {};
+      const response = await getSettlementSummary();
+      if (response.status === 1) {
+        const data = response.data;
         setSummaryCards([
           {
             key: "total",
             label: "Total Settlements",
-            value: String(data.total_settlements ?? 0),
-            sub: `₹${Number(data.total_amount || 0).toLocaleString("en-IN")}`,
+            value: data.total_settlements.toString(),
+            sub: `₹${data.total_amount.toLocaleString("en-IN")}`,
             icon: Wallet,
             iconBg: "bg-blue-50",
             iconColor: "text-blue-600",
@@ -168,7 +158,7 @@ const Settlements = () => {
             key: "settled",
             label: "Total Settled",
             value: "—",
-            sub: `₹${Number(data.total_settled || 0).toLocaleString("en-IN")}`,
+            sub: `₹${data.total_settled.toLocaleString("en-IN")}`,
             icon: CheckCircle2,
             iconBg: "bg-green-50",
             iconColor: "text-green-600",
@@ -178,7 +168,7 @@ const Settlements = () => {
             key: "processing",
             label: "Processing",
             value: "—",
-            sub: `₹${Number(data.total_processing || 0).toLocaleString("en-IN")}`,
+            sub: `₹${data.total_processing.toLocaleString("en-IN")}`,
             icon: Clock,
             iconBg: "bg-orange-50",
             iconColor: "text-orange-500",
@@ -188,7 +178,7 @@ const Settlements = () => {
             key: "failed",
             label: "Failed / On Hold",
             value: "—",
-            sub: `₹${Number(data.total_failed || 0).toLocaleString("en-IN")}`,
+            sub: `₹${data.total_failed.toLocaleString("en-IN")}`,
             icon: AlertTriangle,
             iconBg: "bg-red-50",
             iconColor: "text-red-500",
@@ -197,7 +187,7 @@ const Settlements = () => {
           {
             key: "avg",
             label: "Average Settlement Amount",
-            value: `₹${Math.round(Number(data.average_net_payable) || 0).toLocaleString("en-IN")}`,
+            value: `₹${Math.round(data.average_net_payable).toLocaleString("en-IN")}`,
             sub: "Per Settlement",
             icon: Wallet,
             iconBg: "bg-purple-50",
@@ -205,12 +195,9 @@ const Settlements = () => {
             trend: null,
           },
         ]);
-      } else {
-        notifyOnFail(response?.message || "Could not load settlement summary.");
       }
     } catch (error) {
-      console.error("Error fetching settlement summary:", error);
-      notifyOnFail(getApiErrorMessage(error, "Could not load settlement summary."));
+      console.error("Error fetching summary:", error);
     }
   };
 
@@ -221,10 +208,9 @@ const Settlements = () => {
         search: search || undefined,
         limit: 10000, // Get all settlements for export
       };
-      const response = await getSettlements(params, { silent: true });
-      const rows = response?.data?.settlements || [];
-      if (response?.status === 1 && rows.length > 0) {
-        const exportData = rows.map((s) => ({
+      const response = await getSettlements(params);
+      if (response.status === 1 && response.data.settlements.length > 0) {
+        const exportData = response.data.settlements.map((s) => ({
           "Settlement ID": s.settlement_id,
           "Settlement Date": s.settlement_date ? new Date(s.settlement_date).toLocaleDateString("en-IN") : "—",
           "Period Start": s.settlement_period_start ? new Date(s.settlement_period_start).toLocaleDateString("en-IN") : "—",
@@ -247,12 +233,9 @@ const Settlements = () => {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Settlements");
         XLSX.writeFile(wb, `settlements_${new Date().toISOString().split('T')[0]}.xlsx`);
-      } else {
-        notifyOnFail(response?.message || "No settlements to export.");
       }
     } catch (error) {
       console.error("Error exporting settlements:", error);
-      notifyOnFail(getApiErrorMessage(error, "Could not export settlements."));
     }
   };
 

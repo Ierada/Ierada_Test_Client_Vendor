@@ -110,7 +110,6 @@ import {
   sizeLabelsFromState,
 } from "../../../components/Vendor/SmartListing/utils/sizeChart";
 import { findRestrictedHits } from "../../../components/Vendor/SmartListing/utils/restrictedClaims";
-import { confirmDialog } from "../../../utils/confirmDialog";
 import {
   getBulkSession,
   advanceBulkSession,
@@ -640,7 +639,6 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [supportPhone, setSupportPhone] = useState("9211736358");
   const autosaveTimer = useRef(null);
   const priceToastKey = useRef("");
-  const settlementPreviewToastAt = useRef(0);
 
   useEffect(() => {
     const bothFilled =
@@ -780,9 +778,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     applyBulkSlotState();
   }, [mode, stableId, applyBulkSlotState]);
 
-  const skipBulkListing = useCallback(async () => {
+  const skipBulkListing = useCallback(() => {
     if (!bulkMode) return;
-    const ok = await confirmDialog({ title: "Confirm", message: "Skip this listing without saving? You can finish it later as a new listing.", variant: "brand" });
+    const ok = window.confirm(
+      "Skip this listing without saving? You can finish it later as a new listing.",
+    );
     if (!ok) return;
     const session = bulkSession || getBulkSession();
     if (!session) return;
@@ -1379,41 +1379,25 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     const timer = setTimeout(async () => {
-      const toastPreviewFail = (errOrMsg) => {
-        const now = Date.now();
-        if (now - settlementPreviewToastAt.current < 8000) return;
-        settlementPreviewToastAt.current = now;
-        notifyOnWarning(
-          typeof errOrMsg === "string"
-            ? errOrMsg
-            : getApiErrorMessage(
-                errOrMsg,
-                "Settlement preview unavailable — using local estimate.",
-              ),
-        );
-      };
       try {
-        const res = await previewListingSettlement(
-          {
-            original_price: state.original_price,
-            discounted_price: state.discounted_price,
-            gst: state.gst,
-            hsn_code: state.hsn_code,
-            shipping_charges: state.shipping_charges,
-            free_shipping: state.free_shipping,
-            package_weight: state.package_weight,
-            package_length: state.package_length,
-            package_width: state.package_width,
-            package_height: state.package_height,
-            volumetric_weight: state.volumetric_weight,
-            category_id: state.category_id,
-            sub_category_id: state.sub_category_id,
-            inner_sub_category_id: state.inner_sub_category_id,
-            size_ids: listingSizeIds(state),
-            color_id: state.color_id,
-          },
-          { silent: true },
-        );
+        const res = await previewListingSettlement({
+          original_price: state.original_price,
+          discounted_price: state.discounted_price,
+          gst: state.gst,
+          hsn_code: state.hsn_code,
+          shipping_charges: state.shipping_charges,
+          free_shipping: state.free_shipping,
+          package_weight: state.package_weight,
+          package_length: state.package_length,
+          package_width: state.package_width,
+          package_height: state.package_height,
+          volumetric_weight: state.volumetric_weight,
+          category_id: state.category_id,
+          sub_category_id: state.sub_category_id,
+          inner_sub_category_id: state.inner_sub_category_id,
+          size_ids: listingSizeIds(state),
+          color_id: state.color_id,
+        });
         if (res?.status === 1 && res.data) {
           setRemoteSettlement(res.data);
           const fee = res.data.platformFee;
@@ -1436,15 +1420,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             next.shipping_charges = res.data.shipping;
           }
           if (Object.keys(next).length) patch(next);
-        } else if (res && res.status !== 1) {
-          toastPreviewFail(
-            res?.message ||
-              "Settlement preview unavailable — using local estimate.",
-          );
         }
-      } catch (e) {
-        /* keep local calc; toast throttled */
-        toastPreviewFail(e);
+      } catch {
+        /* keep local calc */
       }
     }, 280);
     return () => clearTimeout(timer);
@@ -1624,40 +1602,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     setGenerating3d(true);
-    let usedAi = false;
-    let aiFailMsg = "";
     try {
       let outFile = null;
       try {
         const payload = await fileToSuggestPayload(file);
-        if (!payload?.image_base64) {
-          throw new Error("Could not read the product photo for 3D studio.");
-        }
         const res = await generateListing3dImage(payload);
         const b64 = res?.data?.image_base64 || res?.data?.b64_json;
         if (res?.status === 1 && b64) {
           const mime = res.data.mime_type || "image/png";
           const name = mime.includes("png") ? "ai-3d-studio.png" : "ai-3d-studio.jpg";
           outFile = base64ToJpegFile(b64, name);
-          usedAi = true;
-        } else {
-          aiFailMsg =
-            res?.message ||
-            "AI 3D studio unavailable — using a local preview instead.";
         }
-      } catch (e) {
-        aiFailMsg = getApiErrorMessage(
-          e,
-          "AI 3D studio unavailable — using a local preview instead.",
-        );
+      } catch {
+        /* canvas fallback */
       }
-      if (!outFile) {
-        try {
-          outFile = await makeStudio3dFile(file);
-        } catch (e) {
-          throw e;
-        }
-      }
+      if (!outFile) outFile = await makeStudio3dFile(file);
       const files = [...(state.files || [])];
       const mediaLabels = [...(state.mediaLabels || [])];
       while (mediaLabels.length < files.length) {
@@ -1669,23 +1628,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         alt_text: `${state.name || "Product"} — 3D studio`,
       });
       patch({ files, mediaLabels });
-      if (usedAi) {
-        setBanner({
-          type: "info",
-          text: "3D studio image added at the end of the gallery.",
-        });
-        notifyOnSuccess("3D studio image added");
-      } else {
-        notifyOnWarning(aiFailMsg || "Used local 3D preview.");
-        setBanner({
-          type: "info",
-          text: "Local 3D preview added at the end of the gallery.",
-        });
-      }
+      setBanner({
+        type: "info",
+        text: "3D studio image added at the end of the gallery.",
+      });
     } catch (e) {
-      const text = getApiErrorMessage(e, "Could not generate a 3D image.");
-      notifyOnFail(text);
-      setBanner({ type: "error", text });
+      setBanner({
+        type: "error",
+        text: getApiErrorMessage(e, "Could not generate a 3D image."),
+      });
     } finally {
       setGenerating3d(false);
     }
@@ -1883,7 +1834,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (opts.forceOverwrite === true) {
       confirmedOverwrite = true;
     } else if (opts.confirmDirty) {
-      confirmedOverwrite = await confirmDialog({ title: "Overwrite edits?", message: "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.", variant: "brand" });
+      confirmedOverwrite = window.confirm(
+        "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.",
+      );
     }
 
     const runId = (runAiGenerate._seq = (runAiGenerate._seq || 0) + 1);
@@ -1955,7 +1908,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const msg = savedId
       ? "Discard this draft? It will be permanently deleted and cannot be undone."
       : "Discard this listing? All local progress, images, and variant data will be cleared.";
-    if (!(await confirmDialog({ title: "Discard", message: msg, variant: "danger" }))) return;
+    if (!window.confirm(msg)) return;
 
     setDiscarding(true);
     try {
@@ -2127,19 +2080,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           type: "error",
           text: res?.message || "Could not save listing. Please fix and retry.",
         });
-        notifyOnFail(
-          res?.message ||
-            res?.data?.message ||
-            "Could not save listing. Please fix and retry.",
-        );
       }
     } catch (error) {
-      const text = getApiErrorMessage(
-        error,
-        "Unable to reach the server. Draft is kept locally.",
-      );
-      setBanner({ type: "error", text });
-      notifyOnFail(text);
+      setBanner({
+        type: "error",
+        text: getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally."),
+      });
     } finally {
       setSubmitting(false);
     }
@@ -2177,8 +2123,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           listingType={state.listingType}
           bulkProgress={bulkProgress}
           skipBulkListing={skipBulkListing}
-          onExitBulk={async () => {
-            if (await confirmDialog({ title: "Stop", message: "Stop bulk session? Progress is saved per listing already submitted.", variant: "danger" })) {
+          onExitBulk={() => {
+            if (window.confirm("Stop bulk session? Progress is saved per listing already submitted.")) {
               clearBulkSession();
               navigate("/bulk-upload");
             }

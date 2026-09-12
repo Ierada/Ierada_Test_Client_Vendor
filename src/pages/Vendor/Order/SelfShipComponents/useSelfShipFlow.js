@@ -19,7 +19,7 @@ export const useSelfShipFlow = (mapDbOrderToSelfShip) => {
     if (!user?.id) { setLoading(false); return; }
     (async () => {
       setLoading(true);
-      const res = await getOrdersByVendorId(user.id).catch(() => null);
+      const res = await getOrdersByVendorId(user.id, { silent: true }).catch(() => null);
       const list = res?.data?.orders || [];
       setOrders(list.length > 0 ? list.map(mapDbOrderToSelfShip) : INITIAL_ORDERS);
       setLoading(false);

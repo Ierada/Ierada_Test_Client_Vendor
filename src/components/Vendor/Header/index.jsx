@@ -48,8 +48,8 @@ const Header = ({ sidebarOpen, setSidebarOpen, sidebarExpanded = false }) => {
 
   return (
     <header
-      className={`h-10 fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 transition-[left] duration-150 ease-out ${
-        sidebarExpanded ? "lg:left-56" : "lg:left-[72px]"
+      className={`h-10 fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 transition-[margin] duration-150 ease-out ${
+        sidebarExpanded ? "lg:ml-56" : "lg:ml-[72px]"
       }`}
     >
       <div className="flex items-center justify-end h-full px-4">

@@ -3,11 +3,9 @@ import { ImagePlus, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { getAllColors, addColor } from "../../../services/api.color";
 import { getAllSizes, addSize } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
-import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   suggestVariantSku,
   sizeQueryFromListing,
-  inferSizeTypeFromListing,
   splitContextualSizes,
   sizePickerOptions,
   hasRealSizeRow,
@@ -84,8 +82,8 @@ export default function ColorSizeMatrix({ state, patch }) {
         setSizeSplit(
           splitContextualSizes(sRes?.data || [], sRes?.meta, state),
         );
-      } catch (e) {
-        notifyOnFail(getApiErrorMessage(e, "Could not load colors/sizes."));
+      } catch {
+        notifyOnFail("Could not load colors/sizes");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -120,6 +118,37 @@ export default function ColorSizeMatrix({ state, patch }) {
     setGroups(next);
   };
 
+  const addColorQuick = async () => {
+    const name = newColor.trim();
+    if (!name) return;
+    try {
+      const res = await addColor({ name, code: "#808080" });
+      if (res?.status === 1 && res?.data) {
+        setColors((prev) => [...prev, res.data]);
+        setNewColor("");
+      }
+    } catch {
+      /* toasted */
+    }
+  };
+
+  const addSizeQuick = async () => {
+    const name = newSize.trim();
+    if (!name) return;
+    try {
+      const res = await addSize({ name, type: "general" });
+      if (res?.status === 1 && res?.data) {
+        setSizeSplit((prev) => ({
+          ...prev,
+          all: [...prev.all, res.data],
+          rest: [...prev.rest, res.data],
+        }));
+        setNewSize("");
+      }
+    } catch {
+      /* toasted */
+    }
+  };
 
   const autoFillSkus = () => {
     const base = state.sku || "SKU";
@@ -149,65 +178,6 @@ export default function ColorSizeMatrix({ state, patch }) {
     });
     setGroups(next);
   };
-
-  const firstCreated = (data) => {
-    if (Array.isArray(data)) return data[0] || null;
-    return data || null;
-  };
-
-  const addColorQuick = async () => {
-    const name = newColor.trim();
-    if (!name) {
-      notifyOnFail("Enter a color name.");
-      return;
-    }
-    try {
-      const res = await addColor({ name, code: "#808080" });
-      const created = firstCreated(res?.data);
-      if (res?.status === 1 && created) {
-        setColors((prev) => {
-          if (prev.some((c) => String(c.id) === String(created.id))) return prev;
-          return [...prev, created];
-        });
-        setNewColor("");
-      }
-    } catch {
-      /* toasted in api.color */
-    }
-  };
-
-  const addSizeQuick = async () => {
-    const name = newSize.trim();
-    if (!name) {
-      notifyOnFail("Enter a size name.");
-      return;
-    }
-    try {
-      const res = await addSize({
-        name,
-        type: inferSizeTypeFromListing(state),
-        categoryId: state.category_id || undefined,
-        subCategoryId: state.sub_category_id || undefined,
-        innerSubCategoryId: state.inner_sub_category_id || undefined,
-      });
-      const created = firstCreated(res?.data);
-      if (res?.status === 1 && created) {
-        setSizeSplit((prev) => {
-          const exists = prev.all.some((s) => String(s.id) === String(created.id));
-          if (exists) return prev;
-          return {
-            ...prev,
-            all: [...prev.all, created],
-            rest: [...prev.rest, created],
-          };
-        });
-        setNewSize("");
-      }
-    } catch {
-      /* toasted in api.size */
-    }
-  };
-
 
   if (loading) {
     return <p className="text-sm text-gray-500">Loading colors & sizes…</p>;
@@ -270,12 +240,6 @@ export default function ColorSizeMatrix({ state, patch }) {
             placeholder="Quick add color"
             value={newColor}
             onChange={(e) => setNewColor(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addColorQuick();
-              }
-            }}
           />
           <button type="button" className="px-3 rounded-lg border text-sm" onClick={addColorQuick}>
             Add
@@ -287,12 +251,6 @@ export default function ColorSizeMatrix({ state, patch }) {
             placeholder="Quick add size"
             value={newSize}
             onChange={(e) => setNewSize(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addSizeQuick();
-              }
-            }}
           />
           <button type="button" className="px-3 rounded-lg border text-sm" onClick={addSizeQuick}>
             Add

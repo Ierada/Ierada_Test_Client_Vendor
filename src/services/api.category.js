@@ -2,18 +2,16 @@ import apiClient from "../axios.config.js";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast.js";
 import { getApiErrorMessage } from "../utils/apiError";
 
-export const getCategories = async () => {
+export const getCategories = async ({ silent = false } = {}) => {
   try {
     const res = await apiClient.get("/category/getAll");
-    if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
-    } else {
+    if (res.data.status !== 1 && !silent) {
       notifyOnFail(res.data.message);
     }
 
     return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -64,18 +62,12 @@ export const deleteCategory = async (id) => {
   }
 };
 
-export const getSubCategories = async () => {
+export const getSubCategories = async ({ silent = false } = {}) => {
   try {
     const res = await apiClient.get("/subcategory/getAll");
-    // if (res.data.status === 1) {
-    //   notifyOnSuccess(res.data.message);
-    // } else {
-    //   notifyOnFail(res.data.message);
-    // }
-
     return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }
@@ -145,18 +137,12 @@ export const deleteSubCategory = async (id) => {
   }
 };
 
-export const getInnerSubCategories = async () => {
+export const getInnerSubCategories = async ({ silent = false } = {}) => {
   try {
     const res = await apiClient.get("/innersubcategory/getAll");
-    // if (res.data.status === 1) {
-    //   notifyOnSuccess(res.data.message);
-    // } else {
-    //   notifyOnFail(res.data.message);
-    // }
-
     return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     return error.response || error;
   }

@@ -178,7 +178,7 @@ export const validateMainProductFields = (formData) => {
  *
  * custom mode (NEW): flat array of variation rows, each with:
  *   {
- *     attributes: [{ attribute_id, attribute_value }, …],  // max 4, all unique attribute_ids
+ *     attributes: [{ attribute_id, attribute_value }, …],  // unique attribute_ids
  *     stock, original_price, discounted_price, sku, barcode,
  *     media: []
  *   }
@@ -246,9 +246,6 @@ export const validateVariationsData = (variations, variationMode) => {
         varErrors.attributes =
           "At least one attribute is required per variation";
       } else {
-        if (variation.attributes.length > 4) {
-          varErrors.attributes = "Maximum 4 attributes allowed per variation";
-        }
         // Each attribute must have attribute_id and attribute_value
         const attrErrors = [];
         const seenAttrIds = new Set();

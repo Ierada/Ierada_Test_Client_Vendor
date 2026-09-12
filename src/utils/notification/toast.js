@@ -154,6 +154,10 @@ export const notifyOnSuccess = (message) => showToast("success", message);
 
 export const notifyOnFail = (message) => {
   if (wasAuthSessionEndedRecently()) return;
+  if (message == null || message === "") return;
+  if (typeof message === "object" && !message.title && !message.message && !message.msg) {
+    return;
+  }
   showToast("error", message);
 };
 

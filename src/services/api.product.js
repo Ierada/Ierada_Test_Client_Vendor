@@ -152,15 +152,7 @@ export const updateProduct = async (id, data) => {
   } catch (error) {
     notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
-    return (
-      error.response?.data || {
-        status: 0,
-        message:
-          error.response?.data?.message ||
-          error.message ||
-          "Error updating product",
-      }
-    );
+    return error.response || error;
   }
 };
 

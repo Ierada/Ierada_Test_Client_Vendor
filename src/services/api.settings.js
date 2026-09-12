@@ -17,17 +17,17 @@ export const getWebSettings = async () => {
   }
 };
 
-export const getSettings = async () => {
+export const getSettings = async ({ silent = false } = {}) => {
   try {
     const res = await apiClient.get("/settings/get");
     if (res.data.status === 1) {
-      // notifyOnSuccess(res.data.message);
       return res.data;
-    } else {
+    } else if (!silent) {
       notifyOnFail(res.data.message);
     }
+    return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
   }
 };

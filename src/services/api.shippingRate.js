@@ -1,12 +1,12 @@
 import apiClient from "../axios.config";
 import { notifyOnSuccess, notifyOnFail } from "../utils/notification/toast";
 
-export const getShippingRates = async () => {
+export const getShippingRates = async ({ silent = false } = {}) => {
   try {
     const res = await apiClient.get("/shipping-rates/get");
     return res.data;
   } catch (error) {
-    notifyOnFail(error.message || "Error fetching shipping rates");
+    if (!silent) notifyOnFail(error.message || "Error fetching shipping rates");
     throw error;
   }
 };
