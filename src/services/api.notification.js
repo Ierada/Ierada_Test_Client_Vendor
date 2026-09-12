@@ -66,15 +66,3 @@ export const deleteNotification = async id => {
     console.error(error);
   }
 };
-
-export const markAllNotificationsAsRead = async () => {
-  try {
-    const response = await apiClient.put('/notification/read-all');
-    if (response.data.status === 1) {
-      return response.data;
-    }
-  } catch (error) {
-    notifyOnFail('Error reaching the server');
-    console.error(error);
-  }
-};
