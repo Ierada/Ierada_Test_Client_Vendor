@@ -35,6 +35,7 @@ import TrackingModal from "./TrackingModal";
 import CourierCell from "./CourierCell";
 import ProductCell from "./ProductCell";
 import { StatusBadge } from "./OrderBadge";
+import { confirmDialog } from "../../../utils/confirmDialog";
 
 // ─── Status badge ──────────────────────────────────────────────────────────────
 const STATUS_CFG = {
@@ -164,9 +165,7 @@ const OrderActions = ({
   const handleDownloadManifest = async (e) => {
     e.stopPropagation();
     if (
-      !window.confirm(
-        "Generate manifest for this order?\n\nThis locks the order on the courier side and schedules pickup.",
-      )
+      !await confirmDialog({ title: "Confirm", message: "Generate manifest for this order?\n\nThis locks the order on the courier side and schedules pickup.", variant: "brand" })
     ) {
       return;
     }

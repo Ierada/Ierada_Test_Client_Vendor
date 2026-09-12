@@ -110,6 +110,7 @@ import {
   sizeLabelsFromState,
 } from "../../../components/Vendor/SmartListing/utils/sizeChart";
 import { findRestrictedHits } from "../../../components/Vendor/SmartListing/utils/restrictedClaims";
+import { confirmDialog } from "../../../utils/confirmDialog";
 import {
   getBulkSession,
   advanceBulkSession,
@@ -779,11 +780,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     applyBulkSlotState();
   }, [mode, stableId, applyBulkSlotState]);
 
-  const skipBulkListing = useCallback(() => {
+  const skipBulkListing = useCallback(async () => {
     if (!bulkMode) return;
-    const ok = window.confirm(
-      "Skip this listing without saving? You can finish it later as a new listing.",
-    );
+    const ok = await confirmDialog({ title: "Confirm", message: "Skip this listing without saving? You can finish it later as a new listing.", variant: "brand" });
     if (!ok) return;
     const session = bulkSession || getBulkSession();
     if (!session) return;
@@ -1884,9 +1883,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (opts.forceOverwrite === true) {
       confirmedOverwrite = true;
     } else if (opts.confirmDirty) {
-      confirmedOverwrite = window.confirm(
-        "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.",
-      );
+      confirmedOverwrite = await confirmDialog({ title: "Overwrite edits?", message: "Overwrite sections you already edited? Cancel keeps your edits and only fills untouched sections.", variant: "brand" });
     }
 
     const runId = (runAiGenerate._seq = (runAiGenerate._seq || 0) + 1);
@@ -1958,7 +1955,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const msg = savedId
       ? "Discard this draft? It will be permanently deleted and cannot be undone."
       : "Discard this listing? All local progress, images, and variant data will be cleared.";
-    if (!window.confirm(msg)) return;
+    if (!(await confirmDialog({ title: "Discard", message: msg, variant: "danger" }))) return;
 
     setDiscarding(true);
     try {
@@ -2130,12 +2127,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           type: "error",
           text: res?.message || "Could not save listing. Please fix and retry.",
         });
+        notifyOnFail(
+          res?.message ||
+            res?.data?.message ||
+            "Could not save listing. Please fix and retry.",
+        );
       }
     } catch (error) {
-      setBanner({
-        type: "error",
-        text: getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally."),
-      });
+      const text = getApiErrorMessage(
+        error,
+        "Unable to reach the server. Draft is kept locally.",
+      );
+      setBanner({ type: "error", text });
+      notifyOnFail(text);
     } finally {
       setSubmitting(false);
     }
@@ -2173,8 +2177,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           listingType={state.listingType}
           bulkProgress={bulkProgress}
           skipBulkListing={skipBulkListing}
-          onExitBulk={() => {
-            if (window.confirm("Stop bulk session? Progress is saved per listing already submitted.")) {
+          onExitBulk={async () => {
+            if (await confirmDialog({ title: "Stop", message: "Stop bulk session? Progress is saved per listing already submitted.", variant: "danger" })) {
               clearBulkSession();
               navigate("/bulk-upload");
             }

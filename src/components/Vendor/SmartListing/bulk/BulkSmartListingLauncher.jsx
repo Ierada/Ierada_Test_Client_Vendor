@@ -20,6 +20,7 @@ import {
   summarizeTypeCounts,
 } from "../utils/bulkSessionStorage";
 import BulkCreateGrid from "./BulkCreateGrid";
+import { confirmDialog } from "../../../../utils/confirmDialog";
 
 const emptyCounts = () => ({
   single: 0,
@@ -56,7 +57,7 @@ export default function BulkSmartListingLauncher({
     [counts],
   );
 
-  const startSmartBulk = () => {
+  const startSmartBulk = async () => {
     if (mode === "admin" && !vendorId) {
       notifyOnFail("Select a vendor first");
       return;
@@ -73,15 +74,11 @@ export default function BulkSmartListingLauncher({
       }
       if (counts.combo > 0) {
         // Soft confirm — combo needs existing catalog products
-        const ok = window.confirm(
-          `${counts.combo} combo listing(s) planned. Combo needs existing products in catalog first (create singles/variations before combos). Continue?`,
-        );
+        const ok = await confirmDialog({ title: "Confirm", message: `${counts.combo} combo listing(s) planned. Combo needs existing products in catalog first (create singles/variations before combos). Continue?`, variant: "brand" });
         if (!ok) return;
       }
       if (plannedTotal > 50) {
-        const ok = window.confirm(
-          `${plannedTotal} listings in one Smart Bulk session is long. Tip: upload images first in Media Manager, work in batches of 20–50, save drafts. Continue?`,
-        );
+        const ok = await confirmDialog({ title: "Confirm", message: `${plannedTotal} listings in one Smart Bulk session is long. Tip: upload images first in Media Manager, work in batches of 20–50, save drafts. Continue?`, variant: "brand" });
         if (!ok) return;
       }
       createBulkSession({
@@ -92,9 +89,7 @@ export default function BulkSmartListingLauncher({
     } else {
       const n = Math.max(1, Math.min(BULK_SESSION_MAX, Number(flexibleTotal) || 1));
       if (n > 50) {
-        const ok = window.confirm(
-          `${n} listings — each one can be Single / Combo / Color×Size / Custom. Prefer batches of 20–50 for images + AI. Continue?`,
-        );
+        const ok = await confirmDialog({ title: "Confirm", message: `${n} listings — each one can be Single / Combo / Color×Size / Custom. Prefer batches of 20–50 for images + AI. Continue?`, variant: "brand" });
         if (!ok) return;
       }
       createBulkSession({

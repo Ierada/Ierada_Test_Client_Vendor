@@ -6,7 +6,7 @@ import { IoMdNotifications } from "react-icons/io";
 import { useAppContext } from "../../../context/AppContext";
 import { getNotificationPreview } from "../../../services/api.notification";
 
-const Header = ({ sidebarOpen, setSidebarOpen }) => {
+const Header = ({ sidebarOpen, setSidebarOpen, sidebarExpanded = false }) => {
   const { user } = useAppContext();
   const [searchValue, setSearchValue] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
@@ -47,7 +47,11 @@ const Header = ({ sidebarOpen, setSidebarOpen }) => {
   const unreadCount = notifications?.filter((n) => n.unread).length;
 
   return (
-    <header className="lg:left-[72px] h-10 fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
+    <header
+      className={`h-10 fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200 transition-[left] duration-150 ease-out ${
+        sidebarExpanded ? "lg:left-56" : "lg:left-[72px]"
+      }`}
+    >
       <div className="flex items-center justify-end h-full px-4">
         {/* Menu Toggle Button - Only visible on mobile */}
         <button

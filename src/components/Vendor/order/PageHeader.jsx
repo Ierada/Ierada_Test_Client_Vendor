@@ -12,7 +12,7 @@ const PageHeader = ({ orderId, productName, status, onBack, backLabel = "Back to
         {showBack && (
           <>
             <button
-              onClick={onBack || (() => navigate("/orders"))}
+              onClick={onBack || (() => navigate("/orders/list"))}
               className="flex flex-row items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <ArrowLeft className="w-[12px] h-[12px] text-[#6B7280]" />

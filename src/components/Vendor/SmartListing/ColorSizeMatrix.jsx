@@ -7,6 +7,7 @@ import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   suggestVariantSku,
   sizeQueryFromListing,
+  inferSizeTypeFromListing,
   splitContextualSizes,
   sizePickerOptions,
   hasRealSizeRow,
@@ -184,7 +185,7 @@ export default function ColorSizeMatrix({ state, patch }) {
     try {
       const res = await addSize({
         name,
-        type: "general",
+        type: inferSizeTypeFromListing(state),
         categoryId: state.category_id || undefined,
         subCategoryId: state.sub_category_id || undefined,
         innerSubCategoryId: state.inner_sub_category_id || undefined,

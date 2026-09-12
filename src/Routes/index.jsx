@@ -20,6 +20,7 @@ const AddEditProduct     = lazy(() => import("../pages/Vendor/AddProduct"));
 const SmartListing       = lazy(() => import("../pages/Vendor/SmartListing"));
 const Setting            = lazy(() => import("../pages/Vendor/Setting"));
 const Order              = lazy(() => import("../pages/Vendor/Order"));
+const OrdersHub          = lazy(() => import("../pages/Vendor/Order/OrdersHub.jsx"));
 const OrderPipeline      = lazy(() => import("../pages/Vendor/Order/OrderPipeline.jsx"));
 const SelfShip           = lazy(() => import("../pages/Vendor/Order/SelfShip.jsx"));
 const Returns            = lazy(() => import("../pages/Vendor/Order/Returns.jsx"));
@@ -33,6 +34,7 @@ const VendorNotification = lazy(() => import("../pages/Vendor/Notification/index
 const VendorLogoutPage   = lazy(() => import("../pages/Vendor/Logout/index.jsx"));
 const ProductFilesManager = lazy(() => import("../pages/Vendor/Product/ProductFilesManager.jsx"));
 const BulkListingManager = lazy(() => import("../pages/Vendor/BulkListingManager"));
+const PaymentsHub        = lazy(() => import("../pages/Vendor/Payments/PaymentsHub.jsx"));
 const PaymentOverview    = lazy(() => import("../pages/Vendor/Payments/payment-overview/index.jsx"));
 const Settlements        = lazy(() => import("../pages/Vendor/Payments/settlements/index.jsx"));
 const Transactions       = lazy(() => import("../pages/Vendor/Payments/transactions/index.jsx"));
@@ -182,7 +184,8 @@ const VendorRoutes = () => {
         { path: "/bulk-upload/media", element: <Suspense fallback={<PageLoader />}><ProductFilesManager /></Suspense> },
         { path: "/settings", element: <Suspense fallback={<PageLoader />}><Setting /></Suspense> },
         { path: "/pickup-verification", element: <Suspense fallback={<PageLoader />}><PickupVerification /></Suspense> },
-        { path: "/orders", element: <Suspense fallback={<PageLoader />}><Order /></Suspense> },
+        { path: "/orders", element: <Suspense fallback={<PageLoader />}><OrdersHub /></Suspense> },
+        { path: "/orders/list", element: <Suspense fallback={<PageLoader />}><Order /></Suspense> },
         { path: "/orders/pipeline", element: <Suspense fallback={<PageLoader />}><OrderPipeline /></Suspense> },
         { path: "/orders/self-ship", element: <Suspense fallback={<PageLoader />}><SelfShip /></Suspense> },
         { path: "/orders/returns", element: <Suspense fallback={<PageLoader />}><Returns /></Suspense> },
@@ -192,7 +195,8 @@ const VendorRoutes = () => {
         { path: "/coupons", element: <Suspense fallback={<PageLoader />}><Coupons /></Suspense> },
         { path: "/report", element: <Suspense fallback={<PageLoader />}><ReportNew /></Suspense> },
         { path: "/profile", element: <Suspense fallback={<PageLoader />}><Profile /></Suspense> },
-        { path: "/payments", element: <Suspense fallback={<PageLoader />}><PaymentOverview /></Suspense> },
+        { path: "/payments", element: <Suspense fallback={<PageLoader />}><PaymentsHub /></Suspense> },
+        { path: "/payments/overview", element: <Suspense fallback={<PageLoader />}><PaymentOverview /></Suspense> },
         { path: "/payments/settlements", element: <Suspense fallback={<PageLoader />}><Settlements /></Suspense> },
         { path: "/payments/transactions", element: <Suspense fallback={<PageLoader />}><Transactions /></Suspense> },
         { path: "/payments/payment-advice", element: <Suspense fallback={<PageLoader />}><PaymentAdviceList /></Suspense> },
@@ -204,13 +208,13 @@ const VendorRoutes = () => {
         { path: "/chat", element: <Navigate to="/support" replace /> },
         { path: "/influencer", element: <Navigate to="/dashboard" replace /> },
         { path: "/influencer/campaign/create", element: <Navigate to="/dashboard" replace /> },
-        { path: "/trackorders", element: <Navigate to="/orders" replace /> },
+        { path: "/trackorders", element: <Navigate to="/orders/list" replace /> },
         { path: "/subcription", element: <Navigate to="/settings" replace /> },
         { path: "/review", element: <Navigate to="/dashboard" replace /> },
         { path: "/training", element: <Navigate to="/dashboard" replace /> },
         { path: "/ads/history", element: <Navigate to="/dashboard" replace /> },
         { path: "/ads/add", element: <Navigate to="/dashboard" replace /> },
-        { path: "/orders/logistics", element: <Navigate to="/orders" replace /> },
+        { path: "/orders/logistics", element: <Navigate to="/orders/list" replace /> },
       ],
     },
     { path: "*", element: <NotFoundPage /> },

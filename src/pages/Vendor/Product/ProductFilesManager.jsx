@@ -35,6 +35,7 @@ import { notifyApiError } from "../../../utils/notifyApiError";
 import BulkProductImport from "../../../components/Vendor/Models/BulkProductImport";
 import { FiPackage } from "react-icons/fi";
 import { useAppContext } from "../../../context/AppContext";
+import { confirmDialog } from "../../../utils/confirmDialog";
 import {
   chunkFilesForBulkMedia,
   validateBulkMediaFiles,
@@ -416,7 +417,7 @@ const ProductFilesManager = () => {
   };
 
   const handleDeleteFile = async (filename) => {
-    if (window.confirm(`Are you sure you want to delete ${filename}?`)) {
+    if (await confirmDialog({ title: "Delete", message: `Are you sure you want to delete ${filename}?`, variant: "danger" })) {
       try {
         const response = await deleteFile(filename);
 

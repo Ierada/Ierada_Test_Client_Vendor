@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAppContext } from "../../../context/AppContext";
 import LogoutModal from "../LogoutModal";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -14,25 +14,12 @@ import { logoutThisDevice } from "../../../services/api.auth";
 
 const SCROLL_POSITION_KEY = "vendorSidebarScroll";
 
-const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
+const VendorSidebar = ({ setSidebarOpen, expanded = true }) => {
   const { user } = useAppContext();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const sidebarRef = useRef(null);
-  const [openSubMenus, setOpenSubMenus] = useState({ Orders: false });
-  const [hoveredSubMenu, setHoveredSubMenu] = useState(null);
-
   const counts = useSidebarCounts(user);
-
-  const menuItems = useMemo(() => {
-    if (counts.selfShipEnabled) return vendorMenuConfig.mainMenuItems;
-    return vendorMenuConfig.mainMenuItems.map((item) => {
-      if (item.text !== "Orders" || !item.subItems) return item;
-      return {
-        ...item,
-        subItems: item.subItems.filter((s) => s.text !== "Self Ship"),
-      };
-    });
-  }, [counts.selfShipEnabled]);
+  const menuItems = vendorMenuConfig.mainMenuItems;
 
   useEffect(() => {
     const scroll = localStorage.getItem(SCROLL_POSITION_KEY);
@@ -41,7 +28,9 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
 
   useEffect(() => {
     const saveScroll = () => {
-      if (sidebarRef.current) localStorage.setItem(SCROLL_POSITION_KEY, sidebarRef.current.scrollTop);
+      if (sidebarRef.current) {
+        localStorage.setItem(SCROLL_POSITION_KEY, sidebarRef.current.scrollTop);
+      }
     };
     window.addEventListener("beforeunload", saveScroll);
     return () => window.removeEventListener("beforeunload", saveScroll);
@@ -60,26 +49,25 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
     });
   }, [setSidebarOpen]);
 
-  const toggleSubMenu = useCallback((name) => {
-    setOpenSubMenus((prev) => ({ ...prev, [name]: !prev[name] }));
-  }, []);
-
   return (
     <>
-      <div className={`flex flex-col h-screen bg-[#FFF3EF] ${expanded ? "w-64" : "w-[72px]"}`}>
+      <div
+        className={`flex flex-col h-screen bg-[#FFF3EF] ${
+          expanded ? "w-56" : "w-[72px]"
+        }`}
+      >
         <BrandHeader setSidebarOpen={setSidebarOpen} expanded={expanded} />
         <SearchBar expanded={expanded} />
-        <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300 py-2" ref={sidebarRef}>
-          <ul className={`space-y-1 ${expanded ? "px-3" : "px-2"}`}>
-            {menuItems.map((item, i) => (
+        <div
+          className="flex-grow overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-200 scrollbar-track-transparent hover:scrollbar-thumb-gray-300 py-2"
+          ref={sidebarRef}
+        >
+          <ul className={`space-y-1 ${expanded ? "px-3" : "px-1"}`}>
+            {menuItems.map((item) => (
               <MenuItem
-                key={i}
+                key={item.path}
                 item={item}
                 counts={counts}
-                openSubMenus={openSubMenus}
-                toggleSubMenu={toggleSubMenu}
-                hoveredSubMenu={hoveredSubMenu}
-                setHoveredSubMenu={setHoveredSubMenu}
                 handleNavigation={handleNavigation}
                 expanded={expanded}
               />
@@ -92,8 +80,13 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
               <Crown className="w-4 h-4 text-primary-100" />
               <p className="text-sm font-bold text-slate-800">Pro Seller</p>
             </div>
-            <p className="text-[11px] text-gray-500 mb-2">Unlock premium tools and faster payouts.</p>
-            <button type="button" className="w-full py-2 rounded-lg bg-[#FF6012] text-white text-xs font-semibold">
+            <p className="text-[11px] text-gray-500 mb-2">
+              Unlock premium tools and faster payouts.
+            </p>
+            <button
+              type="button"
+              className="w-full py-2 rounded-lg bg-[#FF6012] text-white text-xs font-semibold"
+            >
               Upgrade Plan
             </button>
           </div>
@@ -104,9 +97,19 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
             </div>
           </div>
         )}
-        <UserProfile user={user} onLogout={() => setShowLogoutModal(true)} expanded={expanded} />
+        <UserProfile
+          user={user}
+          onLogout={() => setShowLogoutModal(true)}
+          expanded={expanded}
+        />
       </div>
-      {showLogoutModal && <LogoutModal isOpen={showLogoutModal} onClose={() => setShowLogoutModal(false)} onConfirm={handleLogoutConfirm} />}
+      {showLogoutModal ? (
+        <LogoutModal
+          isOpen={showLogoutModal}
+          onClose={() => setShowLogoutModal(false)}
+          onConfirm={handleLogoutConfirm}
+        />
+      ) : null}
     </>
   );
 };
