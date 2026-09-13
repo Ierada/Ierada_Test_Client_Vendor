@@ -1510,11 +1510,25 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       const res = await suggestListingCategory({
         ...payload,
         listing_type: state.listingType || "single",
+        product_name: state.name || "",
+        extra_notes: state.extraNotes || "",
       });
       if (token !== categorySuggestToken.current) return;
       if (res?.status === 1 && res?.data) {
         categorySuggestFp.current = fp;
         const d = res.data;
+        const confidence = String(d.confidence || "medium").toLowerCase();
+        const pathLabel = [d.categoryTitle, d.subCategoryTitle, d.innerSubCategoryTitle]
+          .filter(Boolean)
+          .join(" › ");
+        // Low confidence: do not auto-apply (avoids hairdryer→chimney style mistakes)
+        if (confidence === "low" && !force) {
+          setBanner({
+            type: "warning",
+            text: `Category unclear (${pathLabel || "unknown"}). Pick category manually or tap Re-detect.`,
+          });
+          return;
+        }
         const catPatch = {
           category_id: String(d.category_id),
           sub_category_id: String(d.sub_category_id),
@@ -1538,8 +1552,8 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           ...(colorGroups ? listingPatchFromPrefillGroups(colorGroups, nextState) : {}),
         });
         setBanner({
-          type: "info",
-          text: `Category auto-selected: ${[d.categoryTitle, d.subCategoryTitle, d.innerSubCategoryTitle].filter(Boolean).join(" › ")}`,
+          type: confidence === "low" ? "warning" : "info",
+          text: `Category auto-selected: ${pathLabel}${confidence === "low" ? " (low confidence — verify)" : ""}`,
         });
       } else if (force) {
         setBanner({
@@ -2113,7 +2127,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   return (
     <ListingErrorBoundary>
     <div className={`min-h-screen pb-36 font-inter text-slate-800 ${phase === "review" ? "bg-[#FFF8F4]" : "bg-[#F8FAFC]"}`}>
-      <div className="sticky top-[96px] z-10 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
+      <div className="sticky top-0 z-20 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
         <ListingPageHeader
           user={user}
           supportPhone={supportPhone}
@@ -2187,7 +2201,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 vendorId={vendorId}
               />
             </div>
-            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[240px] lg:self-start">
+            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[108px] lg:self-start">
               <ListingRightRail state={state} settlement={settlement} previewUrl={coverPreviewSrc} />
             </aside>
           </>
@@ -2420,7 +2434,7 @@ function ReviewPanel({
             <Field label="Product Name" required>
               <textarea
                 id="ai-review-name"
-                className={`${inputCls} min-h-[48px] h-[52px] max-h-[88px] resize-y leading-snug`}
+                className={`${inputCls} min-h-[72px] max-h-[200px] resize-y leading-snug`}
                 rows={2}
                 value={state.name}
                 onChange={(e) => patch({ name: e.target.value })}

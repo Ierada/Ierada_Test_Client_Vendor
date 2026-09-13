@@ -84,9 +84,10 @@ export function suggestSku(name = "", brand = "") {
     .replace(/[^a-zA-Z0-9]+/g, "")
     .slice(0, 8)
     .toUpperCase();
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  // High-entropy suffix so AI/manual regenerations stay unique across products + variations
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 6)}`
     .replace(/[^a-z0-9]/gi, "")
-    .slice(-8)
+    .slice(-12)
     .toUpperCase();
   return `${base || "PRD"}-${suffix}`;
 }

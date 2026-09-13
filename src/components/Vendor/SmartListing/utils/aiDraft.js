@@ -80,6 +80,39 @@ function titleCaseWords(text) {
     .join(" ");
 }
 
+function escapeRegExp(s) {
+  return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isMultiColorVariationListing(state) {
+  const colors = resolveListingColors(state);
+  if (colors.length < 2) return false;
+  const lt = String(state.listingType || "")
+    .toLowerCase()
+    .replace(/-/g, "_");
+  if (lt === "color_size" || lt === "colorsize" || lt === "variation" || lt.includes("color")) {
+    return true;
+  }
+  if (Array.isArray(state.colorGroups) && state.colorGroups.length > 1) return true;
+  return true;
+}
+
+function stripColorsFromName(name, colors) {
+  let n = String(name || "").trim();
+  if (!n || !colors?.length) return n;
+  const sorted = [...colors].sort((a, b) => String(b).length - String(a).length);
+  for (const c of sorted) {
+    if (!c) continue;
+    n = n.replace(new RegExp(`\\b${escapeRegExp(c)}\\b`, "gi"), " ");
+  }
+  return n
+    .replace(/\(\s*[\/|,]*\s*\)/g, "")
+    .replace(/\s*[-–—|:]\s*$/g, "")
+    .replace(/^\s*[-–—|:]\s*/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function buildDefaultProductName(state) {
   const leaf =
     state.innerSubCategoryTitle ||
@@ -88,11 +121,11 @@ function buildDefaultProductName(state) {
     "Product";
   const type = titleCaseWords(scrubPlatformBranding(leaf));
   const colors = resolveListingColors(state).map(titleCaseWords);
+  if (isMultiColorVariationListing(state) || colors.length > 1) {
+    return type;
+  }
   if (colors.length === 1) {
     return `${type} - ${colors[0]}`.replace(/\s{2,}/g, " ").trim();
-  }
-  if (colors.length > 1 && colors.length <= 3) {
-    return `${type} (${colors.join(" / ")})`.replace(/\s{2,}/g, " ").trim();
   }
   return type;
 }
@@ -101,18 +134,18 @@ function polishProductName(name, state, brand) {
   let n = stripBrandFromName(name, brand);
   if (!n) n = buildDefaultProductName(state);
   n = n.replace(/\s{2,}/g, " ").trim();
+  const colors = resolveListingColors(state);
+  if (isMultiColorVariationListing(state) || colors.length > 1) {
+    n = stripColorsFromName(n, colors);
+    if (!n) n = buildDefaultProductName(state);
+    return scrubRestrictedText(n);
+  }
   const fallback = buildDefaultProductName(state);
   const looksGeneric =
     n.length < 28 || n.toLowerCase() === String(fallback).toLowerCase();
   if (looksGeneric) {
-    const colors = resolveListingColors(state);
-    if (colors.length === 1 && !new RegExp(colors[0], "i").test(n)) {
+    if (colors.length === 1 && !new RegExp(escapeRegExp(colors[0]), "i").test(n)) {
       n = `${n} - ${colors[0]}`;
-    } else if (colors.length > 1 && colors.length <= 3) {
-      const colorPart = colors.join(" / ");
-      if (!colors.some((c) => new RegExp(c, "i").test(n))) {
-        n = `${n} (${colorPart})`;
-      }
     }
   }
   return scrubRestrictedText(n);
@@ -446,6 +479,20 @@ function scrubDraftStrings(draft) {
         specification: isAsShownPlaceholder(specification) ? "" : specification,
       };
     });
+    const colors = resolveListingColors(next);
+    if (colors.length > 1) {
+      next.specifications = next.specifications.filter((row) => {
+        const k = String(row.feature || "")
+          .toLowerCase()
+          .replace(/[^a-z]/g, "");
+        return !["colour", "color", "availablecolours", "availablecolors"].includes(k);
+      });
+      next.specifications.unshift({
+        feature: "Available Colours",
+        specification: colors.join(" / "),
+      });
+      next.specifications = next.specifications.slice(0, 10);
+    }
   }
   // Never keep AI-invented box contents from a stale draft payload
   if (Array.isArray(next.whatsInTheBox)) {

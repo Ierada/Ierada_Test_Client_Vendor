@@ -899,7 +899,7 @@ export default function CustomVariationCanvas({
     });
   };
 
-  const visibleRows = showAll ? rows : rows.slice(0, 8);
+  const visibleRows = showAll ? rows : rows.slice(0, 40);
   const stats = customListingStats(state);
   const imageGroups = attrs
     .map((a, i) => ({

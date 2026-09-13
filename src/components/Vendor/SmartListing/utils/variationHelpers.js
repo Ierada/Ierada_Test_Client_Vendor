@@ -79,9 +79,10 @@ function normalizeSkuBase(baseSku) {
 export function buildUniqueSku(baseSku, parts = [], taken = new Set()) {
   const base = normalizeSkuBase(baseSku);
   const tokens = (parts || []).map((p) => skuToken(p, 6)).filter(Boolean);
+  const entropy = Math.random().toString(36).slice(2, 6).toUpperCase();
   let candidate = tokens.length
-    ? `${base}-${tokens.join("-")}`
-    : `${base}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    ? `${base}-${tokens.join("-")}-${entropy}`
+    : `${base}-${Date.now().toString(36).slice(-4).toUpperCase()}${entropy}`;
   if (!taken.has(candidate)) {
     taken.add(candidate);
     return candidate;
