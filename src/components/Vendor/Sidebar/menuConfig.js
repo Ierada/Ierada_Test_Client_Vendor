@@ -26,6 +26,7 @@ export const vendorMenuConfig = {
       icon: BsHandbag,
       path: "/orders",
       subItems: [
+        { text: "All Orders", icon: Package, path: "/orders/list" },
         { text: "Order Pipeline", icon: Zap, path: "/orders/pipeline" },
         {
           text: "Self Ship",
@@ -47,7 +48,7 @@ export const vendorMenuConfig = {
       icon: Wallet,
       path: "/payments",
       subItems: [
-        { text: "Overview", icon: LayoutDashboard, path: "/payments" },
+        { text: "Overview", icon: LayoutDashboard, path: "/payments/overview" },
         {
           text: "Settlements",
           icon: ScrollText,

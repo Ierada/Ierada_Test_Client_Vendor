@@ -6,6 +6,7 @@ import { notifyOnFail } from "../../../utils/notification/toast";
 import {
   suggestVariantSku,
   sizeQueryFromListing,
+  inferSizeTypeFromListing,
   splitContextualSizes,
   sizePickerOptions,
   hasRealSizeRow,
@@ -136,12 +137,19 @@ export default function ColorSizeMatrix({ state, patch }) {
     const name = newSize.trim();
     if (!name) return;
     try {
-      const res = await addSize({ name, type: "general" });
-      if (res?.status === 1 && res?.data) {
+      const res = await addSize({
+        name,
+        type: inferSizeTypeFromListing(state),
+        categoryId: state.category_id || undefined,
+        subCategoryId: state.sub_category_id || undefined,
+        innerSubCategoryId: state.inner_sub_category_id || undefined,
+      });
+      const created = Array.isArray(res?.data) ? res.data[0] : res?.data;
+      if (res?.status === 1 && created) {
         setSizeSplit((prev) => ({
           ...prev,
-          all: [...prev.all, res.data],
-          rest: [...prev.rest, res.data],
+          all: [...prev.all, created],
+          rest: [...prev.rest, created],
         }));
         setNewSize("");
       }

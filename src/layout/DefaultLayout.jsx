@@ -1,14 +1,32 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import VendorHeader from "../components/Vendor/Header";
 import VendorSidebar from "../components/Vendor/Sidebar";
 import { Outlet } from "react-router-dom";
 import { SectionPills } from "../components/Vendor/SectionHub";
+import { ConfirmDialogHost } from "../utils/confirmDialog";
+import { useAppContext } from "../context/AppContext";
+import { useSidebarCounts } from "../components/Vendor/Sidebar/useSidebarCounts";
 import {
   VENDOR_PRODUCT_HUB_PATH,
   VENDOR_PRODUCT_SECTION_ITEMS,
   isVendorProductSectionPath,
+  isVendorProductWizardPath,
+  isSmartListingCanvasPath,
 } from "../config/productSection";
+import {
+  VENDOR_ORDERS_HUB_PATH,
+  VENDOR_ORDERS_SECTION_ITEMS,
+  filterVendorOrderItems,
+  isVendorOrdersSectionPath,
+  isVendorOrderDetailPath,
+} from "../config/ordersSection";
+import {
+  VENDOR_PAYMENTS_HUB_PATH,
+  VENDOR_PAYMENTS_SECTION_ITEMS,
+  isVendorPaymentsSectionPath,
+  isVendorPaymentDetailPath,
+} from "../config/paymentsSection";
 
 const VendorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -18,7 +36,45 @@ const VendorLayout = () => {
   );
   const leaveTimerRef = useRef(null);
   const location = useLocation();
+  const { user } = useAppContext();
+  const counts = useSidebarCounts(user);
   const expanded = isLg ? railHover : sidebarOpen;
+  const smartListingCanvas = isSmartListingCanvasPath(location.pathname);
+
+  const orderItems = useMemo(
+    () =>
+      filterVendorOrderItems(VENDOR_ORDERS_SECTION_ITEMS, {
+        selfShipEnabled: counts.selfShipEnabled,
+      }),
+    [counts.selfShipEnabled],
+  );
+
+  const sectionPills = [
+    {
+      show:
+        isVendorProductSectionPath(location.pathname) &&
+        !isVendorProductWizardPath(location.pathname),
+      hubPath: VENDOR_PRODUCT_HUB_PATH,
+      hubLabel: "Products",
+      items: VENDOR_PRODUCT_SECTION_ITEMS,
+    },
+    {
+      show:
+        isVendorOrdersSectionPath(location.pathname) &&
+        !isVendorOrderDetailPath(location.pathname),
+      hubPath: VENDOR_ORDERS_HUB_PATH,
+      hubLabel: "Orders",
+      items: orderItems,
+    },
+    {
+      show:
+        isVendorPaymentsSectionPath(location.pathname) &&
+        !isVendorPaymentDetailPath(location.pathname),
+      hubPath: VENDOR_PAYMENTS_HUB_PATH,
+      hubLabel: "Payments",
+      items: VENDOR_PAYMENTS_SECTION_ITEMS,
+    },
+  ].find((s) => s.show);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 1024px)");
@@ -59,7 +115,6 @@ const VendorLayout = () => {
   const scheduleCloseRail = () => {
     if (!isLg) return;
     if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
-    // Instant open, short delay on leave so crossing icon edges does not flicker.
     leaveTimerRef.current = setTimeout(() => {
       setRailHover(false);
       leaveTimerRef.current = null;
@@ -68,6 +123,7 @@ const VendorLayout = () => {
 
   return (
     <div className="flex min-h-screen">
+      <ConfirmDialogHost />
       <div
         onMouseEnter={openRail}
         onMouseLeave={scheduleCloseRail}
@@ -85,21 +141,25 @@ const VendorLayout = () => {
       <div
         className={`relative flex flex-1 flex-col min-w-0 bg-[#F5F6F8] transition-[margin] duration-150 ease-out ${
           expanded ? "lg:ml-56" : "lg:ml-[72px]"
-        }`}
+        } ${smartListingCanvas ? "bg-[#F8FAFC]" : ""}`}
       >
-        <VendorHeader
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          sidebarExpanded={expanded}
-        />
+        {smartListingCanvas ? null : (
+          <VendorHeader
+            sidebarOpen={sidebarOpen}
+            setSidebarOpen={setSidebarOpen}
+            sidebarExpanded={expanded}
+          />
+        )}
 
-        <main className="flex-grow min-w-0 mt-10">
-          <div className="mx-auto max-w-screen-2xl">
-            {isVendorProductSectionPath(location.pathname) ? (
+        <main
+          className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-10"}`}
+        >
+          <div className={smartListingCanvas ? "" : "mx-auto max-w-screen-2xl"}>
+            {sectionPills ? (
               <SectionPills
-                hubPath={VENDOR_PRODUCT_HUB_PATH}
-                hubLabel="Products"
-                items={VENDOR_PRODUCT_SECTION_ITEMS}
+                hubPath={sectionPills.hubPath}
+                hubLabel={sectionPills.hubLabel}
+                items={sectionPills.items}
               />
             ) : null}
             <Outlet />

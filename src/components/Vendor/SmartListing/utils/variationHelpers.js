@@ -125,7 +125,36 @@ export function sizeQueryFromListing(state) {
   if (state?.inner_sub_category_id) {
     query.innerSubCategoryId = state.inner_sub_category_id;
   }
+  const sizeType = inferSizeTypeFromListing(state);
+  if (sizeType && sizeType !== "general") query.type = sizeType;
   return query;
+}
+
+/** Best-effort size_type for catalog filter / quick-add from category labels. */
+export function inferSizeTypeFromListing(state) {
+  const blob = [
+    state?.category_name,
+    state?.category?.title,
+    state?.category?.name,
+    state?.sub_category_name,
+    state?.subCategory?.title,
+    state?.inner_sub_category_name,
+    state?.innerSubCategory?.title,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (/shoe|footwear|sneaker|boot|sandal|slipper|loafer/.test(blob)) {
+    return "footwear";
+  }
+  if (
+    /apparel|cloth|fashion|shirt|pant|dress|kurta|saree|t[\s-]?shirt|jeans|top|wear/.test(
+      blob,
+    )
+  ) {
+    return "clothing";
+  }
+  return "general";
 }
 
 function sizeMatchesLevel(s, field, nested, want) {
