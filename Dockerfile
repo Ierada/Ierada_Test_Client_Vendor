@@ -17,12 +17,6 @@ FROM nginx:alpine
 #Copying    main code from builder
 COPY --from=builder /app/dist  /usr/share/nginx/html
 
-#Copying cert  and key
-
-RUN mkdir  -p /etc/ssl/ierada/
-COPY ./ssl  /etc/ssl/ierada/
-
-
 #copying default.conf from the host
 COPY default.conf  /etc/nginx/conf.d/default.conf
 
