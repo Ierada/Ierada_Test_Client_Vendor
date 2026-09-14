@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle, Plus, Trash2 } from "lucide-react";
 import { getAllAttributes } from "../../../services/api.attribute";
-import { getAllColors } from "../../../services/api.color";
-import { getAllSizes } from "../../../services/api.size";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import SearchablePicker from "./SearchablePicker";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 import {
   primaryGalleryPhotoEntries,
@@ -44,7 +43,7 @@ function inputClsErr(error, extra = inputCls) {
 }
 
 const emptyAttr = () => ({ attribute_id: "", name: "", valuesText: "", values: [] });
-const defaultAttrs = () => [emptyAttr(), emptyAttr(), emptyAttr(), emptyAttr()];
+const defaultAttrs = () => [emptyAttr()];
 
 function photoLabel(index) {
   return index === 0 ? "front" : `extra${index}`;
@@ -490,54 +489,51 @@ function uniqueNames(list) {
   return out;
 }
 
-function catalogValuesFor(attr, catalog, colors, sizes) {
+function catalogValuesFor(attr, catalog) {
   const found =
     catalog.find((c) => String(c.id) === String(attr?.attribute_id)) ||
     catalog.find((c) => String(c.name || "").toLowerCase() === String(attr?.name || "").toLowerCase());
-  const name = found?.name || attr?.name || "";
-  const fromAttr = parseOptionValues(found?.option_values);
-  if (/colou?r/i.test(name)) {
-    return uniqueNames([...fromAttr, ...(colors || []).map((c) => c.name)]);
-  }
-  if (/^sizes?$/i.test(name)) {
-    return uniqueNames([...fromAttr, ...(sizes || []).map((s) => s.name)]);
-  }
+  const fromAttr = parseOptionValues(found?.option_values || found?.values?.map((v) => v.value));
   return uniqueNames(fromAttr);
 }
 
 function AttributeNameSelect({ value, attributeId, catalog, takenIds, onPick }) {
   const selectedId = String(attributeId || "");
+  const options = (catalog || []).map((opt) => ({
+    id: opt.id,
+    label: opt.name,
+    disabled: takenIds.has(String(opt.id)) && String(opt.id) !== selectedId,
+  }));
   return (
-    <select
-      className={`${inputCls} w-[148px] shrink-0`}
-      value={selectedId}
-      onChange={(e) => {
-        const id = e.target.value;
-        const found = catalog.find((c) => String(c.id) === String(id));
-        onPick({
-          attribute_id: id,
-          name: found?.name || "",
-          values: [],
-          valuesText: "",
-        });
-      }}
-    >
-      <option value="">{value && !selectedId ? value : "Select attribute"}</option>
-      {catalog.map((opt) => {
-        const taken = takenIds.has(String(opt.id)) && String(opt.id) !== selectedId;
-        return (
-          <option key={opt.id} value={opt.id} disabled={taken}>
-            {opt.name}
-          </option>
-        );
-      })}
-    </select>
+    <div className="w-[180px] shrink-0">
+      <SearchablePicker
+        compact
+        value={selectedId}
+        onChange={(id) => {
+          const found = catalog.find((c) => String(c.id) === String(id));
+          onPick({
+            attribute_id: id,
+            name: found?.name || "",
+            values: [],
+            valuesText: "",
+          });
+        }}
+        options={options.filter((o) => !o.disabled || String(o.id) === selectedId)}
+        placeholder={value && !selectedId ? value : "Select attribute"}
+        searchPlaceholder="Search attributes…"
+        allowClear={false}
+      />
+    </div>
   );
 }
 
-function AttributeValueMultiSelect({ options, selected, onToggle, onAddCustom, draft, setDraft, placeholder }) {
+function AttributeValueMultiSelect({ options, selected, onToggle, placeholder }) {
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
   const hasCatalog = (options || []).length > 0;
+  const filtered = (options || []).filter((opt) =>
+    String(opt).toLowerCase().includes(q.trim().toLowerCase()),
+  );
   return (
     <div
       className="flex flex-wrap items-center gap-1 min-w-0 flex-1 rounded-md px-1.5 py-1"
@@ -559,10 +555,27 @@ function AttributeValueMultiSelect({ options, selected, onToggle, onAddCustom, d
             </button>
             {open ? (
               <div
-                className="absolute z-30 left-0 right-0 top-full mt-1 bg-white rounded-lg overflow-hidden max-h-48 overflow-y-auto"
+                className="absolute z-30 left-0 right-0 top-full mt-1 bg-white rounded-lg overflow-hidden max-h-56 overflow-y-auto"
                 style={{ border: `1px solid ${CARD_BORDER}`, boxShadow: "0 8px 24px rgba(16,24,40,0.12)" }}
               >
-                {options.map((opt) => {
+                <input
+                  className={`${inputCls} w-full m-1`}
+                  style={{ width: "calc(100% - 8px)" }}
+                  placeholder="Search values"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="w-full text-left px-2.5 py-1.5 text-[11px] font-semibold"
+                  style={{ color: ORANGE }}
+                  onClick={() => filtered.forEach((opt) => {
+                    if (!selected.some((v) => v.toLowerCase() === opt.toLowerCase())) onToggle(opt);
+                  })}
+                >
+                  Select all
+                </button>
+                {filtered.map((opt) => {
                   const checked = selected.some((v) => v.toLowerCase() === opt.toLowerCase());
                   return (
                     <label
@@ -579,35 +592,16 @@ function AttributeValueMultiSelect({ options, selected, onToggle, onAddCustom, d
                     </label>
                   );
                 })}
-                <div className="border-t px-2 py-1.5" style={{ borderColor: CARD_BORDER }}>
-                  <input
-                    className={`${inputCls} w-full`}
-                    placeholder="Custom value + Enter"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      onAddCustom(draft);
-                    }}
-                  />
-                </div>
+                {!filtered.length ? (
+                  <p className="px-2.5 py-2 text-[12px] text-slate-400">No matching values</p>
+                ) : null}
               </div>
             ) : null}
           </>
         ) : (
-          <input
-            className="w-full bg-transparent px-1 py-0.5 text-[12px] focus:outline-none"
-            placeholder={placeholder}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              onAddCustom(draft);
-            }}
-            onBlur={() => onAddCustom(draft)}
-          />
+          <p className="px-1 py-0.5 text-[12px]" style={{ color: MUTED }}>
+            {placeholder}
+          </p>
         )}
       </div>
     </div>
@@ -740,9 +734,7 @@ export default function CustomVariationCanvas({
   categorySuggesting,
 }) {
   const [catalog, setCatalog] = useState([]);
-  const [colorNames, setColorNames] = useState([]);
-  const [sizeNames, setSizeNames] = useState([]);
-  const [draftValue, setDraftValue] = useState({});
+  const [catalogError, setCatalogError] = useState("");
   const [showAll, setShowAll] = useState(false);
 
   const attrs = state.customAttrs?.length ? state.customAttrs : defaultAttrs();
@@ -752,19 +744,35 @@ export default function CustomVariationCanvas({
   useEffect(() => {
     (async () => {
       try {
-        const [attrRes, colorRes, sizeRes] = await Promise.all([
-          getAllAttributes(),
-          getAllColors({ silent: true }),
-          getAllSizes({}, { silent: true }),
-        ]);
-        setCatalog(attrRes?.data || attrRes || []);
-        setColorNames((colorRes?.data || []).map((c) => c.name).filter(Boolean));
-        setSizeNames((sizeRes?.data || []).map((s) => s.name).filter(Boolean));
+        setCatalogError("");
+        const query = {};
+        if (state.category_id) query.categoryId = state.category_id;
+        if (state.sub_category_id) query.subCategoryId = state.sub_category_id;
+        if (state.inner_sub_category_id) query.innerSubCategoryId = state.inner_sub_category_id;
+        if (!query.categoryId) {
+          setCatalog([]);
+          return;
+        }
+        const attrRes = await getAllAttributes(query, { silent: true });
+        const list = Array.isArray(attrRes?.data) ? attrRes.data : [];
+        const seen = new Set();
+        setCatalog(
+          list.filter((a) => {
+            if (a?.id == null || seen.has(a.id)) return false;
+            seen.add(a.id);
+            return true;
+          }),
+        );
+        if (attrRes?.status === 0) {
+          setCatalogError(attrRes?.message || "Could not load attributes for this category.");
+        }
       } catch {
-        /* catalog stays empty */
+        setCatalog([]);
+        setCatalogError("Could not load attributes for this category.");
+        notifyOnFail("Could not load attributes for this category.");
       }
     })();
-  }, []);
+  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
 
   const setAttrs = (customAttrs) => patch({ customAttrs });
   const updateAttr = (index, partial) => {
@@ -774,11 +782,12 @@ export default function CustomVariationCanvas({
   const addValue = (index, raw) => {
     const value = String(raw || "").trim();
     if (!value) return;
+    const allowed = catalogValuesFor(attrs[index], catalog);
+    if (!allowed.some((v) => v.toLowerCase() === value.toLowerCase())) return;
     const current = customAttrValues(attrs[index]);
     if (current.some((v) => v.toLowerCase() === value.toLowerCase())) return;
     const next = [...current, value];
     updateAttr(index, { values: next, valuesText: next.join(", ") });
-    setDraftValue((prev) => ({ ...prev, [index]: "" }));
   };
 
   const removeValue = (index, value) => {
@@ -932,24 +941,36 @@ export default function CustomVariationCanvas({
             Custom Combination Builder
           </h3>
           <p className="text-[12px] mt-1 mb-3" style={{ color: MUTED }}>
-            Choose attributes from admin catalog. Multi-select values — selected chips show in the field.
+            Choose attributes already created by admin for this category. Size and Colour are separate attributes. Values are multi-select from that catalog only.
           </p>
+          {catalogError ? (
+            <p className="text-[12px] text-rose-600 mb-2">{catalogError}</p>
+          ) : null}
+          {!catalog.length && !catalogError ? (
+            <p className="text-[12px] mb-2" style={{ color: MUTED }}>
+              No attributes apply to this category yet. Ask admin to create them under Product → Attributes.
+            </p>
+          ) : null}
           <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-0.5">
             {attrs.map((attr, ai) => {
               const values = customAttrValues(attr);
-              const options = catalogValuesFor(attr, catalog, colorNames, sizeNames);
+              const options = catalogValuesFor(attr, catalog);
               const takenIds = new Set(
                 attrs
                   .filter((_, i) => i !== ai)
                   .map((a) => String(a.attribute_id || ""))
                   .filter(Boolean),
               );
-              const isModel = /model/i.test(attr.name || "");
               return (
                 <div key={ai} className="min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-[12px] font-semibold text-slate-500">
                       Attribute {ai + 1}
+                      {ai === 0 ? (
+                        <span className="text-red-500"> *</span>
+                      ) : (
+                        <span className="font-normal text-slate-400"> optional</span>
+                      )}
                     </span>
                     {attrs.length > 1 ? (
                       <button
@@ -973,24 +994,18 @@ export default function CustomVariationCanvas({
                       options={options}
                       selected={values}
                       placeholder={
-                        isModel
-                          ? "Select car models"
+                        !attr.attribute_id
+                          ? "Select an attribute first"
                           : options.length
                             ? "Select values"
-                            : "+ Add more"
+                            : "No values set by admin"
                       }
-                      draft={draftValue[ai] || ""}
-                      setDraft={(next) => setDraftValue((prev) => ({ ...prev, [ai]: next }))}
                       onToggle={(value) => {
                         if (values.some((v) => v.toLowerCase() === value.toLowerCase())) {
                           removeValue(ai, value);
                         } else {
                           addValue(ai, value);
                         }
-                      }}
-                      onAddCustom={(raw) => {
-                        addValue(ai, raw);
-                        setDraftValue((prev) => ({ ...prev, [ai]: "" }));
                       }}
                     />
                   </div>
@@ -1000,11 +1015,12 @@ export default function CustomVariationCanvas({
           </div>
           <button
             type="button"
-            className="mt-3 text-[12px] font-semibold px-3 py-1.5 rounded-md bg-white"
+            className="mt-3 text-[12px] font-semibold px-3 py-1.5 rounded-md bg-white disabled:opacity-40"
             style={{ color: ORANGE, border: `1.5px solid ${ORANGE}` }}
+            disabled={!catalog.length || attrs.filter((a) => a.attribute_id).length >= catalog.length}
             onClick={() => setAttrs([...attrs, emptyAttr()])}
           >
-            + Add Custom Attribute
+            + Add attribute
           </button>
         </section>
       </div>

@@ -1,15 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ImagePlus, Plus, Trash2, AlertTriangle } from "lucide-react";
-import { getAllColors, addColor } from "../../../services/api.color";
-import { getAllSizes, addSize } from "../../../services/api.size";
+import { getAllColors } from "../../../services/api.color";
+import { getAllSizes } from "../../../services/api.size";
+import { getAllAttributes } from "../../../services/api.attribute";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import { getApiErrorMessage } from "../../../utils/apiError";
 import {
   suggestVariantSku,
   sizeQueryFromListing,
-  inferSizeTypeFromListing,
-  splitContextualSizes,
   sizePickerOptions,
   hasRealSizeRow,
+  filterMastersByCatalog,
 } from "./utils/variationHelpers";
 import SearchablePicker from "./SearchablePicker";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
@@ -53,8 +54,6 @@ export default function ColorSizeMatrix({ state, patch }) {
     rest: [],
     totalContextual: 0,
   });
-  const [newColor, setNewColor] = useState("");
-  const [newSize, setNewSize] = useState("");
   const [loading, setLoading] = useState(true);
 
   const groups = state.colorGroups?.length
@@ -63,7 +62,17 @@ export default function ColorSizeMatrix({ state, patch }) {
 
   const setGroups = (colorGroups) => patch({ colorGroups });
   const sizes = sizeSplit.all;
-  const sizeOptions = useMemo(() => sizePickerOptions(sizeSplit), [sizeSplit]);
+  const usedSizeIds = useMemo(
+    () =>
+      groups.flatMap((g) =>
+        (g.sizes || []).map((s) => s.size_id || s.size?.id).filter(Boolean),
+      ),
+    [groups],
+  );
+  const sizeOptions = useMemo(
+    () => sizePickerOptions(sizeSplit, usedSizeIds),
+    [sizeSplit, usedSizeIds],
+  );
   const showNoCategorySizesHint =
     Boolean(state.category_id) &&
     sizeSplit.totalContextual === 0 &&
@@ -74,17 +83,38 @@ export default function ColorSizeMatrix({ state, patch }) {
     (async () => {
       setLoading(true);
       try {
-        const [cRes, sRes] = await Promise.all([
+        const [cRes, sRes, aRes] = await Promise.all([
           getAllColors({ silent: true }),
           getAllSizes(sizeQueryFromListing(state), { silent: true }),
+          getAllAttributes(
+            {
+              categoryId: state.category_id,
+              subCategoryId: state.sub_category_id,
+              innerSubCategoryId: state.inner_sub_category_id,
+            },
+            { silent: true },
+          ),
         ]);
         if (cancelled) return;
-        setColors(cRes?.data || []);
-        setSizeSplit(
-          splitContextualSizes(sRes?.data || [], sRes?.meta, state),
+        const selectedColorIds = groups
+          .map((g) => g.color_id || g.color?.id)
+          .filter(Boolean);
+        const selectedSizeIds = groups.flatMap((g) =>
+          (g.sizes || []).map((s) => s.size_id || s.size?.id).filter(Boolean),
         );
-      } catch {
-        notifyOnFail("Could not load colors/sizes");
+        const filtered = filterMastersByCatalog({
+          colors: cRes?.data || [],
+          sizes: sRes?.data || [],
+          catalog: aRes?.data || [],
+          meta: sRes?.meta,
+          state,
+          selectedColorIds,
+          selectedSizeIds,
+        });
+        setColors(filtered.colors);
+        setSizeSplit(filtered.sizeSplit);
+      } catch (e) {
+        notifyOnFail(getApiErrorMessage(e, "Could not load colors/sizes."));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -117,45 +147,6 @@ export default function ColorSizeMatrix({ state, patch }) {
       return { ...g, sizes: sizesNext };
     });
     setGroups(next);
-  };
-
-  const addColorQuick = async () => {
-    const name = newColor.trim();
-    if (!name) return;
-    try {
-      const res = await addColor({ name, code: "#808080" });
-      if (res?.status === 1 && res?.data) {
-        setColors((prev) => [...prev, res.data]);
-        setNewColor("");
-      }
-    } catch {
-      /* toasted */
-    }
-  };
-
-  const addSizeQuick = async () => {
-    const name = newSize.trim();
-    if (!name) return;
-    try {
-      const res = await addSize({
-        name,
-        type: inferSizeTypeFromListing(state),
-        categoryId: state.category_id || undefined,
-        subCategoryId: state.sub_category_id || undefined,
-        innerSubCategoryId: state.inner_sub_category_id || undefined,
-      });
-      const created = Array.isArray(res?.data) ? res.data[0] : res?.data;
-      if (res?.status === 1 && created) {
-        setSizeSplit((prev) => ({
-          ...prev,
-          all: [...prev.all, created],
-          rest: [...prev.rest, created],
-        }));
-        setNewSize("");
-      }
-    } catch {
-      /* toasted */
-    }
   };
 
   const autoFillSkus = () => {
@@ -197,7 +188,7 @@ export default function ColorSizeMatrix({ state, patch }) {
         <div>
           <h2 className="font-semibold text-gray-900">Color × Size matrix</h2>
           <p className="text-xs text-gray-500">
-            Images attach per color and apply to all sizes of that color. Category sizes are listed first — you can still add, change, or remove any row.
+            Colour and Size are two separate attributes. Pick only values applied to this category.
           </p>
         </div>
         <div className="flex gap-2">
@@ -230,7 +221,7 @@ export default function ColorSizeMatrix({ state, patch }) {
       {showNoCategorySizesHint ? (
         <div className="flex gap-2 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs">
           <AlertTriangle className="w-4 h-4 shrink-0" />
-          This category has no sizes. Add them in Size & Color, pick a size below, or use a Single listing.
+          This category has no Size attribute values. Create Size under Product → Attributes and apply it here.
         </div>
       ) : null}
 
@@ -241,45 +232,23 @@ export default function ColorSizeMatrix({ state, patch }) {
         </div>
       ) : null}
 
-      <div className="grid sm:grid-cols-2 gap-2">
-        <div className="flex gap-2">
-          <input
-            className={inputCls}
-            placeholder="Quick add color"
-            value={newColor}
-            onChange={(e) => setNewColor(e.target.value)}
-          />
-          <button type="button" className="px-3 rounded-lg border text-sm" onClick={addColorQuick}>
-            Add
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <input
-            className={inputCls}
-            placeholder="Quick add size"
-            value={newSize}
-            onChange={(e) => setNewSize(e.target.value)}
-          />
-          <button type="button" className="px-3 rounded-lg border text-sm" onClick={addSizeQuick}>
-            Add
-          </button>
-        </div>
-      </div>
-
       {groups.map((g, gi) => (
         <div key={gi} className="border rounded-xl p-4 space-y-3 bg-slate-50/50">
           <div className="flex flex-wrap gap-2 items-end">
             <label className="flex-1 min-w-[160px] space-y-1">
-              <span className="text-xs font-medium text-gray-600">Color</span>
+              <span className="text-xs font-medium text-gray-600">
+                Color <span className="text-red-500">*</span>
+              </span>
               <SearchablePicker
                 compact
+                required
                 value={g.color_id || g.color?.id || ""}
                 onChange={(id) => {
                   const c = colors.find((x) => String(x.id) === String(id));
                   updateGroup(gi, { color_id: id, color_name: c?.name || "" });
                 }}
-                placeholder="Select color"
-                searchPlaceholder="Search color…"
+                placeholder="Select colour"
+                searchPlaceholder="Search colour…"
                 options={colors.map((c) => ({ id: c.id, label: c.name }))}
               />
             </label>
@@ -368,7 +337,7 @@ export default function ColorSizeMatrix({ state, patch }) {
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b">
-                  <th className="py-2 pr-2">Size</th>
+                  <th className="py-2 pr-2">Size <span className="text-red-500">*</span></th>
                   <th className="py-2 pr-2">MRP</th>
                   <th className="py-2 pr-2">Sell</th>
                   <th className="py-2 pr-2">Stock</th>
@@ -389,7 +358,7 @@ export default function ColorSizeMatrix({ state, patch }) {
                         compact
                         value={s.size_id || s.size?.id || ""}
                         onChange={(id) => updateSize(gi, si, { size_id: id })}
-                        placeholder="Size"
+                        placeholder="Select size"
                         searchPlaceholder="Search size…"
                         options={sizeOptions}
                       />

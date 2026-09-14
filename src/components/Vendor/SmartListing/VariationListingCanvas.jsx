@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
+import { getAllAttributes } from "../../../services/api.attribute";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 import SearchablePicker from "./SearchablePicker";
 import {
@@ -19,8 +20,8 @@ import {
   selectedVariationColorIds,
   selectedVariationSizeIds,
   sizeQueryFromListing,
-  splitContextualSizes,
   sizePickerOptions,
+  filterMastersByCatalog,
   suggestColorSizeSku,
   availableSizeIdsForColor,
   unionSizeIdsFromAvailability,
@@ -440,7 +441,10 @@ export default function VariationListingCanvas({
   const dragIndexRef = useRef(null);
 
   const sizes = sizeSplit.all;
-  const sizeOptions = useMemo(() => sizePickerOptions(sizeSplit), [sizeSplit]);
+  const sizeOptions = useMemo(
+    () => sizePickerOptions(sizeSplit, selectedVariationSizeIds(state)),
+    [sizeSplit, state.colorGroups, state.size_ids, state.size_id],
+  );
   const groups = state.colorGroups || [];
   groupsRef.current = groups;
   const variants = useMemo(() => flattenColorSizeVariants(groups), [groups]);
@@ -467,13 +471,30 @@ export default function VariationListingCanvas({
     (async () => {
       setLoading(true);
       try {
-        const [cRes, sRes] = await Promise.all([
+        const [cRes, sRes, aRes] = await Promise.all([
           getAllColors({ silent: true }),
           getAllSizes(sizeQueryFromListing(state), { silent: true }),
+          getAllAttributes(
+            {
+              categoryId: state.category_id,
+              subCategoryId: state.sub_category_id,
+              innerSubCategoryId: state.inner_sub_category_id,
+            },
+            { silent: true },
+          ),
         ]);
         if (cancelled) return;
-        setColors(cRes?.data || []);
-        setSizeSplit(splitContextualSizes(sRes?.data || [], sRes?.meta, state));
+        const filtered = filterMastersByCatalog({
+          colors: cRes?.data || [],
+          sizes: sRes?.data || [],
+          catalog: aRes?.data || [],
+          meta: sRes?.meta,
+          state,
+          selectedColorIds: selectedVariationColorIds(state),
+          selectedSizeIds: selectedVariationSizeIds(state),
+        });
+        setColors(filtered.colors);
+        setSizeSplit(filtered.sizeSplit);
       } catch {
         notifyOnFail("Could not load colors/sizes");
       } finally {

@@ -60,6 +60,40 @@ import { getShippingRates } from "../../../services/api.shippingRate";
 
 const GST_SLABS = [0, 5, 12, 18, 28];
 
+function uniqueById(list) {
+  const seen = new Set();
+  return (list || []).filter((row) => {
+    if (row?.id == null || seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
+function uniqueByName(list) {
+  const seen = new Set();
+  return (list || []).filter((row) => {
+    const key = String(row?.name || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function attributeCatalogValues(attr) {
+  const raw = attr?.option_values || (attr?.values || []).map((v) => v?.value || v);
+  const seen = new Set();
+  const out = [];
+  for (const item of raw || []) {
+    const name = String(item || "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
 // ── Default custom variation row ──────────────────────────────────────────────
 const createDefaultCustomVariation = () => ({
   attributes: [{ attribute_id: "", attribute_value: "" }], // up to 4
@@ -223,8 +257,8 @@ const AddEditProduct = () => {
           gst: c.tax ?? c.gst,
         })) || [],
       );
-      setColors(colorRes.status === 1 ? colorRes.data : []);
-      setAttributes(attrRes.status === 1 ? attrRes.data : []);
+      setColors(uniqueByName(colorRes.status === 1 ? colorRes.data : []));
+      setAttributes(uniqueById(attrRes.status === 1 ? attrRes.data : []));
       if (settingsRes.status === 1) {
         setSettingsShipping(settingsRes.data.shipping_charge || 0);
         setPlatformFeeMaxCharge(settingsRes.data.platform_fee_max_charge || 0); // ADDED
@@ -268,7 +302,11 @@ const AddEditProduct = () => {
           query.innerSubCategoryId = formData.inner_sub_category_id;
         const res = await getAllSizes(query);
         if (res.status === 1)
-          setSizes(res.data?.map((s) => ({ ...s, id: String(s.id) })) || []);
+          setSizes(
+            uniqueByName(
+              res.data?.map((s) => ({ ...s, id: String(s.id) })) || [],
+            ),
+          );
       } catch (error) {
         console.error("Error fetching sizes:", error);
       }
@@ -1601,26 +1639,51 @@ const AddEditProduct = () => {
                               }}
                             >
                               {/* Attribute value inputs */}
-                              {attrs.map((attr, attrIdx) => (
+                              {attrs.map((attr, attrIdx) => {
+                                const meta = attributes.find(
+                                  (a) =>
+                                    String(a.id) === String(attr.attribute_id),
+                                );
+                                const catalogVals = attributeCatalogValues(meta);
+                                return (
                                 <div key={attrIdx} className="flex flex-col">
                                   <label className="text-xs font-medium text-gray-600 mb-1">
-                                    {attributes.find(
-                                      (a) =>
-                                        String(a.id) ===
-                                        String(attr.attribute_id),
-                                    )?.name || `Value ${attrIdx + 1}`}
+                                    {meta?.name || `Value ${attrIdx + 1}`}
                                     <span className="text-red-500">*</span>
                                   </label>
+                                  {catalogVals.length ? (
+                                    <select
+                                      value={attr.attribute_value || ""}
+                                      onChange={(e) =>
+                                        handleCustomAttributeChange(
+                                          varIdx,
+                                          attrIdx,
+                                          "attribute_value",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className={`rounded-lg border px-2 py-1.5 text-sm ${variationErrors[varIdx]?.attrErrors?.[
+                                        attrIdx
+                                      ]?.attribute_value
+                                        ? "border-red-500"
+                                        : "border-gray-300"
+                                      }`}
+                                    >
+                                      <option value="">Select value</option>
+                                      {catalogVals.map((v) => (
+                                        <option key={v} value={v}>
+                                          {v}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
                                   <input
                                     type="text"
-                                    placeholder={`e.g., ${attrIdx === 0
-                                        ? "Model A"
-                                        : attrIdx === 1
-                                          ? "Red"
-                                          : attrIdx === 2
-                                            ? "Large"
-                                            : "Other"
-                                      }`}
+                                    placeholder={
+                                      attr.attribute_id
+                                        ? "No values set by admin"
+                                        : "Select an attribute first"
+                                    }
                                     value={attr.attribute_value || ""}
                                     onChange={(e) =>
                                       handleCustomAttributeChange(
@@ -1637,6 +1700,7 @@ const AddEditProduct = () => {
                                         : "border-gray-300"
                                       }`}
                                   />
+                                  )}
                                   {variationErrors[varIdx]?.attrErrors?.[
                                     attrIdx
                                   ]?.attribute_value && (
@@ -1649,7 +1713,8 @@ const AddEditProduct = () => {
                                       </p>
                                     )}
                                 </div>
-                              ))}
+                                );
+                              })}
 
                               {/* Stock */}
                               <div className="flex flex-col">

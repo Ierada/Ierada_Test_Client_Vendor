@@ -113,6 +113,93 @@ export function uniqueSizesById(sizes) {
   return out;
 }
 
+export function uniqueByNameKeepFirst(list, nameKey = "name") {
+  const seen = new Set();
+  const out = [];
+  for (const row of list || []) {
+    const key = String(row?.[nameKey] || "").trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
+}
+
+export function uniqueByNamePreferIds(list, preferIds = [], nameKey = "name") {
+  const prefer = new Set((preferIds || []).map(String).filter(Boolean));
+  const sorted = [...(list || [])].sort((a, b) => {
+    const ap = prefer.has(String(a.id)) ? 0 : 1;
+    const bp = prefer.has(String(b.id)) ? 0 : 1;
+    return ap - bp;
+  });
+  return uniqueByNameKeepFirst(sorted, nameKey);
+}
+
+function catalogAllowNames(attr) {
+  const raw = attr?.values || attr?.option_values || [];
+  return new Set(
+    raw
+      .map((v) => String(v?.value || v || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export function colorAndSizeFromCatalog(catalog = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const attr of catalog || []) {
+    if (attr?.id == null || seen.has(attr.id)) continue;
+    seen.add(attr.id);
+    unique.push(attr);
+  }
+  return {
+    colorAttr: unique.find((a) => /colou?r/i.test(a.name || "")),
+    sizeAttr: unique.find((a) => /^sizes?$/i.test(a.name || "")),
+  };
+}
+
+export function filterMastersByCatalog({
+  colors = [],
+  sizes = [],
+  catalog = [],
+  meta,
+  state = {},
+  selectedColorIds = [],
+  selectedSizeIds = [],
+}) {
+  const { colorAttr, sizeAttr } = colorAndSizeFromCatalog(catalog);
+  const colorAllow = catalogAllowNames(colorAttr);
+  const sizeAllow = catalogAllowNames(sizeAttr);
+  const selectedC = new Set((selectedColorIds || []).map(String).filter(Boolean));
+  const selectedS = new Set((selectedSizeIds || []).map(String).filter(Boolean));
+  const filteredColors = uniqueByNamePreferIds(
+    (colors || []).filter((c) => {
+      const id = String(c.id);
+      const name = String(c.name || "").toLowerCase();
+      if (selectedC.has(id)) return true;
+      if (colorAttr) return colorAllow.has(name);
+      return true;
+    }),
+    selectedColorIds,
+  );
+  const filteredSizes = uniqueByNamePreferIds(
+    (sizes || []).filter((s) => {
+      const id = String(s.id);
+      const name = String(s.name || "").toLowerCase();
+      if (selectedS.has(id)) return true;
+      if (sizeAttr) return sizeAllow.has(name);
+      return true;
+    }),
+    selectedSizeIds,
+  );
+  return {
+    colors: filteredColors,
+    sizeSplit: splitContextualSizes(filteredSizes, meta, state),
+    colorAttr,
+    sizeAttr,
+  };
+}
+
 export function hasRealSizeRow(colorGroups) {
   return (colorGroups || []).some((g) =>
     (g.sizes || []).some((s) => s.size_id || s.size?.id),
@@ -390,15 +477,33 @@ export function applyParentDefaultsToEmptySizeRows(colorGroups, state, previous 
   return changed ? next : null;
 }
 
-export function sizePickerOptions(split) {
+export function sizePickerOptions(split, keepIds = []) {
   const contextual = split?.contextual || [];
   const rest = split?.rest || [];
+  const merged = [...contextual, ...rest];
+  const keep = new Set((keepIds || []).map(String).filter(Boolean));
+  const byId = new Map(merged.map((z) => [String(z.id), z]));
   const ctxHint = contextual.length ? "This category" : undefined;
   const otherHint = contextual.length ? "Other" : undefined;
-  return [
-    ...contextual.map((z) => ({ id: z.id, label: z.name, hint: ctxHint })),
-    ...rest.map((z) => ({ id: z.id, label: z.name, hint: otherHint })),
-  ];
+  const hintFor = (z) =>
+    contextual.some((c) => String(c.id) === String(z.id)) ? ctxHint : otherHint;
+  const usedName = new Set();
+  const out = [];
+  for (const id of keep) {
+    const z = byId.get(String(id));
+    if (!z) continue;
+    const nameKey = String(z.name || "").trim().toLowerCase();
+    out.push({ id: z.id, label: z.name, hint: hintFor(z) });
+    if (nameKey) usedName.add(nameKey);
+  }
+  for (const z of merged) {
+    if (keep.has(String(z.id))) continue;
+    const nameKey = String(z.name || "").trim().toLowerCase();
+    if (!nameKey || usedName.has(nameKey)) continue;
+    usedName.add(nameKey);
+    out.push({ id: z.id, label: z.name, hint: hintFor(z) });
+  }
+  return out;
 }
 
 const COLOR_SKU_SHORT = {

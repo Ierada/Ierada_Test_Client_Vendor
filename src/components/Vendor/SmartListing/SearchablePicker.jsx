@@ -244,14 +244,26 @@ export default function SearchablePicker({
               className="shrink-0 flex items-center justify-between gap-3 px-5 py-3.5"
               style={{ borderTop: "1px solid #EEF1F5", background: "#FAFBFC" }}
             >
-              {multiple && selectedIds.length ? (
-                <button
-                  type="button"
-                  onClick={() => onChange([])}
-                  className="text-[13px] font-medium text-slate-500 hover:text-slate-800"
-                >
-                  Clear
-                </button>
+              {multiple ? (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onChange(filtered.map((o) => o.id))}
+                    className="text-[13px] font-semibold hover:opacity-80"
+                    style={{ color: ORANGE }}
+                  >
+                    Select all
+                  </button>
+                  {selectedIds.length ? (
+                    <button
+                      type="button"
+                      onClick={() => onChange([])}
+                      className="text-[13px] font-medium text-slate-500 hover:text-slate-800"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
               ) : (
                 <span />
               )}

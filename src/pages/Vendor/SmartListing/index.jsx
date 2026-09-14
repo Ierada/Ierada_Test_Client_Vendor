@@ -11,6 +11,7 @@ import { getCategories, getSubCategories, getInnerSubCategories } from "../../..
 import { addProduct, updateProduct, deleteProduct } from "../../../services/api.product";
 import { getAllSizes } from "../../../services/api.size";
 import { getAllColors } from "../../../services/api.color";
+import { getAllAttributes } from "../../../services/api.attribute";
 import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory, generateListing3dImage } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
 import { previewListingSettlement } from "../../../services/api.settlement";
@@ -47,8 +48,8 @@ import { hydrateSmartListingFromProduct } from "../../../components/Vendor/Smart
 import {
   hasRealSizeRow,
   sizeQueryFromListing,
-  splitContextualSizes,
   sizePickerOptions,
+  filterMastersByCatalog,
   listingSizeIds,
   applySelectedSizeIdsToColorGroups,
   prefillColorGroupsFromCategorySizes,
@@ -443,19 +444,43 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
     rest: [],
     totalContextual: 0,
   });
-  const sizeOptions = useMemo(() => sizePickerOptions(sizeSplit), [sizeSplit]);
+  const sizeOptions = useMemo(
+    () => sizePickerOptions(sizeSplit, listingSizeIds(state)),
+    [sizeSplit, state.size_ids, state.size_id],
+  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [cRes, sRes] = await Promise.all([
+        const [cRes, sRes, aRes] = await Promise.all([
           getAllColors({ silent: true }),
           getAllSizes(sizeQueryFromListing(state), { silent: true }),
+          getAllAttributes(
+            {
+              categoryId: state.category_id,
+              subCategoryId: state.sub_category_id,
+              innerSubCategoryId: state.inner_sub_category_id,
+            },
+            { silent: true },
+          ),
         ]);
         if (cancelled) return;
-        setColors(cRes?.data || []);
-        setSizeSplit(splitContextualSizes(sRes?.data || [], sRes?.meta, state));
+        const filtered = filterMastersByCatalog({
+          colors: cRes?.data || [],
+          sizes: sRes?.data || [],
+          catalog: aRes?.data || [],
+          meta: sRes?.meta,
+          state,
+          selectedColorIds: [
+            state.color_id,
+            ...(state.color_ids || []),
+            ...selectedVariationColorIds(state),
+          ].filter(Boolean),
+          selectedSizeIds: listingSizeIds(state),
+        });
+        setColors(filtered.colors);
+        setSizeSplit(filtered.sizeSplit);
       } catch {
         /* pickers stay empty */
       }
@@ -724,10 +749,31 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (fromState.listingType !== "color_size") return null;
     if (hasRealSizeRow(fromState.colorGroups)) return null;
     if (!fromState.category_id) return null;
-    const res = await getAllSizes(sizeQueryFromListing(fromState), { silent: true });
+    const [res, aRes] = await Promise.all([
+      getAllSizes(sizeQueryFromListing(fromState), { silent: true }),
+      getAllAttributes(
+        {
+          categoryId: fromState.category_id,
+          subCategoryId: fromState.sub_category_id,
+          innerSubCategoryId: fromState.inner_sub_category_id,
+        },
+        { silent: true },
+      ),
+    ]);
     if (!res || res.status !== 1) return false;
-    const data = res.data || [];
-    const meta = res.meta || {};
+    const filtered = filterMastersByCatalog({
+      colors: [],
+      sizes: res.data || [],
+      catalog: aRes?.data || [],
+      meta: res.meta || {},
+      state: fromState,
+      selectedSizeIds: listingSizeIds(fromState),
+    });
+    const data = filtered.sizeSplit.all;
+    const meta = {
+      totalAll: data.length,
+      totalContextual: filtered.sizeSplit.totalContextual,
+    };
     let groups = prefillColorGroupsFromCategorySizes(data, fromState, meta);
     if (!groups && suggestedNames?.length) {
       groups = prefillColorGroupsFromSuggestedNames(suggestedNames, data, fromState);
