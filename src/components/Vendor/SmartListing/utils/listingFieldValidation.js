@@ -173,11 +173,11 @@ export function validateSizeAndColor(state) {
       (state.colorGroups || []).some((g) => g.color_id || g.color?.id));
   if (!hasSize) {
     errors.size_ids =
-      "Please select a size — this field is required before you can request publish.";
+      "Select a size from the catalog for this category — this field is required before you can request publish.";
   }
   if (!hasColor) {
     errors.color_id =
-      "Please select a colour — this field is required before you can request publish.";
+      "Select a colour from the catalog for this category — this field is required before you can request publish.";
   }
   return errors;
 }

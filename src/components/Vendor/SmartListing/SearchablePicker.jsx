@@ -19,7 +19,7 @@ export default function SearchablePicker({
   error,
   disabled = false,
   allowClear = true,
-  emptyText = "No matches",
+  emptyText = "No matches. Add values in Admin → Attributes for this category.",
   compact = false,
   multiple = false,
   defaultOpen = false,
@@ -227,7 +227,11 @@ export default function SearchablePicker({
                         {o.label}
                       </span>
                       {o.hint ? (
-                        <span className="block text-[12px] text-slate-400 truncate mt-0.5">
+                        <span
+                          className={`block text-[12px] truncate mt-0.5 ${
+                            o.unavailable ? "text-amber-700" : "text-slate-400"
+                          }`}
+                        >
                           {o.hint}
                         </span>
                       ) : null}

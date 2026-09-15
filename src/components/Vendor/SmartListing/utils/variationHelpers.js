@@ -98,7 +98,34 @@ export function suggestVariantSku(baseSku, parts, taken = new Set()) {
   return buildUniqueSku(baseSku, parts, taken);
 }
 
-const FREE_SIZE_NAME_RE = /Free Size|One Size|^OS$|Universal|Free size/i;
+export const UNAVAILABLE_FOR_CATEGORY_HINT = "Not available for this category";
+export const EMPTY_ATTRIBUTE_CATALOG_MESSAGE =
+  "No Size or Colour values apply to this category yet. Add them in Admin → Attributes for this category.";
+
+export function listingAttributeQuery(state) {
+  const query = {};
+  if (state?.category_id) {
+    query.categoryId = state.category_id;
+    query.cat_id = state.category_id;
+  }
+  if (state?.sub_category_id) {
+    query.subCategoryId = state.sub_category_id;
+    query.sub_cat_id = state.sub_category_id;
+  }
+  if (state?.inner_sub_category_id) {
+    query.innerSubCategoryId = state.inner_sub_category_id;
+    query.inner_sub_cat_id = state.inner_sub_category_id;
+  }
+  return query;
+}
+
+export function listingCategoryPathKey(state) {
+  return [
+    state?.category_id || "",
+    state?.sub_category_id || "",
+    state?.inner_sub_category_id || "",
+  ].join("|");
+}
 
 export function uniqueSizesById(sizes) {
   const out = [];
@@ -139,9 +166,13 @@ function catalogAllowNames(attr) {
   const raw = attr?.values || attr?.option_values || [];
   return new Set(
     raw
-      .map((v) => String(v?.value || v || "").trim().toLowerCase())
+      .map((v) => String(v?.value || v?.name || v || "").trim().toLowerCase())
       .filter(Boolean),
   );
+}
+
+export function catalogValueNames(attr) {
+  return [...catalogAllowNames(attr)];
 }
 
 export function colorAndSizeFromCatalog(catalog = []) {
@@ -158,12 +189,23 @@ export function colorAndSizeFromCatalog(catalog = []) {
   };
 }
 
+function markCatalogAvailability(list, allowNames, selectedIds) {
+  const selected = new Set((selectedIds || []).map(String).filter(Boolean));
+  return (list || []).map((row) => {
+    const name = String(row?.name || "").trim().toLowerCase();
+    const inCatalog = allowNames.has(name);
+    const keptLegacy = selected.has(String(row?.id)) && !inCatalog;
+    return {
+      ...row,
+      unavailableForCategory: keptLegacy,
+    };
+  });
+}
+
 export function filterMastersByCatalog({
   colors = [],
   sizes = [],
   catalog = [],
-  meta,
-  state = {},
   selectedColorIds = [],
   selectedSizeIds = [],
 }) {
@@ -173,28 +215,49 @@ export function filterMastersByCatalog({
   const selectedC = new Set((selectedColorIds || []).map(String).filter(Boolean));
   const selectedS = new Set((selectedSizeIds || []).map(String).filter(Boolean));
   const filteredColors = uniqueByNamePreferIds(
-    (colors || []).filter((c) => {
-      const id = String(c.id);
-      const name = String(c.name || "").toLowerCase();
-      if (selectedC.has(id)) return true;
-      if (colorAttr) return colorAllow.has(name);
-      return true;
-    }),
+    markCatalogAvailability(
+      (colors || []).filter((c) => {
+        const id = String(c.id);
+        const name = String(c.name || "").trim().toLowerCase();
+        if (selectedC.has(id)) return true;
+        return colorAllow.has(name);
+      }),
+      colorAllow,
+      selectedColorIds,
+    ),
     selectedColorIds,
   );
   const filteredSizes = uniqueByNamePreferIds(
-    (sizes || []).filter((s) => {
-      const id = String(s.id);
-      const name = String(s.name || "").toLowerCase();
-      if (selectedS.has(id)) return true;
-      if (sizeAttr) return sizeAllow.has(name);
-      return true;
-    }),
+    markCatalogAvailability(
+      (sizes || []).filter((s) => {
+        const id = String(s.id);
+        const name = String(s.name || "").trim().toLowerCase();
+        if (selectedS.has(id)) return true;
+        return sizeAllow.has(name);
+      }),
+      sizeAllow,
+      selectedSizeIds,
+    ),
     selectedSizeIds,
+  );
+  const contextual = uniqueSizesById(
+    filteredSizes.filter((s) => !s.unavailableForCategory),
+  );
+  const rest = uniqueSizesById(
+    filteredSizes.filter((s) => s.unavailableForCategory),
   );
   return {
     colors: filteredColors,
-    sizeSplit: splitContextualSizes(filteredSizes, meta, state),
+    sizeSplit: {
+      all: uniqueSizesById(filteredSizes),
+      contextual,
+      rest,
+      totalContextual: contextual.length,
+    },
+    allowedColorIds: filteredColors
+      .filter((c) => !c.unavailableForCategory)
+      .map((c) => c.id),
+    allowedSizeIds: contextual.map((s) => s.id),
     colorAttr,
     sizeAttr,
   };
@@ -203,115 +266,6 @@ export function filterMastersByCatalog({
 export function hasRealSizeRow(colorGroups) {
   return (colorGroups || []).some((g) =>
     (g.sizes || []).some((s) => s.size_id || s.size?.id),
-  );
-}
-
-export function sizeQueryFromListing(state) {
-  const query = {};
-  if (state?.category_id) query.categoryId = state.category_id;
-  if (state?.sub_category_id) query.subCategoryId = state.sub_category_id;
-  if (state?.inner_sub_category_id) {
-    query.innerSubCategoryId = state.inner_sub_category_id;
-  }
-  const sizeType = inferSizeTypeFromListing(state);
-  if (sizeType && sizeType !== "general") query.type = sizeType;
-  return query;
-}
-
-/** Best-effort size_type for catalog filter / quick-add from category labels. */
-export function inferSizeTypeFromListing(state) {
-  const blob = [
-    state?.category_name,
-    state?.category?.title,
-    state?.category?.name,
-    state?.sub_category_name,
-    state?.subCategory?.title,
-    state?.inner_sub_category_name,
-    state?.innerSubCategory?.title,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (/shoe|footwear|sneaker|boot|sandal|slipper|loafer/.test(blob)) {
-    return "footwear";
-  }
-  if (
-    /apparel|cloth|fashion|shirt|pant|dress|kurta|saree|t[\s-]?shirt|jeans|top|wear/.test(
-      blob,
-    )
-  ) {
-    return "clothing";
-  }
-  return "general";
-}
-
-function sizeMatchesLevel(s, field, nested, want) {
-  return String(s?.[field] || s?.[nested]?.id || "") === want;
-}
-
-function sizesTiedToCategory(sizes, state) {
-  const inner = String(state?.inner_sub_category_id || "");
-  const sub = String(state?.sub_category_id || "");
-  const cat = String(state?.category_id || "");
-  const list = sizes || [];
-  if (inner) {
-    const hit = list.filter((s) =>
-      sizeMatchesLevel(s, "inner_sub_cat_id", "innerSubCategory", inner),
-    );
-    if (hit.length) return hit;
-  }
-  if (sub) {
-    const hit = list.filter((s) =>
-      sizeMatchesLevel(s, "sub_cat_id", "subCategory", sub),
-    );
-    if (hit.length) return hit;
-  }
-  if (cat) {
-    const hit = list.filter((s) => sizeMatchesLevel(s, "cat_id", "category", cat));
-    if (hit.length) return hit;
-  }
-  return [];
-}
-
-/** Split /size/get payload: contextual (inner→sub→cat) vs the rest of the catalog. */
-export function splitContextualSizes(apiData, meta, state = {}) {
-  const list = Array.isArray(apiData) ? apiData : [];
-  const totalAll = Number(meta?.totalAll);
-  const totalContextual = Number(meta?.totalContextual);
-  let all = list;
-  let contextual = [];
-
-  if (
-    Number.isFinite(totalAll) &&
-    totalAll >= 0 &&
-    Number.isFinite(totalContextual) &&
-    totalContextual > 0 &&
-    list.length >= totalAll
-  ) {
-    all = list.slice(0, totalAll);
-    contextual = uniqueSizesById(
-      list.slice(totalAll, totalAll + totalContextual),
-    );
-  }
-
-  const allUnique = uniqueSizesById(all.length ? all : list);
-  if (!contextual.length) {
-    contextual = sizesTiedToCategory(allUnique, state);
-  }
-
-  const ctxIds = new Set(contextual.map((s) => String(s.id)));
-  const rest = allUnique.filter((s) => !ctxIds.has(String(s.id)));
-  return {
-    all: allUnique,
-    contextual,
-    rest,
-    totalContextual: contextual.length,
-  };
-}
-
-function findFreeSizeFallback(sizes) {
-  return (sizes || []).find((s) =>
-    FREE_SIZE_NAME_RE.test(String(s?.name || "").trim()),
   );
 }
 
@@ -395,23 +349,19 @@ export function applySelectedSizeIdsToColorGroups(colorGroups, sizeIds, state = 
   });
 }
 
-export function prefillColorGroupsFromCategorySizes(sizes, state, meta) {
+export function prefillColorGroupsFromCategorySizes(sizes, state) {
   if (state?.listingType !== "color_size") return null;
   if (hasRealSizeRow(state.colorGroups)) return null;
 
-  const split = splitContextualSizes(sizes, meta, state);
+  const list = uniqueSizesById(sizes).filter((s) => !s.unavailableForCategory);
   const selected = listingSizeIds(state);
-  let toUse = split.contextual;
+  let toUse = list;
   if (selected.length) {
-    const byId = new Map(split.all.map((s) => [String(s.id), s]));
-    const picked = selected.map((id) => byId.get(id)).filter(Boolean);
+    const byId = new Map(list.map((s) => [String(s.id), s]));
+    const picked = selected.map((id) => byId.get(String(id))).filter(Boolean);
     if (picked.length) toUse = picked;
   }
-  if (!toUse.length) {
-    const fallback = findFreeSizeFallback(split.all);
-    if (fallback) toUse = [fallback];
-    else return null;
-  }
+  if (!toUse.length) return null;
   return buildPrefillColorGroups(toUse, state);
 }
 
@@ -480,30 +430,168 @@ export function applyParentDefaultsToEmptySizeRows(colorGroups, state, previous 
 export function sizePickerOptions(split, keepIds = []) {
   const contextual = split?.contextual || [];
   const rest = split?.rest || [];
-  const merged = [...contextual, ...rest];
   const keep = new Set((keepIds || []).map(String).filter(Boolean));
-  const byId = new Map(merged.map((z) => [String(z.id), z]));
-  const ctxHint = contextual.length ? "This category" : undefined;
-  const otherHint = contextual.length ? "Other" : undefined;
-  const hintFor = (z) =>
-    contextual.some((c) => String(c.id) === String(z.id)) ? ctxHint : otherHint;
+  const byId = new Map([...contextual, ...rest].map((z) => [String(z.id), z]));
+  const ctxIds = new Set(contextual.map((z) => String(z.id)));
   const usedName = new Set();
   const out = [];
+  const push = (z, unavailable) => {
+    if (!z) return;
+    const nameKey = String(z.name || "").trim().toLowerCase();
+    out.push({
+      id: z.id,
+      label: z.name,
+      hint: unavailable ? UNAVAILABLE_FOR_CATEGORY_HINT : undefined,
+      unavailable: Boolean(unavailable),
+    });
+    if (nameKey) usedName.add(nameKey);
+  };
   for (const id of keep) {
     const z = byId.get(String(id));
     if (!z) continue;
-    const nameKey = String(z.name || "").trim().toLowerCase();
-    out.push({ id: z.id, label: z.name, hint: hintFor(z) });
-    if (nameKey) usedName.add(nameKey);
+    push(z, !ctxIds.has(String(id)));
   }
-  for (const z of merged) {
+  for (const z of contextual) {
     if (keep.has(String(z.id))) continue;
     const nameKey = String(z.name || "").trim().toLowerCase();
     if (!nameKey || usedName.has(nameKey)) continue;
     usedName.add(nameKey);
-    out.push({ id: z.id, label: z.name, hint: hintFor(z) });
+    out.push({ id: z.id, label: z.name });
   }
   return out;
+}
+
+export function colorPickerOptions(colors = []) {
+  return (colors || []).map((c) => ({
+    id: c.id,
+    label: c.name,
+    hint: c.unavailableForCategory ? UNAVAILABLE_FOR_CATEGORY_HINT : undefined,
+    unavailable: Boolean(c.unavailableForCategory),
+  }));
+}
+
+export function pruneColorSizeStateToAllowed(state, allowedColorIds, allowedSizeIds) {
+  const allowC = new Set((allowedColorIds || []).map(String).filter(Boolean));
+  const allowS = new Set((allowedSizeIds || []).map(String).filter(Boolean));
+  const dropped = [];
+
+  const prevSizeIds = listingSizeIds(state);
+  const nextSizeIds = prevSizeIds.filter((id) => allowS.has(String(id)));
+  prevSizeIds
+    .filter((id) => !allowS.has(String(id)))
+    .forEach(() => dropped.push("size"));
+
+  const prevColorIds = [
+    ...selectedVariationColorIds(state),
+    state?.color_id ? String(state.color_id) : "",
+  ].filter(Boolean);
+  const uniquePrevColors = [...new Set(prevColorIds.map(String))];
+  const nextColorIds = uniquePrevColors.filter((id) => allowC.has(String(id)));
+  uniquePrevColors
+    .filter((id) => !allowC.has(String(id)))
+    .forEach(() => dropped.push("colour"));
+
+  let colorGroups = state?.colorGroups;
+  if (Array.isArray(colorGroups) && colorGroups.length) {
+    colorGroups = colorGroups
+      .map((g) => {
+        const cid = String(g.color_id || g.color?.id || "");
+        if (cid && !allowC.has(cid)) {
+          dropped.push(g.color_name || g.color?.name || "colour");
+          return null;
+        }
+        const sizes = (g.sizes || []).filter((s) => {
+          const sid = String(s.size_id || s.size?.id || "");
+          if (!sid) return true;
+          if (!allowS.has(sid)) {
+            dropped.push("size");
+            return false;
+          }
+          return true;
+        });
+        return { ...g, sizes };
+      })
+      .filter(Boolean);
+  }
+
+  let availability = state?.colorSizeAvailability;
+  if (availability && typeof availability === "object") {
+    const next = {};
+    Object.entries(availability).forEach(([cid, ids]) => {
+      if (!allowC.has(String(cid))) return;
+      next[cid] = (ids || []).filter((id) => allowS.has(String(id)));
+    });
+    availability = next;
+  }
+
+  if (!dropped.length) return null;
+
+  const remainingName =
+    (colorGroups || []).find((g) => g.color_name)?.color_name ||
+    state?.color_name ||
+    "";
+
+  return {
+    dropped,
+    patch: {
+      size_ids: nextSizeIds,
+      size_id: nextSizeIds[0] || "",
+      color_ids: nextColorIds,
+      color_id: nextColorIds[0] || "",
+      color_name: nextColorIds.length ? remainingName : "",
+      ...(Array.isArray(colorGroups) ? { colorGroups } : {}),
+      ...(availability && typeof availability === "object"
+        ? { colorSizeAvailability: availability }
+        : {}),
+    },
+  };
+}
+
+export function catalogValuesForAttr(attr, catalog) {
+  const found =
+    (catalog || []).find((c) => String(c.id) === String(attr?.attribute_id)) ||
+    (catalog || []).find(
+      (c) =>
+        String(c.name || "").toLowerCase() ===
+        String(attr?.name || "").toLowerCase(),
+    );
+  const raw = found?.option_values || (found?.values || []).map((v) => v.value || v.name);
+  const seen = new Set();
+  const out = [];
+  for (const item of raw || []) {
+    const name = String(item || "").trim();
+    const key = name.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+export function pruneCustomAttrsToCatalog(attrs, catalog, { dropInvalid = false } = {}) {
+  const dropped = [];
+  const next = (attrs || []).map((attr) => {
+    const found =
+      (catalog || []).find((c) => String(c.id) === String(attr?.attribute_id)) ||
+      (catalog || []).find(
+        (c) =>
+          String(c.name || "").toLowerCase() ===
+          String(attr?.name || "").toLowerCase(),
+      );
+    const current = customAttrValues(attr);
+    if (!found) {
+      if (!dropInvalid) return attr;
+      if (current.length) dropped.push(...current);
+      return { ...attr, attribute_id: "", name: "", values: [], valuesText: "" };
+    }
+    const allowed = new Set(catalogValuesForAttr(attr, catalog).map((v) => v.toLowerCase()));
+    const values = current.filter((v) => allowed.has(v.toLowerCase()));
+    const lost = current.filter((v) => !allowed.has(v.toLowerCase()));
+    if (!dropInvalid) return attr;
+    lost.forEach((v) => dropped.push(v));
+    return { ...attr, values, valuesText: values.join(", ") };
+  });
+  return { attrs: next, dropped };
 }
 
 const COLOR_SKU_SHORT = {

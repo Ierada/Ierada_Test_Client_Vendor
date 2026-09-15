@@ -9,9 +9,6 @@ import {
 } from "lucide-react";
 import { getCategories, getSubCategories, getInnerSubCategories } from "../../../services/api.category";
 import { addProduct, updateProduct, deleteProduct } from "../../../services/api.product";
-import { getAllSizes } from "../../../services/api.size";
-import { getAllColors } from "../../../services/api.color";
-import { getAllAttributes } from "../../../services/api.attribute";
 import { getBrandAuthStatus, generateListingAiDraft, suggestListingCategory, generateListing3dImage } from "../../../services/api.smartListing";
 import { getSettings } from "../../../services/api.settings";
 import { previewListingSettlement } from "../../../services/api.settlement";
@@ -47,9 +44,8 @@ import { buildSmartListingFormData, applyAutoListingPolicies } from "../../../co
 import { hydrateSmartListingFromProduct } from "../../../components/Vendor/SmartListing/utils/hydrateFromProduct";
 import {
   hasRealSizeRow,
-  sizeQueryFromListing,
   sizePickerOptions,
-  filterMastersByCatalog,
+  colorPickerOptions,
   listingSizeIds,
   applySelectedSizeIdsToColorGroups,
   prefillColorGroupsFromCategorySizes,
@@ -61,7 +57,11 @@ import {
   selectedVariationColorIds,
   seedFirstColorSizesFromListing,
   applyListingSizeIdsToAvailability,
+  listingCategoryPathKey,
+  pruneColorSizeStateToAllowed,
+  EMPTY_ATTRIBUTE_CATALOG_MESSAGE,
 } from "../../../components/Vendor/SmartListing/utils/variationHelpers";
+import { loadListingColorSizeCatalog } from "../../../components/Vendor/SmartListing/utils/listingAttributeCatalog";
 import {
   stashListingMedia,
   stripFilesForDraft,
@@ -82,6 +82,7 @@ import {
   clearListingFiles,
 } from "../../../components/Vendor/SmartListing/utils/listingMediaStore";
 import SearchablePicker from "../../../components/Vendor/SmartListing/SearchablePicker";
+import CatalogPathStatus from "../../../components/Vendor/SmartListing/CatalogPathStatus";
 import VariationListingCanvas from "../../../components/Vendor/SmartListing/VariationListingCanvas";
 import CustomVariationCanvas from "../../../components/Vendor/SmartListing/CustomVariationCanvas";
 import ListingErrorBoundary from "../../../components/Vendor/SmartListing/ListingErrorBoundary";
@@ -444,61 +445,80 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
     rest: [],
     totalContextual: 0,
   });
+  const [loading, setLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+  const pathKey = listingCategoryPathKey(state);
+  const pathRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const sizeOptions = useMemo(
     () => sizePickerOptions(sizeSplit, listingSizeIds(state)),
     [sizeSplit, state.size_ids, state.size_id],
   );
+  const colorOptions = useMemo(() => colorPickerOptions(colors), [colors]);
+  const catalogEmpty =
+    Boolean(state.category_id) &&
+    !loading &&
+    !catalogError &&
+    !sizeSplit.totalContextual &&
+    !colors.some((c) => !c.unavailableForCategory);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const [cRes, sRes, aRes] = await Promise.all([
-          getAllColors({ silent: true }),
-          getAllSizes(sizeQueryFromListing(state), { silent: true }),
-          getAllAttributes(
-            {
-              categoryId: state.category_id,
-              subCategoryId: state.sub_category_id,
-              innerSubCategoryId: state.inner_sub_category_id,
-            },
-            { silent: true },
-          ),
-        ]);
-        if (cancelled) return;
-        const filtered = filterMastersByCatalog({
-          colors: cRes?.data || [],
-          sizes: sRes?.data || [],
-          catalog: aRes?.data || [],
-          meta: sRes?.meta,
-          state,
-          selectedColorIds: [
-            state.color_id,
-            ...(state.color_ids || []),
-            ...selectedVariationColorIds(state),
-          ].filter(Boolean),
-          selectedSizeIds: listingSizeIds(state),
-        });
-        setColors(filtered.colors);
-        setSizeSplit(filtered.sizeSplit);
-      } catch {
-        /* pickers stay empty */
+      setLoading(true);
+      const result = await loadListingColorSizeCatalog(stateRef.current);
+      if (cancelled) return;
+      setColors(result.colors || []);
+      setSizeSplit(
+        result.sizeSplit || { all: [], contextual: [], rest: [], totalContextual: 0 },
+      );
+      if (!result.ok) {
+        setCatalogError(result.error || "Could not load attributes for this category.");
+        notifyOnFail(result.error || "Could not load attributes for this category.");
+      } else {
+        setCatalogError("");
       }
+      const prevPath = pathRef.current;
+      pathRef.current = pathKey;
+      if (prevPath != null && prevPath !== pathKey) {
+        const pruned = pruneColorSizeStateToAllowed(
+          stateRef.current,
+          result.allowedColorIds,
+          result.allowedSizeIds,
+        );
+        if (pruned?.patch) {
+          patch(pruned.patch);
+          notifyOnWarning({
+            title: "Options updated for this category",
+            message:
+              "Some selected colour or size values are not available for this category and were cleared.",
+          });
+        }
+      }
+      setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
+  }, [pathKey, patch]);
 
   return (
     <div className="w-full col-span-full grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+      <div className="sm:col-span-2">
+        <CatalogPathStatus
+          loading={loading}
+          error={catalogError}
+          empty={catalogEmpty}
+        />
+      </div>
       <Field label="Size" required error={fieldErrors.size_ids}>
         <div id="ai-review-size">
           <SearchablePicker
             compact
             multiple
             required
-            disabled={readOnly}
+            disabled={readOnly || loading}
             error={fieldErrors.size_ids ? " " : undefined}
             value={listingSizeIds(state)}
             onChange={(ids) => {
@@ -525,6 +545,7 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
             }}
             placeholder="Select size"
             searchPlaceholder="Search size..."
+            emptyText={EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
             options={sizeOptions}
           />
         </div>
@@ -534,7 +555,7 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
           <SearchablePicker
             compact
             required
-            disabled={readOnly}
+            disabled={readOnly || loading}
             error={fieldErrors.color_id ? " " : undefined}
             value={state.color_id || ""}
             onChange={(id) => {
@@ -570,7 +591,8 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
             }}
             placeholder="Select colour"
             searchPlaceholder="Search colour…"
-            options={colors.map((c) => ({ id: c.id, label: c.name }))}
+            emptyText={EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
+            options={colorOptions}
           />
         </div>
       </Field>
@@ -749,32 +771,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (fromState.listingType !== "color_size") return null;
     if (hasRealSizeRow(fromState.colorGroups)) return null;
     if (!fromState.category_id) return null;
-    const [res, aRes] = await Promise.all([
-      getAllSizes(sizeQueryFromListing(fromState), { silent: true }),
-      getAllAttributes(
-        {
-          categoryId: fromState.category_id,
-          subCategoryId: fromState.sub_category_id,
-          innerSubCategoryId: fromState.inner_sub_category_id,
-        },
-        { silent: true },
-      ),
-    ]);
-    if (!res || res.status !== 1) return false;
-    const filtered = filterMastersByCatalog({
-      colors: [],
-      sizes: res.data || [],
-      catalog: aRes?.data || [],
-      meta: res.meta || {},
-      state: fromState,
-      selectedSizeIds: listingSizeIds(fromState),
+    const loaded = await loadListingColorSizeCatalog(fromState, {
+      sizeIds: listingSizeIds(fromState),
     });
-    const data = filtered.sizeSplit.all;
-    const meta = {
-      totalAll: data.length,
-      totalContextual: filtered.sizeSplit.totalContextual,
-    };
-    let groups = prefillColorGroupsFromCategorySizes(data, fromState, meta);
+    if (!loaded.ok && !loaded.sizeSplit?.contextual?.length) return false;
+    const data = loaded.sizeSplit?.contextual || [];
+    let groups = prefillColorGroupsFromCategorySizes(data, fromState);
     if (!groups && suggestedNames?.length) {
       groups = prefillColorGroupsFromSuggestedNames(suggestedNames, data, fromState);
     }

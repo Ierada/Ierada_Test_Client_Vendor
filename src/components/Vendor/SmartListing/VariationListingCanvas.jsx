@@ -9,19 +9,16 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { getAllColors } from "../../../services/api.color";
-import { getAllSizes } from "../../../services/api.size";
-import { getAllAttributes } from "../../../services/api.attribute";
-import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
+import { notifyOnFail, notifyOnSuccess, notifyOnWarning } from "../../../utils/notification/toast";
 import SearchablePicker from "./SearchablePicker";
+import CatalogPathStatus from "./CatalogPathStatus";
 import {
   generateColorSizeCombinations,
   flattenColorSizeVariants,
   selectedVariationColorIds,
   selectedVariationSizeIds,
-  sizeQueryFromListing,
   sizePickerOptions,
-  filterMastersByCatalog,
+  colorPickerOptions,
   suggestColorSizeSku,
   availableSizeIdsForColor,
   unionSizeIdsFromAvailability,
@@ -30,7 +27,12 @@ import {
   combinationSignature,
   reorderFlattenedVariants,
   patchColorGroupSize,
+  listingCategoryPathKey,
+  pruneColorSizeStateToAllowed,
+  EMPTY_ATTRIBUTE_CATALOG_MESSAGE,
+  UNAVAILABLE_FOR_CATEGORY_HINT,
 } from "./utils/variationHelpers";
+import { loadListingColorSizeCatalog } from "./utils/listingAttributeCatalog";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 import {
   resolveMediaUrl,
@@ -378,11 +380,16 @@ function VariantStockPanel({
   );
 }
 
-function TagChip({ label, swatch, onRemove }) {
+function TagChip({ label, swatch, onRemove, warning = false }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full pl-1.5 pr-1 py-px text-[11px] font-medium bg-white shrink-0 whitespace-nowrap"
-      style={{ border: `1px solid ${PEACH_BORDER}`, color: NAVY }}
+      style={{
+        border: `1px solid ${warning ? "#F5D0A9" : PEACH_BORDER}`,
+        color: warning ? "#92400E" : NAVY,
+        backgroundColor: warning ? "#FFFBEB" : "#fff",
+      }}
+      title={warning ? UNAVAILABLE_FOR_CATEGORY_HINT : undefined}
     >
       {swatch ? (
         <span
@@ -394,6 +401,7 @@ function TagChip({ label, swatch, onRemove }) {
         />
       ) : null}
       {label}
+      {warning ? <span className="text-[9px] font-semibold">!</span> : null}
       <button
         type="button"
         className="w-3.5 h-3.5 rounded-full text-slate-400 hover:text-slate-700 leading-none"
@@ -428,6 +436,7 @@ export default function VariationListingCanvas({
   const colorIds = useMemo(() => colorIdsKey.split(",").filter(Boolean), [colorIdsKey]);
   const [sizeIds, setSizeIds] = useState(() => selectedVariationSizeIds(state));
   const [loading, setLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [hasGenerated, setHasGenerated] = useState(() =>
     flattenColorSizeVariants(state.colorGroups || []).some((r) => String(r.size?.sku || "").trim()),
@@ -439,6 +448,10 @@ export default function VariationListingCanvas({
   const sizeImagesInputRef = useRef(null);
   const groupsRef = useRef(state.colorGroups || []);
   const dragIndexRef = useRef(null);
+  const pathRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const pathKey = listingCategoryPathKey(state);
 
   const sizes = sizeSplit.all;
   const sizeOptions = useMemo(
@@ -470,41 +483,41 @@ export default function VariationListingCanvas({
     let cancelled = false;
     (async () => {
       setLoading(true);
-      try {
-        const [cRes, sRes, aRes] = await Promise.all([
-          getAllColors({ silent: true }),
-          getAllSizes(sizeQueryFromListing(state), { silent: true }),
-          getAllAttributes(
-            {
-              categoryId: state.category_id,
-              subCategoryId: state.sub_category_id,
-              innerSubCategoryId: state.inner_sub_category_id,
-            },
-            { silent: true },
-          ),
-        ]);
-        if (cancelled) return;
-        const filtered = filterMastersByCatalog({
-          colors: cRes?.data || [],
-          sizes: sRes?.data || [],
-          catalog: aRes?.data || [],
-          meta: sRes?.meta,
-          state,
-          selectedColorIds: selectedVariationColorIds(state),
-          selectedSizeIds: selectedVariationSizeIds(state),
-        });
-        setColors(filtered.colors);
-        setSizeSplit(filtered.sizeSplit);
-      } catch {
-        notifyOnFail("Could not load colors/sizes");
-      } finally {
-        if (!cancelled) setLoading(false);
+      const result = await loadListingColorSizeCatalog(stateRef.current);
+      if (cancelled) return;
+      setColors(result.colors || []);
+      setSizeSplit(
+        result.sizeSplit || { all: [], contextual: [], rest: [], totalContextual: 0 },
+      );
+      if (!result.ok) {
+        setCatalogError(result.error || "Could not load attributes for this category.");
+        notifyOnFail(result.error || "Could not load colors/sizes");
+      } else {
+        setCatalogError("");
       }
+      const prevPath = pathRef.current;
+      pathRef.current = pathKey;
+      if (prevPath != null && prevPath !== pathKey) {
+        const pruned = pruneColorSizeStateToAllowed(
+          stateRef.current,
+          result.allowedColorIds,
+          result.allowedSizeIds,
+        );
+        if (pruned?.patch) {
+          patch(pruned.patch);
+          notifyOnWarning({
+            title: "Options updated for this category",
+            message:
+              "Some selected colour or size values are not available for this category and were cleared.",
+          });
+        }
+      }
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
+  }, [pathKey, patch]);
 
   const categorySizeKey = selectedVariationSizeIds(state).join(",");
 
@@ -1062,8 +1075,21 @@ export default function VariationListingCanvas({
               Configure Product Variations
             </h3>
             <p className="text-[12px] mt-1" style={{ color: MUTED }}>
-              Attribute Builder
+              Colour and Size are two separate attributes. Pick only values applied to this category.
             </p>
+          </div>
+          <div className="mb-3">
+            <CatalogPathStatus
+              loading={false}
+              error={catalogError}
+              empty={
+                Boolean(state.category_id) &&
+                !catalogError &&
+                !sizeSplit.totalContextual &&
+                !colors.some((c) => !c.unavailableForCategory)
+              }
+              emptyMessage={EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
+            />
           </div>
           <div className="space-y-3">
             <AttributeRow
@@ -1082,9 +1108,13 @@ export default function VariationListingCanvas({
                   }}
                   placeholder="Add color"
                   searchPlaceholder="Search color…"
-                  options={colors
-                    .filter((c) => !colorIds.includes(String(c.id)))
-                    .map((c) => ({ id: c.id, label: c.name }))}
+                  emptyText={EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
+                  options={colorPickerOptions(
+                    colors.filter(
+                      (c) =>
+                        !colorIds.includes(String(c.id)) && !c.unavailableForCategory,
+                    ),
+                  )}
                 />
               }
               tags={colorIds.map((id) => {
@@ -1094,6 +1124,7 @@ export default function VariationListingCanvas({
                     key={id}
                     label={c?.name || id}
                     swatch={swatchColor(c)}
+                    warning={Boolean(c?.unavailableForCategory)}
                     onRemove={() => applyColorIds(colorIds.filter((x) => String(x) !== String(id)))}
                   />
                 );
@@ -1110,7 +1141,10 @@ export default function VariationListingCanvas({
                   onChange={(id) => addSizeId(id)}
                   placeholder="Add size"
                   searchPlaceholder="Search size…"
-                  options={sizeOptions.filter((o) => !firstColorSizeIds.includes(String(o.id)))}
+                  emptyText={EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
+                  options={sizeOptions.filter(
+                    (o) => !firstColorSizeIds.includes(String(o.id)) && !o.unavailable,
+                  )}
                 />
               }
               tags={firstColorSizeIds.map((id) => {
@@ -1119,6 +1153,7 @@ export default function VariationListingCanvas({
                   <TagChip
                     key={id}
                     label={z?.name || id}
+                    warning={Boolean(z?.unavailableForCategory)}
                     onRemove={() => removeSizeFromColor(id, colorIds[0])}
                   />
                 );

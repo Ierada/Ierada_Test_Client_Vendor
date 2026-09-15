@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { HelpCircle, Plus, Trash2 } from "lucide-react";
-import { getAllAttributes } from "../../../services/api.attribute";
-import { notifyOnFail } from "../../../utils/notification/toast";
+import { notifyOnFail, notifyOnWarning } from "../../../utils/notification/toast";
 import SearchablePicker from "./SearchablePicker";
+import CatalogPathStatus from "./CatalogPathStatus";
 import { liveFieldError, validateMrpAndSelling, validateStockQty } from "./utils/listingFieldValidation";
 import {
   primaryGalleryPhotoEntries,
@@ -16,7 +16,13 @@ import {
   customRowKey,
   customValueMediaKey,
   suggestVariantSku,
+  catalogValuesForAttr,
+  listingCategoryPathKey,
+  pruneCustomAttrsToCatalog,
+  EMPTY_ATTRIBUTE_CATALOG_MESSAGE,
+  UNAVAILABLE_FOR_CATEGORY_HINT,
 } from "./utils/variationHelpers";
+import { loadListingAttributeCatalog } from "./utils/listingAttributeCatalog";
 
 const NAVY = "#1A2B48";
 const ORANGE = "#F56C43";
@@ -100,13 +106,19 @@ function SelectionSummary({ state }) {
   );
 }
 
-function TagChip({ label, onRemove }) {
+function TagChip({ label, onRemove, warning = false }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-md pl-2 pr-1 py-0.5 text-[11px] font-medium shrink-0"
-      style={{ backgroundColor: "#F3F4F6", color: NAVY, border: "1px solid #E5E7EB" }}
+      style={{
+        backgroundColor: warning ? "#FFFBEB" : "#F3F4F6",
+        color: warning ? "#92400E" : NAVY,
+        border: `1px solid ${warning ? "#F5D0A9" : "#E5E7EB"}`,
+      }}
+      title={warning ? UNAVAILABLE_FOR_CATEGORY_HINT : undefined}
     >
       {label}
+      {warning ? <span className="text-[9px] font-semibold">!</span> : null}
       <button
         type="button"
         className="w-3.5 h-3.5 rounded-sm text-slate-400 hover:text-slate-700 leading-none"
@@ -453,48 +465,8 @@ function CoverGallery({
   );
 }
 
-function parseOptionValues(raw) {
-  if (Array.isArray(raw)) {
-    return raw.map((v) => String(v || "").trim()).filter(Boolean);
-  }
-  const text = String(raw || "").trim();
-  if (!text) return [];
-  if (text.startsWith("[")) {
-    try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        return parsed.map((v) => String(v || "").trim()).filter(Boolean);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-  return text
-    .split(/[,|\n]/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-}
-
-function uniqueNames(list) {
-  const seen = new Set();
-  const out = [];
-  for (const item of list || []) {
-    const name = String(item || "").trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(name);
-  }
-  return out;
-}
-
 function catalogValuesFor(attr, catalog) {
-  const found =
-    catalog.find((c) => String(c.id) === String(attr?.attribute_id)) ||
-    catalog.find((c) => String(c.name || "").toLowerCase() === String(attr?.name || "").toLowerCase());
-  const fromAttr = parseOptionValues(found?.option_values || found?.values?.map((v) => v.value));
-  return uniqueNames(fromAttr);
+  return catalogValuesForAttr(attr, catalog);
 }
 
 function AttributeNameSelect({ value, attributeId, catalog, takenIds, onPick }) {
@@ -540,7 +512,12 @@ function AttributeValueMultiSelect({ options, selected, onToggle, placeholder })
       style={{ border: `1px solid ${CARD_BORDER}`, backgroundColor: "#fff" }}
     >
       {selected.map((v) => (
-        <TagChip key={v} label={v} onRemove={() => onToggle(v)} />
+        <TagChip
+          key={v}
+          label={v}
+          warning={!options.some((opt) => String(opt).toLowerCase() === String(v).toLowerCase())}
+          onRemove={() => onToggle(v)}
+        />
       ))}
       <div className="relative flex-1 min-w-[160px]">
         {hasCatalog ? (
@@ -600,7 +577,7 @@ function AttributeValueMultiSelect({ options, selected, onToggle, placeholder })
           </>
         ) : (
           <p className="px-1 py-0.5 text-[12px]" style={{ color: MUTED }}>
-            {placeholder}
+            {placeholder || EMPTY_ATTRIBUTE_CATALOG_MESSAGE}
           </p>
         )}
       </div>
@@ -735,44 +712,54 @@ export default function CustomVariationCanvas({
 }) {
   const [catalog, setCatalog] = useState([]);
   const [catalogError, setCatalogError] = useState("");
+  const [catalogLoading, setCatalogLoading] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const pathRef = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const pathKey = listingCategoryPathKey(state);
 
   const attrs = state.customAttrs?.length ? state.customAttrs : defaultAttrs();
   const rows = state.customRows || [];
   const valueMedia = state.customValueMedia || {};
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      try {
+      setCatalogLoading(true);
+      const result = await loadListingAttributeCatalog(stateRef.current);
+      if (cancelled) return;
+      setCatalog(result.catalog || []);
+      if (!result.ok) {
+        setCatalogError(result.error || "Could not load attributes for this category.");
+        notifyOnFail(result.error || "Could not load attributes for this category.");
+      } else {
         setCatalogError("");
-        const query = {};
-        if (state.category_id) query.categoryId = state.category_id;
-        if (state.sub_category_id) query.subCategoryId = state.sub_category_id;
-        if (state.inner_sub_category_id) query.innerSubCategoryId = state.inner_sub_category_id;
-        if (!query.categoryId) {
-          setCatalog([]);
-          return;
-        }
-        const attrRes = await getAllAttributes(query, { silent: true });
-        const list = Array.isArray(attrRes?.data) ? attrRes.data : [];
-        const seen = new Set();
-        setCatalog(
-          list.filter((a) => {
-            if (a?.id == null || seen.has(a.id)) return false;
-            seen.add(a.id);
-            return true;
-          }),
-        );
-        if (attrRes?.status === 0) {
-          setCatalogError(attrRes?.message || "Could not load attributes for this category.");
-        }
-      } catch {
-        setCatalog([]);
-        setCatalogError("Could not load attributes for this category.");
-        notifyOnFail("Could not load attributes for this category.");
       }
+      const prevPath = pathRef.current;
+      pathRef.current = pathKey;
+      if (prevPath != null && prevPath !== pathKey) {
+        const currentAttrs = stateRef.current.customAttrs?.length
+          ? stateRef.current.customAttrs
+          : defaultAttrs();
+        const pruned = pruneCustomAttrsToCatalog(currentAttrs, result.catalog || [], {
+          dropInvalid: true,
+        });
+        if (pruned.dropped.length) {
+          patch({ customAttrs: pruned.attrs });
+          notifyOnWarning({
+            title: "Options updated for this category",
+            message:
+              "Some selected attribute values are not available for this category and were cleared.",
+          });
+        }
+      }
+      setCatalogLoading(false);
     })();
-  }, [state.category_id, state.sub_category_id, state.inner_sub_category_id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [pathKey, patch]);
 
   const setAttrs = (customAttrs) => patch({ customAttrs });
   const updateAttr = (index, partial) => {
@@ -943,14 +930,14 @@ export default function CustomVariationCanvas({
           <p className="text-[12px] mt-1 mb-3" style={{ color: MUTED }}>
             Choose attributes already created by admin for this category. Size and Colour are separate attributes. Values are multi-select from that catalog only.
           </p>
-          {catalogError ? (
-            <p className="text-[12px] text-rose-600 mb-2">{catalogError}</p>
-          ) : null}
-          {!catalog.length && !catalogError ? (
-            <p className="text-[12px] mb-2" style={{ color: MUTED }}>
-              No attributes apply to this category yet. Ask admin to create them under Product → Attributes.
-            </p>
-          ) : null}
+          <div className="mb-2">
+            <CatalogPathStatus
+              loading={catalogLoading}
+              error={catalogError}
+              empty={!catalog.length && !catalogError && !catalogLoading}
+              emptyMessage="No attributes apply to this category yet. Add values in Admin → Attributes for this category."
+            />
+          </div>
           <div className="space-y-2.5 max-h-[460px] overflow-y-auto pr-0.5">
             {attrs.map((attr, ai) => {
               const values = customAttrValues(attr);
@@ -998,7 +985,7 @@ export default function CustomVariationCanvas({
                           ? "Select an attribute first"
                           : options.length
                             ? "Select values"
-                            : "No values set by admin"
+                            : "Add values in Admin → Attributes for this category"
                       }
                       onToggle={(value) => {
                         if (values.some((v) => v.toLowerCase() === value.toLowerCase())) {
