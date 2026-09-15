@@ -319,6 +319,36 @@ const AddEditProduct = () => {
   ]);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const query = {};
+      if (formData.category_id) {
+        query.cat_id = formData.category_id;
+        query.categoryId = formData.category_id;
+      }
+      if (formData.sub_category_id) {
+        query.sub_cat_id = formData.sub_category_id;
+        query.subCategoryId = formData.sub_category_id;
+      }
+      if (formData.inner_sub_category_id) {
+        query.inner_sub_cat_id = formData.inner_sub_category_id;
+        query.innerSubCategoryId = formData.inner_sub_category_id;
+      }
+      const res = await getAllAttributes(query, { silent: true });
+      if (!cancelled) {
+        setAttributes(uniqueById(res?.status === 1 ? res.data : []));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    formData.category_id,
+    formData.sub_category_id,
+    formData.inner_sub_category_id,
+  ]);
+
+  useEffect(() => {
     const getAllFabrics = async () => {
       const query = {};
       if (formData.category_id) query.categoryId = formData.category_id;
