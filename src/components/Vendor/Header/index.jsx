@@ -1,29 +1,122 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Search, Bell, Menu, X, Mail } from "lucide-react";
-import { RiVerifiedBadgeFill } from "react-icons/ri";
-import { FaUserCircle } from "react-icons/fa";
-import { IoMdNotifications } from "react-icons/io";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import DatePicker from "react-datepicker";
+import { format } from "date-fns";
+import {
+  Bell,
+  CalendarDays,
+  ChevronDown,
+  Menu,
+  MessageCircle,
+  Search,
+  X,
+} from "lucide-react";
 import { useAppContext } from "../../../context/AppContext";
 import { getNotificationPreview } from "../../../services/api.notification";
+import "react-datepicker/dist/react-datepicker.css";
 
-const Header = ({ sidebarOpen, setSidebarOpen, sidebarExpanded = false }) => {
+const greetingForHour = (hour) => {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+};
+
+const shopLabel = (user) =>
+  user?.shopName ||
+  user?.shop_name ||
+  user?.brand_name ||
+  user?.shop ||
+  user?.name ||
+  "Selling Partner";
+
+const initialsOf = (name) => {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "S";
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+};
+
+const formatRange = (from, to) => {
+  if (!from) return "Select dates";
+  if (!to) return format(from, "MMM d, yyyy");
+  return `${format(from, "MMM d")} – ${format(to, "MMM d, yyyy")}`;
+};
+
+const RangeButton = React.forwardRef(function RangeButton(
+  { onClick, display },
+  ref,
+) {
+  return (
+    <button
+      type="button"
+      ref={ref}
+      onClick={onClick}
+      className="inline-flex h-[31px] shrink-0 items-center gap-2 rounded-full border border-[#E6E8EE] bg-white px-3 text-[12px] font-medium text-[#374151] hover:bg-gray-50"
+    >
+      <span className="whitespace-nowrap">{display}</span>
+      <CalendarDays className="h-4 w-4 text-[#9CA3AF]" strokeWidth={1.75} />
+    </button>
+  );
+});
+
+const CalendarIconButton = React.forwardRef(function CalendarIconButton(
+  { onClick, title },
+  ref,
+) {
+  return (
+    <button
+      type="button"
+      ref={ref}
+      onClick={onClick}
+      className="flex h-[31px] w-[31px] items-center justify-center text-[#4B5563]"
+      title={title}
+    >
+      <CalendarDays className="h-5 w-5" />
+    </button>
+  );
+});
+
+const Header = ({
+  sidebarOpen,
+  setSidebarOpen,
+  sidebarExpanded = false,
+  dateRange,
+  onDateRangeChange,
+}) => {
   const { user } = useAppContext();
+  const navigate = useNavigate();
   const [searchValue, setSearchValue] = useState("");
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [notifications, setNotifications] = useState([]);
-
   const searchRef = useRef(null);
+  const mobileSearchRef = useRef(null);
   const notificationRef = useRef(null);
+  const profileRef = useRef(null);
+
+  const greeting = useMemo(() => greetingForHour(new Date().getHours()), []);
+  const shop = shopLabel(user);
+  const initials = initialsOf(shop);
+  const avatarSrc = user?.avatar || user?.profile_pic || user?.userAvatar || "";
+  const from = dateRange?.from || null;
+  const to = dateRange?.to || null;
 
   useEffect(() => {
     const fetchNotificationPreview = async () => {
-      const res = await getNotificationPreview(user.id);
-      res && setNotifications(res.data);
+      if (!user?.id) return;
+      const res = await getNotificationPreview(user.id, { silent: true });
+      if (res?.data) setNotifications(res.data);
     };
-    showNotifications && fetchNotificationPreview();
-  }, [showNotifications, user.id]);
+    fetchNotificationPreview();
+  }, [user?.id]);
 
-  // Handle click outside to close dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -32,129 +125,152 @@ const Header = ({ sidebarOpen, setSidebarOpen, sidebarExpanded = false }) => {
       ) {
         setShowNotifications(false);
       }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setShowProfile(false);
+      }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle search
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (window.matchMedia("(min-width: 768px)").matches) {
+          searchRef.current?.focus();
+        } else {
+          setMobileSearchOpen(true);
+          setTimeout(() => mobileSearchRef.current?.focus(), 0);
+        }
+      }
+      if (e.key === "Escape") setMobileSearchOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const unreadCount = (notifications || []).filter(
+    (n) => n.unread || n.is_read === false || n.is_read === 0,
+  ).length;
+
   const handleSearch = (e) => {
     e.preventDefault();
-    console.log("Searching for:", searchValue);
+    const q = searchValue.trim();
+    setMobileSearchOpen(false);
+    navigate(q ? `/product/list?q=${encodeURIComponent(q)}` : "/product/list");
   };
 
-  const unreadCount = notifications?.filter((n) => n.unread).length;
+  const searchField = (inputRef) => (
+    <label className="relative block w-full">
+      <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9CA3AF]" />
+      <input
+        ref={inputRef}
+        type="text"
+        value={searchValue}
+        onChange={(e) => setSearchValue(e.target.value)}
+        placeholder="Search orders, products, SKU, customers..."
+        className="h-[31px] w-full rounded-full border border-[#E6E8EE] bg-[#F9FAFB] pl-10 pr-14 text-[12px] text-[#111827] outline-none placeholder:text-[#9CA3AF] focus:border-[#D1D5DB] focus:bg-white"
+      />
+      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-[#E5E7EB] bg-white px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[#9CA3AF]">
+        ⌘K
+      </span>
+    </label>
+  );
 
   return (
     <header
-      className={`h-10 fixed top-0 left-0 right-0 z-20 bg-white border-b border-gray-200 transition-[margin] duration-150 ease-out ${
+      className={`fixed top-0 left-0 right-0 z-20 h-[55px] border-b border-[#EEF0F4] bg-white transition-[margin] duration-150 ease-out ${
         sidebarExpanded ? "lg:ml-56" : "lg:ml-[72px]"
       }`}
     >
-      <div className="flex items-center justify-end h-full px-4">
-        {/* Menu Toggle Button - Only visible on mobile */}
-        <button
-          onClick={() => setSidebarOpen(!sidebarOpen)}
-          className="lg:hidden p-1 rounded-lg hover:bg-gray-100 transition-colors"
-        >
-          {sidebarOpen ? (
-            <X className="w-5 h-5 text-gray-700" />
-          ) : (
-            <Menu className="w-5 h-5 text-gray-700" />
-          )}
-        </button>
-
-        {/* Search Bar - Left Side */}
-        {/* <div className="relative flex-1 max-w-md">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              ref={searchRef}
-              type="text"
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch(e);
-                }
-              }}
-              placeholder="Search product"
-              className="w-full py-3 pl-12 pr-4 rounded-full border border-gray-200 bg-gray-50 focus:outline-none focus:bg-white focus:border-gray-300 placeholder:text-gray-400 text-sm transition-all"
-            />
+      <div className="hidden h-full items-center gap-6 px-6 md:grid md:grid-cols-[minmax(0,1fr)_minmax(280px,420px)_minmax(0,1fr)]">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="rounded-lg p-1 hover:bg-gray-100 lg:hidden"
+          >
+            {sidebarOpen ? (
+              <X className="h-5 w-5 text-gray-700" />
+            ) : (
+              <Menu className="h-5 w-5 text-gray-700" />
+            )}
+          </button>
+          <div className="min-w-0">
+            <h1 className="truncate font-satoshi text-[15px] font-semibold leading-tight text-[#111827] lg:text-[17px]">
+              {greeting}, {shop} <span aria-hidden="true">👋</span>
+            </h1>
+            <p className="truncate font-satoshi text-[10px] text-[#9CA3AF]">
+              Here&apos;s what&apos;s happening with your business today.
+            </p>
           </div>
-        </div> */}
+        </div>
 
-        {/* Right Section - Icons and User Profile */}
-        <div className="flex items-center space-x-2 ml-3">
-          {/* Message Icon */}
-          {/* <button className="relative p-2 rounded-full hover:bg-gray-100 transition-colors">
-            <Mail className="w-6 h-6 text-gray-600" />
-            <span className="absolute top-1.5 right-1.5 flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
-              2
-            </span>
-          </button> */}
+        <form onSubmit={handleSearch} className="w-full">
+          {searchField(searchRef)}
+        </form>
 
-          {/* Notifications */}
+        <div className="flex items-center justify-end gap-2.5">
+          {onDateRangeChange ? (
+            <DatePicker
+              selectsRange
+              startDate={from}
+              endDate={to}
+              onChange={(dates) => {
+                const [start, end] = dates;
+                onDateRangeChange({ from: start, to: end });
+              }}
+              maxDate={new Date()}
+              customInput={<RangeButton display={formatRange(from, to)} />}
+              popperClassName="z-[60]"
+              popperPlacement="bottom-end"
+            />
+          ) : null}
+
           <div className="relative" ref={notificationRef}>
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-1 rounded-full hover:bg-gray-100 transition-colors"
+              type="button"
+              onClick={() => {
+                setShowNotifications((v) => !v);
+                setShowProfile(false);
+              }}
+              className="relative flex h-[31px] w-[31px] items-center justify-center text-[#4B5563] hover:text-[#111827]"
+              title="Notifications"
             >
-              <Bell className="w-5 h-5 text-gray-600" />
+              <Bell className="h-5 w-5" strokeWidth={1.75} />
               {unreadCount > 0 && (
-                <span className="absolute top-0.5 right-0.5 flex items-center justify-center min-w-[14px] h-[14px] bg-red-500 text-white text-[9px] font-semibold rounded-full px-0.5">
-                  {unreadCount}
-                </span>
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#EF4444]" />
               )}
             </button>
-
-            {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 py-2 z-50">
-                <div className="px-4 py-3 border-b border-gray-100">
+              <div className="absolute right-0 z-50 mt-2 w-80 rounded-xl border border-gray-200 bg-white py-2 shadow-xl">
+                <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
                   <h3 className="font-semibold text-gray-800">Notifications</h3>
-                  {unreadCount > 0 && (
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {unreadCount} unread
-                    </p>
-                  )}
+                  <Link
+                    to="/notifications"
+                    onClick={() => setShowNotifications(false)}
+                    className="text-xs text-[#FF6012]"
+                  >
+                    View all
+                  </Link>
                 </div>
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-80 overflow-y-auto">
                   {notifications.length > 0 ? (
-                    notifications.map((notification) => (
-                      <a
-                        href="notifications"
+                    notifications.slice(0, 6).map((notification) => (
+                      <Link
+                        to="/notifications"
                         key={notification.id}
-                        onClick={(e) => {
-                          if (
-                            window.location.pathname.endsWith("notifications")
-                          ) {
-                            e.preventDefault();
-                          }
-                        }}
-                        className={`px-4 py-3 hover:bg-gray-50 cursor-pointer flex items-start gap-3 transition-colors ${
-                          notification.unread ? "bg-blue-50/50" : ""
-                        }`}
+                        onClick={() => setShowNotifications(false)}
+                        className="block px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
                       >
-                        <div className="flex-1">
-                          <p
-                            className={`text-sm ${
-                              notification.unread
-                                ? "font-medium text-gray-900"
-                                : "text-gray-600"
-                            }`}
-                          >
-                            {notification.text}
-                          </p>
-                        </div>
-                        {notification.unread && (
-                          <span className="w-2 h-2 bg-blue-600 rounded-full mt-1.5 flex-shrink-0" />
-                        )}
-                      </a>
+                        {notification.text ||
+                          notification.title ||
+                          notification.message}
+                      </Link>
                     ))
                   ) : (
-                    <div className="px-4 py-8 text-center text-gray-500 text-sm">
+                    <div className="px-4 py-8 text-center text-sm text-gray-500">
                       No notifications
                     </div>
                   )}
@@ -163,43 +279,155 @@ const Header = ({ sidebarOpen, setSidebarOpen, sidebarExpanded = false }) => {
             )}
           </div>
 
-          {/* Divider */}
-          <div className="hidden md:block w-px h-5 bg-gray-200" />
+          <Link
+            to="/chat"
+            className="relative flex h-[31px] w-[31px] items-center justify-center text-[#4B5563] hover:text-[#111827]"
+            title="Chat"
+          >
+            <MessageCircle className="h-5 w-5" strokeWidth={1.75} />
+            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#EF4444]" />
+          </Link>
 
-          {/* User Profile Section */}
-          <div className="hidden md:flex items-center gap-2">
-            <div className="relative w-7 h-7 rounded-full flex-shrink-0">
-              {user?.avatar ? (
+          <div className="relative" ref={profileRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setShowProfile((v) => !v);
+                setShowNotifications(false);
+              }}
+              className="flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-1 hover:bg-gray-50"
+              title={shop}
+            >
+              {avatarSrc ? (
                 <img
-                  src={user?.avatar}
-                  alt="User Profile"
-                  className="w-full h-full object-cover rounded-full border-2 border-gray-100"
+                  src={avatarSrc}
+                  alt={shop}
+                  className="h-7 w-7 rounded-full object-cover"
                 />
               ) : (
-                <FaUserCircle className="w-full h-full text-gray-400 rounded-full" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#EEF2FF] text-[10px] font-semibold text-[#4F46E5]">
+                  {initials}
+                </span>
               )}
-            </div>
-            <div className="flex flex-col justify-center">
-              <h2 className="font-semibold text-gray-900 text-xs leading-tight">
-                {user?.shopName || user?.shop_name || user?.name || "Selling Partner"}
-              </h2>
-            </div>
-          </div>
-
-          {/* Mobile User Profile */}
-          <div className="md:hidden relative w-7 h-7 rounded-full flex-shrink-0">
-            {user?.avatar ? (
-              <img
-                src={user?.avatar}
-                alt="User Profile"
-                className="w-full h-full object-cover rounded-full border-2 border-gray-100"
-              />
-            ) : (
-              <FaUserCircle className="w-full h-full text-gray-400 rounded-full" />
+              <ChevronDown className="h-3.5 w-3.5 text-[#9CA3AF]" />
+            </button>
+            {showProfile && (
+              <div className="absolute right-0 z-50 mt-2 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-xl">
+                <Link
+                  to="/profile"
+                  onClick={() => setShowProfile(false)}
+                  className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Profile
+                </Link>
+                <Link
+                  to="/settings"
+                  onClick={() => setShowProfile(false)}
+                  className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Settings
+                </Link>
+                <Link
+                  to="/logout"
+                  onClick={() => setShowProfile(false)}
+                  className="block px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                >
+                  Logout
+                </Link>
+              </div>
             )}
           </div>
         </div>
       </div>
+
+      <div className="flex h-full items-center gap-2 px-4 md:hidden">
+        <button
+          type="button"
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+          className="rounded-lg p-1 hover:bg-gray-100"
+        >
+          {sidebarOpen ? (
+            <X className="h-5 w-5 text-gray-700" />
+          ) : (
+            <Menu className="h-5 w-5 text-gray-700" />
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate font-satoshi text-[14px] font-semibold text-[#111827]">
+            {greeting}, {shop} <span aria-hidden="true">👋</span>
+          </h1>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setMobileSearchOpen(true);
+            setTimeout(() => mobileSearchRef.current?.focus(), 0);
+          }}
+          className="flex h-[31px] w-[31px] items-center justify-center text-[#4B5563]"
+          title="Search"
+        >
+          <Search className="h-5 w-5" />
+        </button>
+        {onDateRangeChange ? (
+          <DatePicker
+            selectsRange
+            startDate={from}
+            endDate={to}
+            onChange={(dates) => {
+              const [start, end] = dates;
+              onDateRangeChange({ from: start, to: end });
+            }}
+            maxDate={new Date()}
+            customInput={<CalendarIconButton title={formatRange(from, to)} />}
+            popperClassName="z-[60]"
+            popperPlacement="bottom-end"
+          />
+        ) : null}
+        <Link
+          to="/notifications"
+          className="relative flex h-[31px] w-[31px] items-center justify-center text-[#4B5563]"
+        >
+          <Bell className="h-5 w-5" />
+          {unreadCount > 0 && (
+            <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#EF4444]" />
+          )}
+        </Link>
+        <Link
+          to="/chat"
+          className="relative flex h-[31px] w-[31px] items-center justify-center text-[#4B5563]"
+        >
+          <MessageCircle className="h-5 w-5" />
+          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[#EF4444]" />
+        </Link>
+        <Link to="/profile" className="flex items-center">
+          {avatarSrc ? (
+            <img
+              src={avatarSrc}
+              alt={shop}
+              className="h-7 w-7 rounded-full object-cover"
+            />
+          ) : (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#EEF2FF] text-[10px] font-semibold text-[#4F46E5]">
+              {initials}
+            </span>
+          )}
+        </Link>
+      </div>
+
+      {mobileSearchOpen && (
+        <div className="absolute inset-x-0 top-0 z-30 flex h-[55px] items-center gap-2 border-b border-[#EEF0F4] bg-white px-4 md:hidden">
+          <form onSubmit={handleSearch} className="flex-1">
+            {searchField(mobileSearchRef)}
+          </form>
+          <button
+            type="button"
+            onClick={() => setMobileSearchOpen(false)}
+            className="text-sm text-[#6B7280]"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </header>
   );
 };

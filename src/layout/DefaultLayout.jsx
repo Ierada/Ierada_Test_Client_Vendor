@@ -27,6 +27,7 @@ import {
   isVendorPaymentsSectionPath,
   isVendorPaymentDetailPath,
 } from "../config/paymentsSection";
+import { lastSevenDays } from "../components/Vendor/Dashboard/dashboardDates";
 
 const VendorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -36,6 +37,7 @@ const VendorLayout = () => {
   );
   const leaveTimerRef = useRef(null);
   const location = useLocation();
+  const [dateRange, setDateRange] = useState(lastSevenDays);
   const { user } = useAppContext();
   const counts = useSidebarCounts(user);
   const expanded = isLg ? railHover : sidebarOpen;
@@ -148,11 +150,13 @@ const VendorLayout = () => {
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
             sidebarExpanded={expanded}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
           />
         )}
 
         <main
-          className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-10"}`}
+          className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-[55px]"}`}
         >
           <div className={smartListingCanvas ? "" : "mx-auto max-w-screen-2xl"}>
             {sectionPills ? (
@@ -162,7 +166,7 @@ const VendorLayout = () => {
                 items={sectionPills.items}
               />
             ) : null}
-            <Outlet />
+            <Outlet context={{ dateRange, setDateRange }} />
           </div>
         </main>
       </div>
