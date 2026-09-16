@@ -34,7 +34,7 @@ import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
 import { resolveCategoryGst } from "../../../services/api.categoryGst";
-import { getBulkListingWizardJob, stageBulkListingImages, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
+import { getBulkListingWizardJob, stageBulkListingImages, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
 import ValidateDataStep, { AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
@@ -1276,159 +1276,99 @@ export default function BulkListingWizard({
       0,
     );
     const startedAt = Date.now();
-    let processingTimer = null;
-    let heartbeatTimer = null;
-    const stopTicks = () => {
-      if (processingTimer) {
-        clearInterval(processingTimer);
-        processingTimer = null;
-      }
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-    };
-    const startProcessingTick = () => {
-      if (processingTimer) return;
-      if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-      }
-      const processStart = Date.now();
-      const estMs = Math.max(
-        10000,
-        Math.round((expectedBytes / (5 * 1024 * 1024)) * 1000),
-      );
-      const tick = () => {
-        const elapsed = Date.now() - processStart;
-        const ratio = Math.min(0.97, elapsed / estMs);
-        setUploadProgress({
-          percent: Math.round(90 + ratio * 9),
-          label: zipFiles.length
-            ? "Unpacking ZIP and storing images…"
-            : "Storing images on the server…",
-          eta: formatEta(Math.max(0, (estMs - elapsed) / 1000)),
-          detail: zipFiles.length
-            ? `${label} · ${formatBytes(expectedBytes)}`
-            : "Keep this page open until storing finishes.",
-        });
-      };
-      tick();
-      processingTimer = setInterval(tick, 400);
-    };
-    const uploadEstMs = Math.max(8000, (expectedBytes / (350 * 1024)) * 1000);
-    heartbeatTimer = setInterval(() => {
-      if (processingTimer) return;
-      const elapsed = Date.now() - startedAt;
-      if (elapsed > uploadEstMs * 0.92) {
-        startProcessingTick();
-        return;
-      }
-      const pct = Math.min(88, Math.round((elapsed / uploadEstMs) * 88));
-      setUploadProgress((prev) => {
-        if (prev && Number(prev.percent) >= pct) return prev;
-        return {
-          percent: pct,
-          label: zipFiles.length ? `Uploading ${label}…` : "Uploading images…",
-          eta: formatEta((uploadEstMs - elapsed) / 1000),
-          detail: expectedBytes
-            ? `${formatBytes(expectedBytes)} ZIP/images`
-            : "Uploading…",
-        };
+    // Bytes on the wire drive 0–85%; the server's stored/total drives 85–99%.
+    let sentBytes = 0;
+    const reportUpload = (bytesInCurrent, what) => {
+      const done = Math.min(expectedBytes, sentBytes + Math.max(0, bytesInCurrent));
+      const elapsed = Math.max(0.2, (Date.now() - startedAt) / 1000);
+      const rate = done / elapsed;
+      setUploadProgress({
+        percent: expectedBytes
+          ? Math.min(85, Math.round((done / expectedBytes) * 85))
+          : 0,
+        label: `Uploading ${what}…`,
+        eta: rate > 1 ? formatEta((expectedBytes - done) / rate) : "",
+        detail: `${formatBytes(done)} of ${formatBytes(expectedBytes)}`,
       });
-    }, 400);
+    };
+    const reportUnpack = (progress) => {
+      const total = Number(progress?.total) || 0;
+      const stored = Number(progress?.stored) || 0;
+      setUploadProgress({
+        percent: total
+          ? Math.min(99, 85 + Math.round((stored / Math.max(total, 1)) * 14))
+          : 86,
+        label: "Unpacking ZIP and storing images…",
+        eta:
+          total && stored < total
+            ? `${total - stored} image${total - stored === 1 ? "" : "s"} left`
+            : "Finishing up…",
+        detail: total
+          ? `${stored} of ${total} images stored`
+          : `${label} · ${formatBytes(expectedBytes)}`,
+      });
+    };
     setUploadProgress({
       percent: 0,
-      label: zipFiles.length ? `Uploading ${label}…` : "Uploading images…",
-      eta: expectedBytes ? formatEta(Math.max(8, expectedBytes / (400 * 1024))) : "",
+      label: `Uploading ${label}…`,
+      eta: "",
       detail: expectedBytes ? `0 B of ${formatBytes(expectedBytes)}` : "Starting upload…",
     });
     try {
-      const CHUNK = 20;
       let currentJob = jobId;
       let lastSummary = null;
       let lastRes = null;
-      const batches = [];
-      if (files.length) {
-        for (let i = 0; i < files.length; i += CHUNK) {
-          batches.push({
-            files: files.slice(i, i + CHUNK),
-            zips: i === 0 ? zipFiles : [],
-            label: `${Math.min(i + CHUNK, files.length)} of ${files.length}`,
-          });
-        }
-      } else {
-        batches.push({ files: [], zips: zipFiles, label: zipFiles[0]?.name || "ZIP" });
-      }
-      for (let b = 0; b < batches.length; b += 1) {
-        const batch = batches[b];
-        const batchBytes = [...batch.files, ...batch.zips].reduce(
-          (sum, file) => sum + (Number(file.size) || 0),
-          0,
-        );
-        setBusy(`Uploading images… ${batch.label}`);
+
+      const CHUNK = 20;
+      for (let i = 0; i < files.length; i += CHUNK) {
+        const batch = files.slice(i, i + CHUNK);
+        const batchBytes = batch.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
+        const batchLabel = `${Math.min(i + CHUNK, files.length)} of ${files.length}`;
+        setBusy(`Uploading images… ${batchLabel}`);
         const res = await stageBulkListingImages({
           jobId: currentJob,
           vendorId,
-          files: batch.files,
-          zips: batch.zips,
-          onProgress: ({ percent, loaded, total }) => {
-            const knownTotal = Number(total) || batchBytes || expectedBytes;
-            const knownLoaded = Number(loaded) || 0;
-            const batchPct = knownTotal
-              ? Math.min(100, Math.round((knownLoaded / knownTotal) * 100))
-              : Number(percent) || 0;
-            if (batchPct >= 100) {
-              startProcessingTick();
-              return;
-            }
-            const elapsed = Math.max(0.2, (Date.now() - startedAt) / 1000);
-            const rate = knownLoaded / elapsed;
-            const remainBytes = Math.max(0, knownTotal - knownLoaded);
-            const overall = Math.round(((b + batchPct / 100) / batches.length) * 90);
-            setUploadProgress({
-              percent: overall,
-              label: `Uploading ${batch.label}`,
-              eta: knownTotal ? formatEta(remainBytes / Math.max(rate, 1)) : "",
-              detail: knownTotal
-                ? `${formatBytes(knownLoaded)} of ${formatBytes(knownTotal)}`
-                : "Uploading…",
-            });
-          },
+          files: batch,
+          zips: [],
+          onProgress: ({ loaded }) =>
+            reportUpload(Math.min(Number(loaded) || 0, batchBytes), batchLabel),
         });
         if (res?.status !== 1) throw new Error(res?.message || "Upload failed");
         currentJob = res.data.job_id;
         setJobId(currentJob);
-        let finished = res;
-        if (res?.data?.processing) {
-          startProcessingTick();
-          finished = await waitForStagedBulkListingImages(currentJob, {
-            onProgress: (progress) => {
-              const total = Number(progress?.total) || 0;
-              const stored = Number(progress?.stored) || 0;
-              const pct = total
-                ? Math.min(99, 90 + Math.round((stored / Math.max(total, 1)) * 9))
-                : 99;
-              setUploadProgress({
-                percent: pct,
-                label: total
-                  ? `Unpacking ZIP and storing images… ${stored} of ${total}`
-                  : "Unpacking ZIP and storing images…",
-                eta:
-                  total && stored < total
-                    ? `${total - stored} image${total - stored === 1 ? "" : "s"} left`
-                    : "Working…",
-                detail: `${label} · ${formatBytes(expectedBytes)}`,
-              });
-            },
-          });
-        }
-        stopTicks();
+        sentBytes += batchBytes;
+        lastSummary = res.data.summary;
+        lastRes = res;
+        mergeImageSummary(lastSummary, localBySku);
+      }
+
+      for (const zip of zipFiles) {
+        const zipBytes = Number(zip.size) || 0;
+        setBusy(`Uploading ${zip.name}…`);
+        const res = await uploadBulkListingZipInChunks({
+          jobId: currentJob,
+          vendorId,
+          file: zip,
+          onProgress: ({ loaded }) =>
+            reportUpload(Math.min(Number(loaded) || 0, zipBytes), zip.name),
+        });
+        if (res?.status !== 1) throw new Error(res?.message || "ZIP upload failed");
+        currentJob = res.data.job_id;
+        setJobId(currentJob);
+        sentBytes += zipBytes;
+        setBusy("Unpacking ZIP…");
+        reportUnpack(res.data.progress);
+        const finished = await waitForStagedBulkListingImages(currentJob, {
+          onProgress: reportUnpack,
+        });
         lastSummary = finished.data.summary;
         lastRes = finished;
         mergeImageSummary(lastSummary, localBySku);
       }
       setUploadProgress({ percent: 100, label: "Upload complete" });
+      // Let the AI pass run again now that photos are mapped to SKUs.
+      lastAiKey.current = "";
+      lastRecoverKey.current = "";
       const mapped = Object.keys(mergeImagesBySku(localBySku, lastSummary?.by_sku || {})).length;
       const stored = Number(lastSummary?.total_images || mapped);
       const ignored = Number(lastSummary?.ignored || 0);
@@ -1458,7 +1398,6 @@ export default function BulkListingWizard({
         notifyOnFail(detail);
       }
     } finally {
-      stopTicks();
       setBusy("");
       setTimeout(() => setUploadProgress(null), 600);
     }
@@ -1646,8 +1585,10 @@ export default function BulkListingWizard({
         }
 
         const extras = customAttributeState(working);
+        // ZIP uploads leave no File handles, so pull the cover back from the
+        // staged copy before both the category guess and the copy draft.
+        const coverFile = await fileFromCover(cover, localCover);
         if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
-          const coverFile = await fileFromCover(cover, localCover);
           if (coverFile) {
             try {
               const payload = await fileToSuggestPayload(coverFile);
@@ -1739,7 +1680,7 @@ export default function BulkListingWizard({
             original_price: working.mrp,
             discounted_price: working.selling_price,
             countryOfOrigin: working.country_of_origin || "India",
-            files: localCover ? [localCover] : [],
+            files: coverFile ? [coverFile] : [],
             existingMedia: images.map((img) => ({ url: wizardImageSrc(img) })),
             extraNotes: extras.extraNotes,
             customRows: extras.customRows,

@@ -71,6 +71,65 @@ export async function stageBulkListingImages({
   return res.data;
 }
 
+const ZIP_CHUNK_BYTES = 6 * 1024 * 1024;
+
+/**
+ * Sends a ZIP in slices. A single large POST stalls behind the proxy and the
+ * bar freezes, so each slice is its own request and progress is real bytes.
+ */
+export async function uploadBulkListingZipInChunks({
+  jobId,
+  vendorId,
+  file,
+  onProgress,
+  signal,
+}) {
+  const total = Number(file?.size) || 0;
+  const chunks = Math.max(1, Math.ceil(total / ZIP_CHUNK_BYTES));
+  const uploadId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  let currentJob = jobId || "";
+  let last = null;
+
+  for (let index = 0; index < chunks; index += 1) {
+    const start = index * ZIP_CHUNK_BYTES;
+    const end = Math.min(total, start + ZIP_CHUNK_BYTES);
+    const fd = new FormData();
+    fd.append("chunk", file.slice(start, end), `${file.name}.part${index}`);
+    fd.append("upload_id", uploadId);
+    fd.append("chunk_index", String(index));
+    fd.append("total_chunks", String(chunks));
+    fd.append("filename", file.name || "images.zip");
+    if (currentJob) fd.append("job_id", currentJob);
+    if (vendorId) fd.append("vendor_id", String(vendorId));
+
+    const res = await apiClient.post(
+      currentJob
+        ? `/bulk-listing-wizard/jobs/${currentJob}/zip-chunk`
+        : "/bulk-listing-wizard/zip-chunk",
+      fd,
+      {
+        timeout: 0,
+        signal,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+        onUploadProgress: (ev) => {
+          if (typeof onProgress !== "function") return;
+          const inChunk = Math.min(Number(ev.loaded) || 0, end - start);
+          onProgress({ loaded: Math.min(total, start + inChunk), total });
+        },
+      },
+    );
+    if (res.data?.status !== 1) {
+      throw new Error(res.data?.message || "ZIP upload failed");
+    }
+    currentJob = res.data.data?.job_id || currentJob;
+    last = res.data;
+    if (typeof onProgress === "function") onProgress({ loaded: end, total });
+  }
+
+  return last;
+}
+
 export async function waitForStagedBulkListingImages(
   jobId,
   { onProgress, timeoutMs = 15 * 60 * 1000 } = {},
