@@ -56,12 +56,14 @@ export async function stageBulkListingImages({
       maxContentLength: Infinity,
       onUploadProgress: (ev) => {
         if (typeof onProgress !== "function") return;
-        const total = Number(ev.total) || 0;
         const loaded = Number(ev.loaded) || 0;
+        const reported = Number(ev.total) || 0;
         onProgress({
           loaded,
-          total,
-          percent: total ? Math.min(100, Math.round((loaded / total) * 100)) : 0,
+          total: reported,
+          percent: reported
+            ? Math.min(100, Math.round((loaded / reported) * 100))
+            : 0,
         });
       },
     },

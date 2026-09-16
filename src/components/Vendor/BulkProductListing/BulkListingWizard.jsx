@@ -222,20 +222,41 @@ function PreviewImageCell({ images, compact = false }) {
   );
 }
 
+function formatEta(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "";
+  if (seconds < 8) return "a few seconds left";
+  if (seconds < 60) return `about ${Math.round(seconds)}s left`;
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+  return minutes === 1 ? "about 1 min left" : `about ${minutes} min left`;
+}
+
+function formatBytes(n) {
+  const value = Number(n) || 0;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function UploadProgressBar({ progress }) {
   if (!progress) return null;
   const pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
   return (
     <div className="mt-4 rounded-xl border border-[#FDE4D8] bg-white p-3">
-      <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-[#1A2B48]">
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-semibold text-[#1A2B48]">
         <span>{progress.label || "Uploading images…"}</span>
-        <span className="text-[#F56C43]">{pct}%</span>
+        <span className="shrink-0 text-[#F56C43]">{pct}%</span>
       </div>
       <div className="h-2 overflow-hidden rounded-full bg-gray-100">
         <div
           className="h-2 rounded-full bg-[#F56C43] transition-[width] duration-150"
           style={{ width: `${pct}%` }}
         />
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500">
+        <span>{progress.detail || "Keep this page open until the upload finishes."}</span>
+        {progress.eta ? (
+          <span className="font-semibold text-[#1A2B48]">{progress.eta}</span>
+        ) : null}
       </div>
     </div>
   );
@@ -1250,7 +1271,78 @@ export default function BulkListingWizard({
     }
     setImageSourceName(label);
     setBusy("Uploading images…");
-    setUploadProgress({ percent: 0, label: "Uploading images…" });
+    const expectedBytes = [...files, ...zipFiles].reduce(
+      (sum, file) => sum + (Number(file.size) || 0),
+      0,
+    );
+    const startedAt = Date.now();
+    let processingTimer = null;
+    let heartbeatTimer = null;
+    const stopTicks = () => {
+      if (processingTimer) {
+        clearInterval(processingTimer);
+        processingTimer = null;
+      }
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
+    const startProcessingTick = () => {
+      if (processingTimer) return;
+      if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      const processStart = Date.now();
+      const estMs = Math.max(
+        10000,
+        Math.round((expectedBytes / (5 * 1024 * 1024)) * 1000),
+      );
+      const tick = () => {
+        const elapsed = Date.now() - processStart;
+        const ratio = Math.min(0.97, elapsed / estMs);
+        setUploadProgress({
+          percent: Math.round(90 + ratio * 9),
+          label: zipFiles.length
+            ? "Unpacking ZIP and storing images…"
+            : "Storing images on the server…",
+          eta: formatEta(Math.max(0, (estMs - elapsed) / 1000)),
+          detail: zipFiles.length
+            ? `${label} · ${formatBytes(expectedBytes)}`
+            : "Keep this page open until storing finishes.",
+        });
+      };
+      tick();
+      processingTimer = setInterval(tick, 400);
+    };
+    const uploadEstMs = Math.max(8000, (expectedBytes / (350 * 1024)) * 1000);
+    heartbeatTimer = setInterval(() => {
+      if (processingTimer) return;
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > uploadEstMs * 0.92) {
+        startProcessingTick();
+        return;
+      }
+      const pct = Math.min(88, Math.round((elapsed / uploadEstMs) * 88));
+      setUploadProgress((prev) => {
+        if (prev && Number(prev.percent) >= pct) return prev;
+        return {
+          percent: pct,
+          label: zipFiles.length ? `Uploading ${label}…` : "Uploading images…",
+          eta: formatEta((uploadEstMs - elapsed) / 1000),
+          detail: expectedBytes
+            ? `${formatBytes(expectedBytes)} ZIP/images`
+            : "Uploading…",
+        };
+      });
+    }, 400);
+    setUploadProgress({
+      percent: 0,
+      label: zipFiles.length ? `Uploading ${label}…` : "Uploading images…",
+      eta: expectedBytes ? formatEta(Math.max(8, expectedBytes / (400 * 1024))) : "",
+      detail: expectedBytes ? `0 B of ${formatBytes(expectedBytes)}` : "Starting upload…",
+    });
     try {
       const CHUNK = 20;
       let currentJob = jobId;
@@ -1270,20 +1362,41 @@ export default function BulkListingWizard({
       }
       for (let b = 0; b < batches.length; b += 1) {
         const batch = batches[b];
+        const batchBytes = [...batch.files, ...batch.zips].reduce(
+          (sum, file) => sum + (Number(file.size) || 0),
+          0,
+        );
         setBusy(`Uploading images… ${batch.label}`);
         const res = await stageBulkListingImages({
           jobId: currentJob,
           vendorId,
           files: batch.files,
           zips: batch.zips,
-          onProgress: ({ percent }) => {
-            const overall = Math.round(((b + percent / 100) / batches.length) * 100);
+          onProgress: ({ percent, loaded, total }) => {
+            const knownTotal = Number(total) || batchBytes || expectedBytes;
+            const knownLoaded = Number(loaded) || 0;
+            const batchPct = knownTotal
+              ? Math.min(100, Math.round((knownLoaded / knownTotal) * 100))
+              : Number(percent) || 0;
+            if (batchPct >= 100) {
+              startProcessingTick();
+              return;
+            }
+            const elapsed = Math.max(0.2, (Date.now() - startedAt) / 1000);
+            const rate = knownLoaded / elapsed;
+            const remainBytes = Math.max(0, knownTotal - knownLoaded);
+            const overall = Math.round(((b + batchPct / 100) / batches.length) * 90);
             setUploadProgress({
               percent: overall,
               label: `Uploading ${batch.label}`,
+              eta: knownTotal ? formatEta(remainBytes / Math.max(rate, 1)) : "",
+              detail: knownTotal
+                ? `${formatBytes(knownLoaded)} of ${formatBytes(knownTotal)}`
+                : "Uploading…",
             });
           },
         });
+        stopTicks();
         if (res?.status !== 1) throw new Error(res?.message || "Upload failed");
         currentJob = res.data.job_id;
         setJobId(currentJob);
@@ -1321,6 +1434,7 @@ export default function BulkListingWizard({
         notifyOnFail(detail);
       }
     } finally {
+      stopTicks();
       setBusy("");
       setTimeout(() => setUploadProgress(null), 600);
     }

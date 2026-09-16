@@ -22,8 +22,10 @@ const DashboardOpsRow = ({
   const inStock = Number(inventory.in_stock || 0);
   const lowStock = Number(inventory.low_stock || 0);
   const outStock = Number(inventory.out_of_stock || 0);
-  const total = inStock + lowStock + outStock;
-  const healthy = total ? Math.round((inStock / total) * 100) : 0;
+  const availableTotal = inStock + outStock;
+  const healthy = availableTotal
+    ? Math.round((inStock / availableTotal) * 100)
+    : 0;
 
   return (
     <div className="mb-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-12">
