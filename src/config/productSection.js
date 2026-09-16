@@ -46,14 +46,14 @@ export const VENDOR_PRODUCT_HUB_INSIGHTS_ITEM = {
 };
 
 export function isVendorProductWizardPath(pathname) {
-  return /^\/product\/(add|edit|add-classic|edit-classic)(\/|$)/.test(
-    pathname || "",
-  );
+  // Edit stays full-page. Add Product keeps the section pills strip
+  // (same as Product List and Bulk Manager).
+  return /^\/product\/(edit|edit-classic)(\/|$)/.test(pathname || "");
 }
 
-/** Full-canvas Smart Listing (no vendor chrome) — excludes classic forms. */
+/** Full-canvas Smart Listing (no vendor chrome) — edit only, not Add Product. */
 export function isSmartListingCanvasPath(pathname) {
-  return /^\/product\/(add|edit)(\/|$)/.test(pathname || "") &&
+  return /^\/product\/edit(\/|$)/.test(pathname || "") &&
     !/classic/.test(pathname || "");
 }
 

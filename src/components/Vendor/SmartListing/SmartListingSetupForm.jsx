@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { isVendorProductWizardPath } from "../../../config/productSection";
 import {
   Bell,
   Check,
@@ -772,9 +773,13 @@ export default function SmartListingSetupForm({
   aiGenerating,
   pricingBlock,
 }) {
+  const location = useLocation();
+  const scrollMt = isVendorProductWizardPath(location.pathname)
+    ? "scroll-mt-[168px]"
+    : "scroll-mt-[196px]";
   return (
     <div className="space-y-6">
-      <section id="listing-step-brand" className="scroll-mt-[168px]">
+      <section id="listing-step-brand" className={scrollMt}>
         <SectionHeading
           n={1}
           title="Select Brand Type"
@@ -871,7 +876,7 @@ export default function SmartListingSetupForm({
         ) : null}
       </section>
 
-      <section id="listing-step-type" className="scroll-mt-[168px]">
+      <section id="listing-step-type" className={scrollMt}>
         <SectionHeading
           n={2}
           title="Select Listing Type"
@@ -895,7 +900,7 @@ export default function SmartListingSetupForm({
         {fieldErrors.listingType ? <p className="text-xs text-red-600 mt-2">{fieldErrors.listingType}</p> : null}
       </section>
 
-      <section id="listing-step-images" className="scroll-mt-[168px]">
+      <section id="listing-step-images" className={scrollMt}>
         {state.listingType === "color_size" ? (
           <PrimaryProductGallery
             state={state}
@@ -938,7 +943,7 @@ export default function SmartListingSetupForm({
       </section>
 
       {state.listingType === "single" ? (
-      <section id="listing-step-combo" className="scroll-mt-[168px]">
+      <section id="listing-step-combo" className={scrollMt}>
         <label
           className="flex items-start gap-3 cursor-pointer select-none rounded-[10px] bg-white px-3.5 py-3"
           style={{ border: `1px solid ${CARD_BORDER}` }}
@@ -962,7 +967,7 @@ export default function SmartListingSetupForm({
       </section>
       ) : null}
 
-      <section id="listing-step-category" className="scroll-mt-[168px]">
+      <section id="listing-step-category" className={scrollMt}>
         <SectionHeading n={4} title="Select Category" circled />
         <div
           className="rounded-[10px] bg-white px-3 py-3 w-full"

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, Link, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, Link, useParams, useSearchParams, useLocation } from "react-router-dom";
 import { useAppContext } from "../../../context/AppContext";
 import {
   CheckCircle2,
@@ -121,6 +121,7 @@ import {
   getPlannedType,
   typeLabel,
 } from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
+import { isVendorProductWizardPath } from "../../../config/productSection";
 
 function basicsStepsFor(listingType) {
   const base = [...SETUP_STEPS];
@@ -455,6 +456,9 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
     () => sizePickerOptions(sizeSplit, listingSizeIds(state)),
     [sizeSplit, state.size_ids, state.size_id],
   );
+  const allowMultipleSizes =
+    state.listingType !== "single" && state.listingType !== "combo";
+  const selectedSizeIds = listingSizeIds(state);
   const colorOptions = useMemo(() => colorPickerOptions(colors), [colors]);
   const catalogEmpty =
     Boolean(state.category_id) &&
@@ -516,13 +520,21 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
         <div id="ai-review-size">
           <SearchablePicker
             compact
-            multiple
+            multiple={allowMultipleSizes}
             required
             disabled={readOnly || loading}
             error={fieldErrors.size_ids ? " " : undefined}
-            value={listingSizeIds(state)}
+            value={allowMultipleSizes ? selectedSizeIds : selectedSizeIds[0] || ""}
             onChange={(ids) => {
-              const size_ids = Array.isArray(ids) ? ids : ids ? [ids] : [];
+              const size_ids = allowMultipleSizes
+                ? Array.isArray(ids)
+                  ? ids
+                  : ids
+                    ? [ids]
+                    : []
+                : ids == null || ids === ""
+                  ? []
+                  : [ids].flat().slice(0, 1).filter(Boolean);
               const size_id = size_ids[0] || "";
               const size_labels = sizeOptions
                 .filter((o) => size_ids.map(String).includes(String(o.id)))
@@ -640,6 +652,8 @@ function livePriceErr(state, fieldErrors) {
 
 export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp = null }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const keepProductPills = !isVendorProductWizardPath(location.pathname);
   const [searchParams] = useSearchParams();
   const freshStart = searchParams.get("fresh") === "1";
   const bulkMode = searchParams.get("bulk") === "1";
@@ -752,6 +766,14 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         const { listingType: nextType, ...rest } = resolved;
         next = { ...switchListingTypeMedia(prev, nextType), ...rest };
         if (nextType !== "single") next.isCombo = false;
+        if (nextType === "single" || nextType === "combo") {
+          const ids = listingSizeIds(next).slice(0, 1);
+          next.size_ids = ids;
+          next.size_id = ids[0] || "";
+          if (Array.isArray(next.size_labels) && next.size_labels.length > 1) {
+            next.size_labels = next.size_labels.slice(0, 1);
+          }
+        }
       } else {
         next = { ...prev, ...resolved };
       }
@@ -915,12 +937,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     if (phase !== "basics") return;
     const onScroll = () => {
       if (!SETUP_STEPS.includes(step) && step !== "brand") return;
-      const id = listingSectionFromScroll();
+      const id = listingSectionFromScroll(keepProductPills ? 204 : 176);
       if (id && id !== step) setStep(id);
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [phase, step]);
+  }, [phase, step, keepProductPills]);
 
   // Load product for Smart edit
   useEffect(() => {
@@ -2175,7 +2197,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   return (
     <ListingErrorBoundary>
     <div className={`min-h-screen pb-36 font-inter text-slate-800 ${phase === "review" ? "bg-[#FFF8F4]" : "bg-[#F8FAFC]"}`}>
-      <div className="sticky top-0 z-20 bg-white" style={{ boxShadow: "0 1px 0 #F1F5F9" }}>
+      <div
+        className={`sticky z-20 bg-white ${keepProductPills ? "top-[122px]" : "top-0"}`}
+        style={{ boxShadow: "0 1px 0 #F1F5F9" }}
+      >
         <ListingPageHeader
           user={user}
           supportPhone={supportPhone}
@@ -2249,7 +2274,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
                 vendorId={vendorId}
               />
             </div>
-            <aside className="w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:top-[108px] lg:self-start">
+            <aside className={`w-full max-w-[272px] lg:max-w-none space-y-3 lg:sticky lg:self-start ${keepProductPills ? "lg:top-[230px]" : "lg:top-[108px]"}`}>
               <ListingRightRail state={state} settlement={settlement} previewUrl={coverPreviewSrc} />
             </aside>
           </>

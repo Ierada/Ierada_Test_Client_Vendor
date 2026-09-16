@@ -1,5 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 
+const preventFocusScroll = (e) => {
+  e.preventDefault();
+};
+
 export function SectionPills({ hubPath, hubLabel = "Overview", items = [] }) {
   const location = useLocation();
   const path = location.pathname;
@@ -23,13 +27,18 @@ export function SectionPills({ hubPath, hubLabel = "Overview", items = [] }) {
 
   return (
     <nav className="sticky top-[66px] z-30 flex shrink-0 flex-wrap gap-2 bg-[#F5F6F8] px-4 pb-3 pt-3">
-      <Link to={hubPath} className={pillClass(path === hubPath)}>
+      <Link
+        to={hubPath}
+        onMouseDown={preventFocusScroll}
+        className={pillClass(path === hubPath)}
+      >
         {hubLabel}
       </Link>
       {items.map((item) => (
         <Link
           key={item.path}
           to={item.path}
+          onMouseDown={preventFocusScroll}
           className={pillClass(itemActive(item.path))}
         >
           {item.text}
