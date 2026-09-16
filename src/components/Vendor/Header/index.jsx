@@ -180,7 +180,7 @@ const Header = ({
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-20 h-[55px] border-b border-[#EEF0F4] bg-white transition-[margin] duration-150 ease-out ${
+      className={`fixed top-0 left-0 right-0 z-20 h-[66px] border-b border-[#EEF0F4] bg-white transition-[margin] duration-150 ease-out ${
         sidebarExpanded ? "lg:ml-56" : "lg:ml-[72px]"
       }`}
     >
@@ -415,7 +415,7 @@ const Header = ({
       </div>
 
       {mobileSearchOpen && (
-        <div className="absolute inset-x-0 top-0 z-30 flex h-[55px] items-center gap-2 border-b border-[#EEF0F4] bg-white px-4 md:hidden">
+        <div className="absolute inset-x-0 top-0 z-30 flex h-[66px] items-center gap-2 border-b border-[#EEF0F4] bg-white px-4 md:hidden">
           <form onSubmit={handleSearch} className="flex-1">
             {searchField(mobileSearchRef)}
           </form>

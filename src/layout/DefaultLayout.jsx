@@ -156,7 +156,7 @@ const VendorLayout = () => {
         )}
 
         <main
-          className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-[55px]"}`}
+          className={`flex-grow min-w-0 ${smartListingCanvas ? "" : "mt-[66px]"}`}
         >
           <div className={smartListingCanvas ? "" : "mx-auto max-w-screen-2xl"}>
             {sectionPills ? (
