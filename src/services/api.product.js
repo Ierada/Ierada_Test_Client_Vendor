@@ -40,19 +40,19 @@ export const getProductBySlug = async (slug, variationId = null) => {
   }
 };
 
-export const getProductsByVendorId = async (id, params) => {
+export const getProductsByVendorId = async (id, params, { silent = false } = {}) => {
   try {
     const res = await apiClient.get(`/product/getProductsByVendorId/${id}`, {
       params,
     });
     if (res.data.status === 1) {
       // notifyOnSuccess(res.data.message);
-    } else {
+    } else if (!silent) {
       notifyOnFail(res.data.message);
     }
     return res.data;
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    if (!silent) notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
     console.log(error);
     // return error.response || error;
   }

@@ -34,6 +34,7 @@ const VendorNotification = lazy(() => import("../pages/Vendor/Notification/index
 const VendorLogoutPage   = lazy(() => import("../pages/Vendor/Logout/index.jsx"));
 const ProductFilesManager = lazy(() => import("../pages/Vendor/Product/ProductFilesManager.jsx"));
 const BulkListingManager = lazy(() => import("../pages/Vendor/BulkListingManager"));
+const BulkProductListing = lazy(() => import("../pages/Vendor/BulkProductListing"));
 const PaymentsHub        = lazy(() => import("../pages/Vendor/Payments/PaymentsHub.jsx"));
 const PaymentOverview    = lazy(() => import("../pages/Vendor/Payments/payment-overview/index.jsx"));
 const Settlements        = lazy(() => import("../pages/Vendor/Payments/settlements/index.jsx"));
@@ -181,6 +182,7 @@ const VendorRoutes = () => {
         { path: "/product/edit/:id", element: <Suspense fallback={<PageLoader />}><SmartListing mode="vendor" /></Suspense> },
         { path: "/product/edit-classic/:id", element: <Suspense fallback={<PageLoader />}><AddEditProduct /></Suspense> },
         { path: "/bulk-upload", element: <Suspense fallback={<PageLoader />}><BulkListingManager mode="vendor" /></Suspense> },
+        { path: "/bulk-upload/listing", element: <Suspense fallback={<PageLoader />}><BulkProductListing /></Suspense> },
         { path: "/bulk-upload/media", element: <Suspense fallback={<PageLoader />}><ProductFilesManager /></Suspense> },
         { path: "/settings", element: <Suspense fallback={<PageLoader />}><Setting /></Suspense> },
         { path: "/pickup-verification", element: <Suspense fallback={<PageLoader />}><PickupVerification /></Suspense> },

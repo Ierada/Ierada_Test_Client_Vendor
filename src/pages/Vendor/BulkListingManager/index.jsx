@@ -341,12 +341,20 @@ export default function BulkListingManager({ mode = "vendor" }) {
               Paste a sheet, add photos, save drafts or request publish. Path: Products → Bulk Manager.
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-3">
+          <Link
+            to="/bulk-upload/listing"
+            className="rounded-xl bg-[#F56C43] px-4 py-2 text-sm font-semibold text-white"
+          >
+            New Bulk Listing
+          </Link>
           <Link
             to="/product/add"
             className="text-sm font-medium text-blue-600 hover:text-blue-700"
           >
             Smart Listing
           </Link>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-1 bg-slate-100 rounded-xl p-1">
