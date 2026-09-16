@@ -35,6 +35,21 @@ export const getDesignerDashboard = async (vendor_id) => {
   }
 };
 
+export const getVendorProductPerformance = async (vendor_id) => {
+  try {
+    const res = await apiClient.get(
+      `/dashboard/product-performance/${vendor_id}`
+    );
+    if (res.data.status === 1) {
+      return res.data;
+    }
+    notifyOnFail(res.data.message);
+  } catch (error) {
+    notifyOnFail(getApiErrorMessage(error, "Error reaching the server"));
+    console.error(error);
+  }
+};
+
 export const getAdminDashboardData = async ({ startDate, endDate }) => {
   try {
     const res = await apiClient.post(`/dashboard/admindashboard`, {

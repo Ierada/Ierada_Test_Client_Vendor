@@ -35,6 +35,7 @@ const VendorLogoutPage   = lazy(() => import("../pages/Vendor/Logout/index.jsx")
 const ProductFilesManager = lazy(() => import("../pages/Vendor/Product/ProductFilesManager.jsx"));
 const BulkListingManager = lazy(() => import("../pages/Vendor/BulkListingManager"));
 const BulkProductListing = lazy(() => import("../pages/Vendor/BulkProductListing"));
+const ProductPerformance = lazy(() => import("../pages/Vendor/Dashboard/ProductPerformance.jsx"));
 const PaymentsHub        = lazy(() => import("../pages/Vendor/Payments/PaymentsHub.jsx"));
 const PaymentOverview    = lazy(() => import("../pages/Vendor/Payments/payment-overview/index.jsx"));
 const Settlements        = lazy(() => import("../pages/Vendor/Payments/settlements/index.jsx"));
@@ -175,6 +176,7 @@ const VendorRoutes = () => {
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: "/dashboard", element: <Suspense fallback={<PageLoader />}><Dashboard /></Suspense> },
+        { path: "/dashboard/product-performance", element: <Suspense fallback={<PageLoader />}><ProductPerformance /></Suspense> },
         { path: "/product", element: <Suspense fallback={<PageLoader />}><ProductHub /></Suspense> },
         { path: "/product/list", element: <Suspense fallback={<PageLoader />}><Product /></Suspense> },
         { path: "/product/add", element: <Suspense fallback={<PageLoader />}><SmartListing mode="vendor" /></Suspense> },
