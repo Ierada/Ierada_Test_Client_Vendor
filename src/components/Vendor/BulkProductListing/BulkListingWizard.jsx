@@ -81,6 +81,7 @@ import {
   rowNeedsAiFill,
   mergeGeneratedRows,
   expandMappedRowsBySize,
+  groupColorSizeSubmitRows,
   splitPipe,
   validateListingRow,
   isVariationListingKind,
@@ -2029,6 +2030,144 @@ export default function BulkListingWizard({
     setBusy("Submitting listings…");
     let success = 0;
     const failed = [];
+
+    if (listingKind === "color_size") {
+      const groups = groupColorSizeSubmitRows(chosen);
+      for (const group of groups) {
+        const parentSku = group.parentSku || group.rows[0]?.sku || "";
+        try {
+          const checked = group.rows.map((row) => ({
+            row,
+            result: validateListingRow(row, {
+              taxonomy,
+              colors,
+              sizes,
+              imagesBySku,
+              existingSkus,
+              listingKind,
+            }),
+          }));
+          const bad = checked.find((item) => item.result.errors.length);
+          if (bad) {
+            failed.push({ sku: bad.row.sku || parentSku, error: bad.result.errors[0] });
+            continue;
+          }
+
+          const colorMap = new Map();
+          const images = [];
+          const seenImages = new Set();
+          let stockTotal = 0;
+          checked.forEach(({ row, result }) => {
+            const colour = result.resolved.colour;
+            if (!colour?.id) return;
+            const key = String(colour.id);
+            if (!colorMap.has(key)) {
+              colorMap.set(key, {
+                color_id: colour.id,
+                color_name: colour.name,
+                sizes: [],
+              });
+            }
+            const bucket = colorMap.get(key);
+            const rowSizes = result.resolved.sizes?.length
+              ? result.resolved.sizes
+              : [result.resolved.size].filter(Boolean);
+            rowSizes.forEach((size) => {
+              if (!size?.id) return;
+              if (bucket.sizes.some((s) => String(s.size_id) === String(size.id))) return;
+              const stock = Number(row.stock) || 0;
+              stockTotal += stock;
+              bucket.sizes.push({
+                size_id: size.id,
+                size_name: size.name,
+                stock,
+                original_price: row.mrp,
+                discounted_price: row.selling_price,
+                sku: row.sku,
+                barcode: row.barcode || null,
+                enabled: true,
+              });
+            });
+            (result.resolved.images || []).forEach((img) => {
+              const token = img?.id || img?.filename || img?.originalName;
+              if (!token || seenImages.has(token)) return;
+              seenImages.add(token);
+              images.push(img);
+            });
+          });
+
+          const colorGroups = [...colorMap.values()];
+          if (!colorGroups.length) {
+            failed.push({ sku: parentSku, error: "No colour resolved for this parent SKU" });
+            continue;
+          }
+
+          const head = checked[0];
+          const row = head.row;
+          const resolved = head.result.resolved;
+          const state = {
+            vendor_id: vendorId,
+            listingType: "color_size",
+            brandType:
+              String(row.brand_type || "").toLowerCase() === "branded" ? "branded" : "generic",
+            brand: row.brand,
+            name: row.name,
+            sku: parentSku,
+            hsn_code: row.hsn_code,
+            gst: row.gst,
+            original_price: row.mrp,
+            discounted_price: row.selling_price,
+            stock: stockTotal,
+            package_weight: row.package_weight,
+            package_length: row.package_length,
+            package_width: row.package_width,
+            package_height: row.package_height,
+            countryOfOrigin: row.country_of_origin || "India",
+            barcode: row.barcode || "",
+            category_id: resolved.category?.id || "",
+            sub_category_id: resolved.subCategory?.id || "",
+            inner_sub_category_id: resolved.inner?.id || "",
+            categoryTitle: resolved.category?.name || row.category,
+            subCategoryTitle: resolved.subCategory?.name || row.sub_category,
+            innerSubCategoryTitle: resolved.inner?.name || "",
+            colorGroups,
+            shortDescription: row.short_description || "",
+            productDetails: row.product_details || "",
+            keyFeatures: splitPipe(row.key_features),
+            benefits: splitPipe(row.benefits),
+            whatsInTheBox: splitPipe(row.whats_in_the_box),
+            specifications: parseSpecs(row.specifications),
+            metaTitle: row.meta_title || "",
+            metaDescription: row.meta_description || "",
+            tags: String(row.tags || "")
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            files: [],
+            existingMedia: images.map((img) => ({ url: img.url, id: img.id })),
+            visibility: "Hidden",
+            listing_status: mode === "admin" ? "published" : "pending_review",
+          };
+          const built = buildSmartListingFormData(state, {
+            requestPublish: mode === "vendor",
+            adminPublish: mode === "admin",
+          });
+          built.formData.append(
+            "staged_image_ids",
+            JSON.stringify(images.map((img) => img.id).filter(Boolean)),
+          );
+          const res = await addProduct(built.formData);
+          if (res?.status === 1) {
+            success += 1;
+            group.rows.forEach((r) => existingSkus.add(String(r.sku).toLowerCase()));
+          } else {
+            failed.push({ sku: parentSku, error: res?.message || "Submit failed" });
+          }
+        } catch (e) {
+          failed.push({ sku: parentSku, error: getApiErrorMessage(e, "Submit failed") });
+        }
+      }
+    } else {
     for (const row of chosen) {
       try {
         const result = validateListingRow(row, {
@@ -2106,6 +2245,7 @@ export default function BulkListingWizard({
       } catch (e) {
         failed.push({ sku: row.sku, error: getApiErrorMessage(e, "Submit failed") });
       }
+    }
     }
     const result = {
       success,

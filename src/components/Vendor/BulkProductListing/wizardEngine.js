@@ -656,6 +656,23 @@ export function variationPreviewGroups(rows) {
   return groups;
 }
 
+/** One entry per parent SKU, so a colour x size sheet lists once, not per row. */
+export function groupColorSizeSubmitRows(rows) {
+  const groups = [];
+  const index = new Map();
+  (rows || []).forEach((row) => {
+    const parent = String(row.parent_sku || "").trim();
+    const key = parent ? normalizeSkuKey(parent) : `__solo_${row.row_id || row.sku}`;
+    if (!index.has(key)) {
+      const group = { parentSku: parent, rows: [] };
+      index.set(key, group);
+      groups.push(group);
+    }
+    index.get(key).rows.push(row);
+  });
+  return groups;
+}
+
 export function excelColumnLetter(index) {
   let n = Number(index) + 1;
   let out = "";
@@ -1036,19 +1053,45 @@ function sizeLookupKeys(value) {
   return [...keys].filter(Boolean);
 }
 
+/** IND-6 for a bare 6, so a numeric size never reads as a catalogue row id. */
+export function indSizeName(value) {
+  const raw = String(value || "").trim();
+  const bare = raw.match(/^(?:ind)?\s*-?\s*(\d{1,2})$/i);
+  return bare ? `IND-${bare[1]}` : "";
+}
+
 function lookupSize(list, value) {
   const raw = String(value || "").trim();
   if (!raw) return null;
   if (!list?.length) return { id: null, name: raw, unverified: true };
-  const direct = lookupByNameOrId(list, raw);
-  if (direct) return direct;
+  const byName = (name) => {
+    const want = String(name || "").trim().toLowerCase();
+    if (!want) return null;
+    return (
+      list.find(
+        (item) => String(item.name || item.title || "").trim().toLowerCase() === want,
+      ) || null
+    );
+  };
+  // Indian sizing is the house standard, so 6 means IND-6 and never row id 6.
+  const ind = indSizeName(raw);
+  if (ind) {
+    const indHit = byName(ind);
+    if (indHit) return indHit;
+  }
+  const exact = byName(raw);
+  if (exact) return exact;
   const keys = new Set(sizeLookupKeys(raw));
-  return (
-    list.find((item) => {
-      const nameKeys = sizeLookupKeys(item.name || item.title || "");
-      return nameKeys.some((key) => keys.has(key));
-    }) || null
-  );
+  const fuzzy = list.find((item) => {
+    const nameKeys = sizeLookupKeys(item.name || item.title || "");
+    return nameKeys.some((key) => keys.has(key));
+  });
+  if (fuzzy) return fuzzy;
+  // Only now can a number mean a row id, and never for a size we spell IND-n.
+  if (!ind && /^\d+$/.test(raw)) {
+    return list.find((item) => String(item.id) === raw) || null;
+  }
+  return null;
 }
 
 export function splitSizeValues(value) {
