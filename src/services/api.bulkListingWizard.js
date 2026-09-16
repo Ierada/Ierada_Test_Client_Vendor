@@ -70,3 +70,27 @@ export async function stageBulkListingImages({
   );
   return res.data;
 }
+
+export async function waitForStagedBulkListingImages(
+  jobId,
+  { onProgress, timeoutMs = 15 * 60 * 1000 } = {},
+) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const res = await getBulkListingWizardJob(jobId);
+    const data = res?.data || {};
+    const progress = data.progress || {};
+    if (typeof onProgress === "function") onProgress(progress, data);
+    if (data.processing) {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      continue;
+    }
+    if (progress.status === "error") {
+      throw new Error(progress.message || "ZIP unpacking failed");
+    }
+    return res;
+  }
+  throw new Error(
+    "ZIP unpacking timed out. Try a smaller archive or keep this page open and retry.",
+  );
+}

@@ -34,7 +34,7 @@ import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
 import { resolveCategoryGst } from "../../../services/api.categoryGst";
-import { getBulkListingWizardJob, stageBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
+import { getBulkListingWizardJob, stageBulkListingImages, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
 import ValidateDataStep, { AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
@@ -1396,12 +1396,36 @@ export default function BulkListingWizard({
             });
           },
         });
-        stopTicks();
         if (res?.status !== 1) throw new Error(res?.message || "Upload failed");
         currentJob = res.data.job_id;
         setJobId(currentJob);
-        lastSummary = res.data.summary;
-        lastRes = res;
+        let finished = res;
+        if (res?.data?.processing) {
+          startProcessingTick();
+          finished = await waitForStagedBulkListingImages(currentJob, {
+            onProgress: (progress) => {
+              const total = Number(progress?.total) || 0;
+              const stored = Number(progress?.stored) || 0;
+              const pct = total
+                ? Math.min(99, 90 + Math.round((stored / Math.max(total, 1)) * 9))
+                : 99;
+              setUploadProgress({
+                percent: pct,
+                label: total
+                  ? `Unpacking ZIP and storing images… ${stored} of ${total}`
+                  : "Unpacking ZIP and storing images…",
+                eta:
+                  total && stored < total
+                    ? `${total - stored} image${total - stored === 1 ? "" : "s"} left`
+                    : "Working…",
+                detail: `${label} · ${formatBytes(expectedBytes)}`,
+              });
+            },
+          });
+        }
+        stopTicks();
+        lastSummary = finished.data.summary;
+        lastRes = finished;
         mergeImageSummary(lastSummary, localBySku);
       }
       setUploadProgress({ percent: 100, label: "Upload complete" });
