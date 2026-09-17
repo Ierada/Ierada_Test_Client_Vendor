@@ -81,6 +81,9 @@ import {
   rowNeedsAiFill,
   mergeGeneratedRows,
   expandMappedRowsBySize,
+  duplicateSkuKeys,
+  normalizeSkuKey,
+  sizeVariantSku,
   groupColorSizeSubmitRows,
   splitPipe,
   validateListingRow,
@@ -640,12 +643,32 @@ function DropZone({ onFiles, className, children }) {
   );
 }
 
-function ImportantInstructions({ tab, setTab }) {
-  const fileTips = [
-    { icon: ScanLine, text: "Fill only SKU, brand, colour, size, prices, stock and package. Do not write product title, category, HSN or copy." },
-    { icon: Layers, text: "Delete SAMPLE rows before a live upload." },
-    { icon: ImageIcon, text: "SKU must match already-stored image filenames." },
-  ];
+function ImportantInstructions({ tab, setTab, listingKind = "single" }) {
+  const fileTips =
+    listingKind === "color_size"
+      ? [
+          { icon: ScanLine, text: "Colour × Size: Products sheet has one parent SKU per listing. Do not put colour or size on that sheet." },
+          { icon: Layers, text: "Variations sheet: one row per colour under the same Parent SKU. Parent SKU is meant to repeat — that is not a duplicate SKU. Each colour needs its own Variant SKU." },
+          { icon: Package, text: "Size can be one value per row, or several on the same colour row (6,7,8,9). We create one size variation each and append the size to the Variant SKU." },
+          { icon: Package, text: "Example: parent lifeo-zimmi-black-312 with Brown 6,7,8,9 (lifeo-zimmi-brown-277) and Tan 6,8,10 (lifeo-zimmi-tan-977) = one listing, two colours." },
+          { icon: Package, text: "Kids Fashion sizes: pick an age-group size from the Size dropdown (6-9 Months, 9-12 Months, 12-15 Months, 18-21 Months, 2-2.5 Years, 3-3.5 Years, 5-5.5 Years). Do not use adult S/M/L for kids apparel." },
+          { icon: ImageIcon, text: "Use Image SKU so all sizes of one colour share photos (FAS-TS-003-BLK-1.jpg)." },
+          { icon: Layers, text: "Delete SAMPLE rows before a live upload. Do not write product title, category, HSN or copy." },
+        ]
+      : listingKind === "custom"
+        ? [
+            { icon: ScanLine, text: "Custom: Products sheet has one parent SKU. Attributes sheet lists axes. Variations sheet lists the combinations you sell." },
+            { icon: Layers, text: "Delete SAMPLE rows before a live upload." },
+            { icon: ImageIcon, text: "SKU / Image SKU must match already-stored image filenames." },
+          ]
+        : [
+            { icon: ScanLine, text: "Single listing: one Products row = one product. Write one SKU, one colour and one size only. Do not use commas for extra colours or sizes." },
+            { icon: Layers, text: "If the product has more than one colour or size, download the Colour × Size Variations template instead." },
+            { icon: Package, text: "Kids Fashion sizes: pick an age-group size from the Size dropdown (6-9 Months, 9-12 Months, 12-15 Months, 18-21 Months, 2-2.5 Years, 3-3.5 Years, 5-5.5 Years). Do not use adult S/M/L for kids apparel." },
+            { icon: Layers, text: "Fill SKU, brand, colour, size, prices, stock and package. Do not write product title, category, HSN or copy." },
+            { icon: ImageIcon, text: "SKU must match already-stored image filenames ({SKU}-1 is the cover)." },
+            { icon: Layers, text: "Delete SAMPLE rows before a live upload." },
+          ];
   const imageTips = [
     { icon: ScanLine, text: "Name files {SKU}-1.jpg, {SKU}-2.jpg … {SKU}-10.jpg. SKU lifeo-1601-slipeer-blue-956 uses lifeo-1601-slipeer-blue-956-1 as cover." },
     { icon: ImageIcon, text: "Supported formats: JPG, PNG, WebP." },
@@ -1483,6 +1506,8 @@ export default function BulkListingWizard({
 
   const sourceRows = rows.length ? rows : mappedRows;
 
+  const duplicateSkus = useMemo(() => duplicateSkuKeys(sourceRows), [sourceRows]);
+
   const validatedRows = useMemo(() => {
     return sourceRows.map((row) => {
       const result = validateListingRow(row, {
@@ -1491,12 +1516,13 @@ export default function BulkListingWizard({
         sizes,
         imagesBySku,
         existingSkus,
+        duplicateSkus,
         listingKind,
       });
       const status = result.errors.length ? "error" : result.warnings.length ? "warning" : "valid";
       return { ...row, ...result, status };
     });
-  }, [sourceRows, taxonomy, colors, sizes, imagesBySku, existingSkus, listingKind]);
+  }, [sourceRows, taxonomy, colors, sizes, imagesBySku, existingSkus, duplicateSkus, listingKind]);
 
   useEffect(() => {
     if (step !== 4 || !validatedRows.length) return;
@@ -2033,8 +2059,28 @@ export default function BulkListingWizard({
 
     if (listingKind === "color_size") {
       const groups = groupColorSizeSubmitRows(chosen);
+      // A parent lists as one product, so a single bad size row must hold back
+      // the whole group instead of publishing a listing that is missing sizes.
+      const siblingErrors = new Map();
+      groupColorSizeSubmitRows(validatedRows).forEach((group) => {
+        const key = normalizeSkuKey(group.parentSku) || group.rows[0]?.row_id;
+        const bad = group.rows.find((row) => row.status === "error");
+        if (key && bad) siblingErrors.set(key, bad);
+      });
       for (const group of groups) {
         const parentSku = group.parentSku || group.rows[0]?.sku || "";
+        const sibling = siblingErrors.get(
+          normalizeSkuKey(group.parentSku) || group.rows[0]?.row_id,
+        );
+        if (sibling) {
+          failed.push({
+            sku: sibling.sku || parentSku,
+            parentSku,
+            variantSku: sibling.sku || "",
+            error: sibling.errors?.[0] || "Another row under this parent SKU has an error",
+          });
+          continue;
+        }
         try {
           const checked = group.rows.map((row) => ({
             row,
@@ -2044,12 +2090,18 @@ export default function BulkListingWizard({
               sizes,
               imagesBySku,
               existingSkus,
+              duplicateSkus,
               listingKind,
             }),
           }));
           const bad = checked.find((item) => item.result.errors.length);
           if (bad) {
-            failed.push({ sku: bad.row.sku || parentSku, error: bad.result.errors[0] });
+            failed.push({
+              sku: bad.row.sku || parentSku,
+              parentSku,
+              variantSku: bad.row.sku || "",
+              error: bad.result.errors[0],
+            });
             continue;
           }
 
@@ -2083,7 +2135,7 @@ export default function BulkListingWizard({
                 stock,
                 original_price: row.mrp,
                 discounted_price: row.selling_price,
-                sku: row.sku,
+                sku: sizeVariantSku(row.sku, size.name || size.title, rowSizes.length),
                 barcode: row.barcode || null,
                 enabled: true,
               });
@@ -2098,7 +2150,28 @@ export default function BulkListingWizard({
 
           const colorGroups = [...colorMap.values()];
           if (!colorGroups.length) {
-            failed.push({ sku: parentSku, error: "No colour resolved for this parent SKU" });
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error: "No colour resolved for this parent SKU",
+            });
+            continue;
+          }
+          const expandedSkus = colorGroups.flatMap((groupRow) =>
+            (groupRow.sizes || []).map((size) => String(size.sku || "").trim()).filter(Boolean),
+          );
+          const repeatedSku = expandedSkus.find(
+            (sku, i) =>
+              expandedSkus.findIndex((other) => other.toLowerCase() === sku.toLowerCase()) !== i,
+          );
+          if (repeatedSku) {
+            failed.push({
+              sku: repeatedSku,
+              parentSku,
+              variantSku: repeatedSku,
+              error: `Variant SKU "${repeatedSku}" would be used for more than one size. Give that colour its own Variant SKU — the Parent SKU can stay the same.`,
+            });
             continue;
           }
 
@@ -2161,10 +2234,20 @@ export default function BulkListingWizard({
             success += 1;
             group.rows.forEach((r) => existingSkus.add(String(r.sku).toLowerCase()));
           } else {
-            failed.push({ sku: parentSku, error: res?.message || "Submit failed" });
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error: res?.message || "Submit failed",
+            });
           }
         } catch (e) {
-          failed.push({ sku: parentSku, error: getApiErrorMessage(e, "Submit failed") });
+          failed.push({
+            sku: parentSku,
+            parentSku,
+            variantSku: group.rows[0]?.sku || "",
+            error: getApiErrorMessage(e, "Submit failed"),
+          });
         }
       }
     } else {
@@ -2176,6 +2259,7 @@ export default function BulkListingWizard({
           sizes,
           imagesBySku,
           existingSkus,
+          duplicateSkus,
           listingKind,
         });
         if (result.errors.length) {
@@ -2253,7 +2337,7 @@ export default function BulkListingWizard({
       total: stats.total,
       valid: stats.valid,
       warnings: stats.warnings,
-      errors: stats.errors,
+      errors: stats.errors + failed.length,
       submitted: chosen.length,
       at: new Date().toISOString(),
       fileName: excelName,
@@ -2287,9 +2371,17 @@ export default function BulkListingWizard({
     }
     setSubmitResult(result);
     setBusy("");
-    setStep(5);
+    // Nothing was accepted, so keep the seller on Preview to fix and retry
+    // instead of showing a submitted screen for zero listings.
+    setStep(success ? 5 : 4);
     if (success) notifyOnSuccess(`${success} products submitted`);
-    if (failed.length) notifyOnFail(`${failed.length} products failed`);
+    if (failed.length) {
+      notifyOnFail(
+        success
+          ? `${failed.length} listings failed. Fix them and submit again.`
+          : `Nothing was submitted. ${failed.length} listing${failed.length > 1 ? "s" : ""} failed — fix the errors below and submit again.`,
+      );
+    }
   };
 
   const returnToUpload = () => {
@@ -2539,7 +2631,7 @@ export default function BulkListingWizard({
             </div>
           </section>
 
-          <ImportantInstructions tab={tab} setTab={setTab} />
+          <ImportantInstructions tab={tab} setTab={setTab} listingKind={listingKind} />
 
           <div className="xl:col-span-2">
             <FilePreviewSection
@@ -2635,6 +2727,7 @@ export default function BulkListingWizard({
           onSaveRow={savePreviewRow}
           onDownloadCompleted={downloadCompleted}
           onReuploadCompleted={onReuploadCompleted}
+          submitFailures={submitResult && !submitResult.success ? submitResult.failed : []}
         />
       ) : null}
 
@@ -2713,7 +2806,8 @@ export default function BulkListingWizard({
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm text-gray-700">
               <li>Pick listing type: Single Products, Colour × Size, or Custom Variations. Download that Excel.</li>
               <li>Upload images named {"{SKU}"}-1 (cover) through {"{SKU}"}-10. Colour × Size can share photos with Image SKU.</li>
-              <li>Single: one SKU per Products row (colour and size on that sheet). Colour × Size / Custom: fill Products plus the Variations sheet (Custom also has Attributes).</li>
+              <li>Single: one SKU, one colour and one size per Products row. Colour × Size: parent SKU on Products (repeats on Variations), unique Variant SKU per colour; sizes can be comma-separated. Custom: Products + Attributes + Variations.</li>
+              <li>Kids Fashion sizes: pick an age-group size (6-9 Months, 12-15 Months, 2-2.5 Years…) from the Size dropdown, not adult S/M/L.</li>
               <li>Map columns. The wizard matches Image SKU or SKU to staged photos, then AI writes title, category, HSN/GST and copy from SKU-1.</li>
               <li>Validate, download the completed Excel, edit if needed, re-upload on Preview, then submit. Vendor listings stay Hidden until review.</li>
             </ol>

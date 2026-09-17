@@ -47,11 +47,11 @@ export const MAP_FIELDS = [...IERADA_FIELDS, ...GENERATED_FIELDS, ...EXTRA_MAP_F
 export const IGNORE_FIELD = "__ignore__";
 
 export const FIELD_RULES = {
-  sku: { rule: "Unique value for each product.", required: true },
+  sku: { rule: "Single listing: one unique SKU per product. Colour × Size: parent SKU on Products (it repeats on Variations). Unique variant SKU per colour — or per colour × size row.", required: true },
   brand_type: { rule: "Branded or Generic.", required: true },
   brand: { rule: "Brand name as listed on IERADA.", required: true },
-  colour: { rule: "Must match catalogue colour.", required: true },
-  size: { rule: "Pick from admin Size attributes. Multiple sizes: S, M, L.", required: true },
+  colour: { rule: "Single listing: one catalogue colour. Colour × Size: one colour per variation row.", required: true },
+  size: { rule: "Single listing: one size only. Colour × Size: one colour row can list sizes as 6,7,8,9, or use one size per row. Kids Fashion: pick an age-group size from the dropdown (6-9 Months, 12-15 Months, 2-2.5 Years).", required: true },
   mrp: { rule: "Numeric value (e.g., 99 or 99.00).", required: true },
   selling_price: { rule: "Numeric value (e.g., 99 or 99.00).", required: true },
   stock: { rule: "Whole number of at least 1.", required: true },
@@ -150,8 +150,12 @@ const HEADER_ALIASES = {
   tags: "tags",
   barcode: "barcode",
   parent_sku: "parent_sku",
+  parentsku: "parent_sku",
+  parent: "parent_sku",
   variant_sku: "sku",
+  variantsku: "sku",
   image_sku: "image_sku",
+  imagesku: "image_sku",
   attr1_name: "attr1_name",
   attr1_values: "attr1_values",
   attr1_value: "attr1_value",
@@ -323,6 +327,8 @@ export function wizardImageSrc(img) {
 export function headerStem(value) {
   return String(value || "")
     .trim()
+    .replace(/([a-z\d])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
     .toLowerCase()
     .replace(/[₹()]/g, "")
     .replace(/%/g, "")
@@ -339,7 +345,8 @@ export function normalizeHeader(value) {
 
 export function isSkuSourceHeader(header) {
   const stem = headerStem(header);
-  return stem === "sku" || stem === "variant_sku";
+  const key = normalizeHeader(header);
+  return key === "sku" || stem === "sku" || stem === "variant_sku";
 }
 
 export function isMappingImageColumn(map = {}) {
@@ -353,6 +360,25 @@ function cellStr(value) {
   if (value == null) return "";
   if (typeof value === "object") return String(value.text || value.w || "").trim();
   return String(value).trim();
+}
+
+function recordValue(record, aliases) {
+  const wantedStems = new Set((aliases || []).map((key) => headerStem(key)));
+  const visit = (obj) => {
+    if (!obj || typeof obj !== "object") return "";
+    for (const alias of aliases || []) {
+      const direct = obj[alias];
+      if (direct != null && String(direct).trim()) return String(direct).trim();
+    }
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === "raw" || key === "row_id" || key === "excel_row") continue;
+      if (wantedStems.has(headerStem(key)) && String(value || "").trim()) {
+        return String(value).trim();
+      }
+    }
+    return "";
+  };
+  return visit(record) || visit(record?.raw) || "";
 }
 
 function sheetToRecords(sheet, sheetName) {
@@ -392,7 +418,10 @@ export function detectListingKind(wb) {
 function indexByParentSku(rows) {
   const out = {};
   (rows || []).forEach((row) => {
-    const key = normalizeSkuKey(row.parent_sku || row.sku);
+    const key = normalizeSkuKey(
+      recordValue(row, ["parent_sku", "parentsku", "parent"]) ||
+        recordValue(row, ["sku"]),
+    );
     if (key) out[key] = row;
   });
   return out;
@@ -458,11 +487,14 @@ function flattenVariationWorkbook(wb, listingKind) {
   const usedAttrs = listingKind === "custom" ? usedCustomAttrIndexes(attributes, variations.rows) : [];
   const headers = listingKind === "custom" ? customWorkbookHeaders(usedAttrs) : COLOR_SIZE_HEADERS;
   const rows = variations.rows.map((variant, i) => {
-    const parentKey = normalizeSkuKey(variant.parent_sku);
+    const parentSku = recordValue(variant, ["parent_sku", "parentsku", "parent"]);
+    const parentKey = normalizeSkuKey(parentSku);
     const parent = parents[parentKey] || {};
     const attrs = attributes[parentKey] || {};
-    const sku = String(variant.sku || variant.variant_sku || "").trim();
-    const imageSku = String(variant.image_sku || sku).trim();
+    const sku =
+      recordValue(variant, ["variant_sku", "variantsku"]) ||
+      recordValue(variant, ["sku"]);
+    const imageSku = recordValue(variant, ["image_sku", "imagesku"]) || sku;
     const attrRaw = {};
     usedAttrs.forEach((n) => {
       attrRaw[`Attribute ${n} Name`] = attrs[`attr${n}_name`] || "";
@@ -472,7 +504,7 @@ function flattenVariationWorkbook(wb, listingKind) {
       row_id: `v_${i + 2}`,
       excel_row: i + 2,
       listing_kind: listingKind,
-      parent_sku: variant.parent_sku || parent.parent_sku || parent.sku || "",
+      parent_sku: parentSku || parent.parent_sku || parent.sku || "",
       sku,
       image_sku: imageSku,
       brand_type: parent.brand_type || "",
@@ -500,6 +532,9 @@ function flattenVariationWorkbook(wb, listingKind) {
         ...(parent.raw || {}),
         ...(variant.raw || {}),
         ...attrRaw,
+        "Variant SKU": sku,
+        "Parent SKU": parentSku || parent.parent_sku || parent.sku || "",
+        "Image SKU": imageSku,
       },
     };
   }).filter((row) => String(row.sku || "").trim());
@@ -654,6 +689,45 @@ export function variationPreviewGroups(rows) {
     if (!group.title) group.title = group.parentSku || group.variants[0]?.sku || "—";
   });
   return groups;
+}
+
+/**
+ * Variant / listing SKU keys used on more than one row.
+ * Repeated Parent SKU is how Colour × Size groups colours — it is not a duplicate.
+ */
+export function duplicateSkuKeys(rows) {
+  const seen = new Set();
+  const dupes = new Set();
+  (rows || []).forEach((row) => {
+    const key = normalizeSkuKey(row?.sku);
+    const parent = normalizeSkuKey(row?.parent_sku);
+    if (!key) return;
+    // Parent SKU is allowed to repeat. If a row's "SKU" is actually the parent,
+    // the parent-equals-variant check reports that — do not call it a duplicate.
+    if (parent && key === parent) return;
+    if (seen.has(key)) dupes.add(key);
+    else seen.add(key);
+  });
+  return dupes;
+}
+
+export function sizeVariantSku(baseSku, sizeLabel, sizeCount = 1) {
+  const base = String(baseSku || "").trim();
+  if (!base) return "";
+  if (Number(sizeCount) <= 1) return base;
+  return `${base}-${slugSizeToken(sizeLabel)}`;
+}
+
+export function listingErrorLabel(item = {}) {
+  const parent = String(item.parentSku || "").trim();
+  const variant = String(item.variantSku || "").trim();
+  const sku = String(item.sku || "").trim();
+  if (parent && variant && normalizeSkuKey(parent) !== normalizeSkuKey(variant)) {
+    return `Parent ${parent} · Variant ${variant}`;
+  }
+  if (variant) return `Variant ${variant}`;
+  if (parent) return `Parent ${parent}`;
+  return sku || "Listing";
 }
 
 /** One entry per parent SKU, so a colour x size sheet lists once, not per row. */
@@ -880,11 +954,23 @@ export function applyColumnMap(rows, mapping) {
     const next = { ...row };
     mapping.forEach((map) => {
       if (!map.ierada || map.ierada === IGNORE_FIELD) return;
-      const fromRaw = row.raw?.[map.excel];
-      const incoming = fromRaw != null ? String(fromRaw).trim() : "";
+      const stem = headerStem(map.excel);
+      // Parent SKU / Image SKU must never overwrite the variant SKU.
+      if (map.ierada === "sku" && (stem === "parent_sku" || stem === "image_sku")) return;
+      const incoming = recordValue({ raw: row.raw }, [map.excel]);
       if (incoming) next[map.ierada] = incoming;
     });
-    if (!String(next.image_sku || "").trim()) next.image_sku = next.sku || "";
+    if (!String(next.parent_sku || "").trim()) {
+      next.parent_sku = recordValue(next, ["parent_sku", "parentsku", "parent"]);
+    }
+    if (!String(next.sku || "").trim()) {
+      next.sku =
+        recordValue(next, ["variant_sku", "variantsku"]) ||
+        recordValue(next, ["sku"]);
+    }
+    if (!String(next.image_sku || "").trim()) {
+      next.image_sku = recordValue(next, ["image_sku", "imagesku"]) || next.sku || "";
+    }
     return next;
   });
 }
@@ -1094,6 +1180,15 @@ function lookupSize(list, value) {
   return null;
 }
 
+export function splitColourValues(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(/\s*[,|;]+\s*|\s+\/\s+/)
+    .map((part) => part.replace(/^[☑☐]\s*/, "").trim())
+    .filter(Boolean);
+}
+
 export function splitSizeValues(value) {
   const raw = String(value || "").trim();
   if (!raw) return [];
@@ -1114,37 +1209,23 @@ export function slugSizeToken(value) {
 
 export function expandMappedRowsBySize(rows) {
   const out = [];
-  (rows || []).forEach((row, idx) => {
+  (rows || []).forEach((row) => {
     if (row.listing_kind === "color_size" || row.listing_kind === "custom") {
       out.push({ ...row, image_sku: row.image_sku || row.sku });
       return;
     }
-    const parts = splitSizeValues(row.size);
-    if (parts.length <= 1) {
-      out.push({
-        ...row,
-        size: parts[0] || row.size || "",
-        image_sku: row.image_sku || row.sku,
-      });
-      return;
-    }
-    const baseSku = String(row.image_sku || row.sku || "").trim();
-    parts.forEach((size, i) => {
-      const token = slugSizeToken(size);
-      out.push({
-        ...row,
-        size,
-        sku: baseSku ? `${baseSku}-${token}` : row.sku,
-        image_sku: baseSku,
-        source_row_id: row.source_row_id || row.row_id,
-        row_id: `${row.row_id || `r_${idx + 2}`}-sz-${i}`,
-      });
+    out.push({
+      ...row,
+      image_sku: row.image_sku || row.sku,
     });
   });
   return out;
 }
 
-export function validateListingRow(row, { taxonomy, colors, sizes, imagesBySku, existingSkus, listingKind }) {
+export function validateListingRow(
+  row,
+  { taxonomy, colors, sizes, imagesBySku, existingSkus, existingVariationSkus, duplicateSkus, listingKind },
+) {
   const errors = [];
   const warnings = [];
   const sku = String(row.sku || "").trim();
@@ -1186,6 +1267,7 @@ export function validateListingRow(row, { taxonomy, colors, sizes, imagesBySku, 
   }
 
   const sizeParts = isCustom ? [] : splitSizeValues(row.size);
+  const colourParts = isCustom ? [] : splitColourValues(row.colour);
   const resolvedSizes = sizeParts.map((part) => lookupSize(sizes, part));
   const missingSizes = sizeParts.filter((part, i) => !resolvedSizes[i]);
   const size = resolvedSizes.find(Boolean) || null;
@@ -1193,7 +1275,14 @@ export function validateListingRow(row, { taxonomy, colors, sizes, imagesBySku, 
     if (!sizeParts.length) errors.push("Size is required");
     else if (missingSizes.length) errors.push(`Size not in catalogue: ${missingSizes.join(", ")}`);
     else if (sizeParts.length > 1 && !isColorSize) {
-      warnings.push(`Multiple sizes will list as separate SKUs (${sizeParts.join(", ")})`);
+      errors.push("Single listing accepts one size only. Use the Colour × Size template for more than one size.");
+    }
+    if (colourParts.length > 1) {
+      errors.push(
+        isColorSize
+          ? "Each Colour × Size variation row accepts one colour only. Add another row for the next colour."
+          : "Single listing accepts one colour only. Use the Colour × Size template for more than one colour.",
+      );
     }
   } else if (!String(row.attr1_value || "").trim()) {
     errors.push("Custom variation value is required");
@@ -1229,6 +1318,23 @@ export function validateListingRow(row, { taxonomy, colors, sizes, imagesBySku, 
   else if (images.length < 2) warnings.push("Consider adding more images");
 
   if (sku && existingSkus?.has(sku.toLowerCase())) errors.push("SKU already exists");
+  if (sku && existingVariationSkus?.has(normalizeSkuKey(sku))) {
+    errors.push("SKU already used by a variation of another listing — use a unique SKU");
+  }
+
+  const skuKey = normalizeSkuKey(sku);
+  const parentKey = normalizeSkuKey(row.parent_sku);
+  if ((isColorSize || isCustom) && skuKey && parentKey && skuKey === parentKey) {
+    errors.push(
+      `Variant SKU cannot be the same as the Parent SKU "${row.parent_sku}". The parent SKU is allowed to repeat — put the unique colour SKU in Variant SKU (for example ${row.parent_sku}-BLK)`,
+    );
+  } else if (skuKey && duplicateSkus?.has(skuKey)) {
+    errors.push(
+      isColorSize || isCustom
+        ? `Variant SKU "${sku}" is used on more than one colour row — each colour needs its own Variant SKU. Repeating the Parent SKU is fine.`
+        : `SKU "${sku}" is used on more than one row — every listing needs its own SKU`,
+    );
+  }
 
   const short = String(row.short_description || "").trim();
   if (short && short.length < 20) warnings.push("Short description too short");
@@ -1446,14 +1552,14 @@ export const TEMPLATE_FILES = [
     id: "single",
     name: "Single Products",
     title: "Bulk Product Listing (Single Products)",
-    blurb: "One SKU per row. Colour and size sit on the Products sheet.",
+    blurb: "One SKU, one colour and one size per row. Kids Fashion: use age-group sizes.",
     file: "IERADA_Bulk_Listing_Single_Products.xlsx",
   },
   {
     id: "color_size",
     name: "Colour × Size",
     title: "Bulk Product Listing (Colour × Size Variations)",
-    blurb: "Parent SKU on Products, then colour × size rows on the Variations sheet.",
+    blurb: "Parent SKU on Products. Variations: one row per colour (sizes can be listed together) or one row per colour × size.",
     file: "IERADA_Bulk_Listing_Color_Size_Variations.xlsx",
   },
   {

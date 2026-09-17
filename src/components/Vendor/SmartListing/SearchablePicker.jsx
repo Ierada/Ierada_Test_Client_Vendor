@@ -209,6 +209,7 @@ export default function SearchablePicker({
                       e.currentTarget.style.backgroundColor = on ? "#FFF5F0" : "transparent";
                     }}
                   >
+                    {multiple ? (
                     <span
                       className="w-[18px] h-[18px] rounded-[5px] border flex items-center justify-center shrink-0 transition-colors"
                       style={{
@@ -219,6 +220,7 @@ export default function SearchablePicker({
                     >
                       {on ? <Check className="w-3 h-3" strokeWidth={3} /> : null}
                     </span>
+                    ) : null}
                     <span className="min-w-0 flex-1">
                       <span
                         className="block text-[15px] font-medium leading-snug truncate"
@@ -236,6 +238,9 @@ export default function SearchablePicker({
                         </span>
                       ) : null}
                     </span>
+                    {!multiple && on ? (
+                      <Check className="w-4 h-4 shrink-0" style={{ color: ORANGE }} strokeWidth={2.5} />
+                    ) : null}
                   </button>
                 );
               })}

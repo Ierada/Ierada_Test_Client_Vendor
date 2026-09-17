@@ -10,6 +10,7 @@ import {
   Headset,
   Package,
 } from "lucide-react";
+import { listingErrorLabel } from "./wizardEngine";
 
 function formatSubmittedAt(iso) {
   if (!iso) return "—";
@@ -122,30 +123,50 @@ export default function SubmitCompleteStep({
   const failed = submitResult?.failed || [];
   const fileName = submitResult?.fileName || "IERADA_Single_Product_Bulk.xlsx";
   const isAdmin = mode === "admin";
+  const partial = failed.length > 0;
 
   return (
     <div className="mt-5 space-y-4">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
         <div className="min-w-0 space-y-4">
-          <section className="overflow-hidden rounded-2xl border border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 p-5">
+          <section
+            className={`overflow-hidden rounded-2xl border p-5 ${
+              partial
+                ? "border-amber-100 bg-gradient-to-r from-amber-50 via-white to-amber-50"
+                : "border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-emerald-50"
+            }`}
+          >
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(220px,280px)] lg:items-center">
               <div>
                 <h2 className="border-l-4 border-[#F56C43] pl-3 text-[26px] font-bold leading-tight text-[#1A2B48]">
-                  Your Products
-                  <br />
-                  Have Been Submitted!
+                  {partial ? (
+                    <>
+                      {submitted} of {submitted + failed.length} Listings
+                      <br />
+                      Were Submitted
+                    </>
+                  ) : (
+                    <>
+                      Your Products
+                      <br />
+                      Have Been Submitted!
+                    </>
+                  )}
                 </h2>
                 <p className="mt-3 max-w-md text-[13px] text-gray-600">
-                  {isAdmin
-                    ? "Valid products are live on IERADA. You can review any remaining issues and upload another file when you are ready."
-                    : "We are now processing your products. Once the review is complete, the products will be listed on IERADA."}
+                  {partial
+                    ? `${failed.length} listing${failed.length > 1 ? "s were" : " was"} rejected and ${failed.length > 1 ? "are" : "is"} not live. Fix the rows listed below and submit them again.`
+                    : isAdmin
+                      ? "Valid products are live on IERADA. You can review any remaining issues and upload another file when you are ready."
+                      : "We are now processing your products. Once the review is complete, the products will be listed on IERADA."}
                 </p>
                 <ul className="mt-4 space-y-2 text-[13px] text-emerald-700">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> File processed successfully
                   </li>
                   <li className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Products submitted for listing
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    {submitted} product{submitted === 1 ? "" : "s"} submitted for listing
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
@@ -188,11 +209,18 @@ export default function SubmitCompleteStep({
               <OverviewCard tone="rose" value={errors} label="With Errors" icon={<AlertTriangle className="h-5 w-5 text-rose-500" />} />
             </div>
             {failed.length ? (
-              <ul className="mt-3 space-y-1 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-[12px] text-rose-600">
-                {failed.map((item) => (
-                  <li key={item.sku}>{item.sku}: {item.error}</li>
-                ))}
-              </ul>
+              <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2">
+                <p className="text-[12px] font-semibold text-rose-700">
+                  Not submitted — fix these and submit again
+                </p>
+                <ul className="mt-1 space-y-1 text-[12px] text-rose-600">
+                  {failed.map((item, i) => (
+                    <li key={`${item.sku}-${i}`}>
+                      <span className="font-semibold">{listingErrorLabel(item)}</span>: {item.error}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ) : null}
           </section>
 

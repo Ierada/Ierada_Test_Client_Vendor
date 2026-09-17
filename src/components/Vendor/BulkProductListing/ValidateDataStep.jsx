@@ -503,7 +503,11 @@ export default function ValidateDataStep({
               "Product Name is required",
               "Category, Sub-category is required",
               "Selling Price must be a valid number (e.g., 99 or 99.00)",
-              "Size must match admin Size attributes (multiple: S, M, L)",
+              custom
+                ? "Custom variation value is required"
+                : listingKind === "color_size"
+                  ? "Each variation row: one catalogue colour. Sizes can be comma-separated on that colour. Parent SKU may repeat. Kids Fashion: use age-group sizes (6-9 Months, 2-2.5 Years)"
+                  : "Single listing: one catalogue colour and one size. Kids Fashion: use age-group sizes (6-9 Months, 2-2.5 Years)",
               "At least 1 product image is required",
               "Short description (minimum 20 characters)",
               "Check for prohibited or restricted content",

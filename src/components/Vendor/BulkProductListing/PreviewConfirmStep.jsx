@@ -27,6 +27,7 @@ import {
   listingTableScrollClass,
   listingTableHeadClass,
   wizardImageSrc,
+  listingErrorLabel,
 } from "./wizardEngine";
 
 function formatInr(value) {
@@ -548,6 +549,7 @@ export default function PreviewConfirmStep({
   taxonomy,
   colors,
   sizes,
+  submitFailures = [],
 }) {
   const [editRow, setEditRow] = useState(null);
   const [view, setView] = useState("card");
@@ -611,6 +613,25 @@ export default function PreviewConfirmStep({
   return (
     <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_250px]">
       <div className="min-w-0 space-y-3">
+        {submitFailures.length ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3">
+            <p className="flex items-center gap-1.5 text-[13px] font-semibold text-rose-700">
+              <AlertTriangle className="h-4 w-4" />
+              Nothing was submitted — {submitFailures.length} listing
+              {submitFailures.length > 1 ? "s were" : " was"} rejected
+            </p>
+            <ul className="mt-2 space-y-1 text-[12px] text-rose-600">
+              {submitFailures.map((item, i) => (
+                <li key={`${item.sku}-${i}`}>
+                  <span className="font-semibold">{listingErrorLabel(item)}</span>: {item.error}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-[11px] text-rose-500">
+              Fix these rows in the Excel, re-upload the completed file on this step, then submit again.
+            </p>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="border-l-4 border-[#F56C43] pl-2.5 text-[16px] font-semibold text-[#1A2B48]">

@@ -8,12 +8,13 @@ Step 4 = download completed Excel, edit, re-upload on the same step, then submit
 Files
 -----
 - IERADA_Bulk_Listing_Single_Products.xlsx
-  Products sheet: SKU, brand type, brand, colour, size, prices, stock, package, What's in the Box (seller-filled).
-  Size column is a dropdown of admin Size attributes. Multiple sizes: 6, 7, 8.
+  Products sheet: one SKU, one colour and one size per row, plus brand, prices, stock, package, What's in the Box.
+  Size dropdown: pick one size. Kids Fashion: use age-group sizes (6-9 Months, 2-2.5 Years), not adult S/M/L.
   Completed (example) sheet: same rows plus AI copy + staged image counts.
 
 - IERADA_Bulk_Listing_Color_Size_Variations.xlsx
-  Products (parent, including seller-filled What's in the Box) + Variations (colour × size). Use Image SKU so all sizes of one colour share photos.
+  Products: one parent SKU per listing. Variations: one row per colour × size (one colour and one size on each row).
+  Kids Fashion sizes: age-group sizes (6-9 Months, 2-2.5 Years). Use Image SKU so all sizes of one colour share photos.
 
 - IERADA_Bulk_Listing_Custom_Variations.xlsx
   Products (including seller-filled What's in the Box) + Attributes (up to 4) + Variations (combination rows).

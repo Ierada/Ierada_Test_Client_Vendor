@@ -458,6 +458,8 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
   );
   const allowMultipleSizes =
     state.listingType !== "single" && state.listingType !== "combo";
+  const singleListingOnly =
+    state.listingType === "single" || state.listingType === "combo";
   const selectedSizeIds = listingSizeIds(state);
   const colorOptions = useMemo(() => colorPickerOptions(colors), [colors]);
   const catalogEmpty =
@@ -566,6 +568,7 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
         <div id="ai-review-color">
           <SearchablePicker
             compact
+            multiple={false}
             required
             disabled={readOnly || loading}
             error={fieldErrors.color_id ? " " : undefined}
@@ -573,9 +576,15 @@ function SizeColorPairFields({ state, patch, fieldErrors = {}, readOnly = false 
             onChange={(id) => {
               const c = colors.find((x) => String(x.id) === String(id));
               const sid = id ? String(id) : "";
-              const color_ids = sid
-                ? [...new Set([sid, ...selectedVariationColorIds(state)])]
-                : selectedVariationColorIds(state).filter((x) => x !== String(state.color_id || ""));
+              const color_ids = singleListingOnly
+                ? sid
+                  ? [sid]
+                  : []
+                : sid
+                  ? [...new Set([sid, ...selectedVariationColorIds(state)])]
+                  : selectedVariationColorIds(state).filter(
+                      (x) => x !== String(state.color_id || ""),
+                    );
               const next = {
                 color_id: sid || color_ids[0] || "",
                 color_ids,
@@ -773,6 +782,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           if (Array.isArray(next.size_labels) && next.size_labels.length > 1) {
             next.size_labels = next.size_labels.slice(0, 1);
           }
+          const colorIds = selectedVariationColorIds(next).slice(0, 1);
+          next.color_ids = colorIds;
+          next.color_id = colorIds[0] || "";
         }
       } else {
         next = { ...prev, ...resolved };
