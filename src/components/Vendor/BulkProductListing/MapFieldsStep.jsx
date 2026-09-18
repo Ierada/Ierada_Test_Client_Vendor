@@ -86,6 +86,9 @@ function FieldSelect({ value, onChange }) {
       <button
         ref={btnRef}
         type="button"
+        aria-label="Map spreadsheet column to product field"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className="flex w-full min-w-[168px] items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-left"
       >

@@ -1261,7 +1261,7 @@ export default function BulkListingWizard({
     setImageFilesBySku((prev) => {
       const next = { ...prev };
       files.forEach((file) => {
-        const parsed = parseSkuImageFilename(file.name);
+        const parsed = parseSkuImageFilename(file.webkitRelativePath || file.name);
         if (!parsed?.sku) return;
         next[parsed.sku] = { ...(next[parsed.sku] || {}), [parsed.order]: file };
       });
@@ -2221,14 +2221,191 @@ export default function BulkListingWizard({
             visibility: "Hidden",
             listing_status: mode === "admin" ? "published" : "pending_review",
           };
+          const stagedIds = images.map((img) => img.id).filter(Boolean);
+          if (!stagedIds.length) {
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error:
+                "Photos are not stored on the server yet. Re-upload the ZIP or folder, then submit.",
+            });
+            continue;
+          }
           const built = buildSmartListingFormData(state, {
             requestPublish: mode === "vendor",
             adminPublish: mode === "admin",
           });
           built.formData.append(
             "staged_image_ids",
-            JSON.stringify(images.map((img) => img.id).filter(Boolean)),
+            JSON.stringify(stagedIds),
           );
+          const res = await addProduct(built.formData);
+          if (res?.status === 1) {
+            success += 1;
+            group.rows.forEach((r) => existingSkus.add(String(r.sku).toLowerCase()));
+          } else {
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error: res?.message || "Submit failed",
+            });
+          }
+        } catch (e) {
+          failed.push({
+            sku: parentSku,
+            parentSku,
+            variantSku: group.rows[0]?.sku || "",
+            error: getApiErrorMessage(e, "Submit failed"),
+          });
+        }
+      }
+    } else if (listingKind === "custom") {
+      const groups = groupColorSizeSubmitRows(chosen);
+      const siblingErrors = new Map();
+      groupColorSizeSubmitRows(validatedRows).forEach((group) => {
+        const key = normalizeSkuKey(group.parentSku) || group.rows[0]?.row_id;
+        const bad = group.rows.find((row) => row.status === "error");
+        if (key && bad) siblingErrors.set(key, bad);
+      });
+      for (const group of groups) {
+        const parentSku = group.parentSku || group.rows[0]?.sku || "";
+        const sibling = siblingErrors.get(
+          normalizeSkuKey(group.parentSku) || group.rows[0]?.row_id,
+        );
+        if (sibling) {
+          failed.push({
+            sku: sibling.sku || parentSku,
+            parentSku,
+            variantSku: sibling.sku || "",
+            error: sibling.errors?.[0] || "Another row under this parent SKU has an error",
+          });
+          continue;
+        }
+        try {
+          const checked = group.rows.map((row) => ({
+            row,
+            result: validateListingRow(row, {
+              taxonomy,
+              colors,
+              sizes,
+              imagesBySku,
+              existingSkus,
+              duplicateSkus,
+              listingKind,
+            }),
+          }));
+          const bad = checked.find((item) => item.result.errors.length);
+          if (bad) {
+            failed.push({
+              sku: bad.row.sku || parentSku,
+              parentSku,
+              variantSku: bad.row.sku || "",
+              error: bad.result.errors[0],
+            });
+            continue;
+          }
+          const images = [];
+          const seenImages = new Set();
+          const customRows = [];
+          let stockTotal = 0;
+          checked.forEach(({ row, result }, i) => {
+            stockTotal += Number(row.stock) || 0;
+            (result.resolved.images || []).forEach((img) => {
+              const token = img?.id || img?.filename || img?.originalName;
+              if (!token || seenImages.has(token)) return;
+              seenImages.add(token);
+              images.push(img);
+            });
+            const attributes = [1, 2, 3, 4]
+              .map((n) => ({
+                attribute_name: String(row[`attr${n}_name`] || "").trim(),
+                attribute_value: String(row[`attr${n}_value`] || "").trim(),
+              }))
+              .filter((item) => item.attribute_value);
+            customRows.push({
+              enabled: true,
+              grouping_key: i,
+              stock: row.stock,
+              original_price: row.mrp,
+              discounted_price: row.selling_price,
+              sku: row.sku,
+              barcode: row.barcode || null,
+              attributes,
+            });
+          });
+          if (!customRows.length) {
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error: "Custom variation values are required",
+            });
+            continue;
+          }
+          const stagedIds = images.map((img) => img.id).filter(Boolean);
+          if (!stagedIds.length) {
+            failed.push({
+              sku: parentSku,
+              parentSku,
+              variantSku: group.rows[0]?.sku || "",
+              error:
+                "Photos are not stored on the server yet. Re-upload the ZIP or folder, then submit.",
+            });
+            continue;
+          }
+          const head = checked[0];
+          const row = head.row;
+          const resolved = head.result.resolved;
+          const state = {
+            vendor_id: vendorId,
+            listingType: "custom",
+            brandType:
+              String(row.brand_type || "").toLowerCase() === "branded" ? "branded" : "generic",
+            brand: row.brand,
+            name: row.name,
+            sku: parentSku,
+            hsn_code: row.hsn_code,
+            gst: row.gst,
+            original_price: row.mrp,
+            discounted_price: row.selling_price,
+            stock: stockTotal,
+            package_weight: row.package_weight,
+            package_length: row.package_length,
+            package_width: row.package_width,
+            package_height: row.package_height,
+            countryOfOrigin: row.country_of_origin || "India",
+            barcode: row.barcode || "",
+            category_id: resolved.category?.id || "",
+            sub_category_id: resolved.subCategory?.id || "",
+            inner_sub_category_id: resolved.inner?.id || "",
+            categoryTitle: resolved.category?.name || row.category,
+            subCategoryTitle: resolved.subCategory?.name || row.sub_category,
+            innerSubCategoryTitle: resolved.inner?.name || "",
+            customRows,
+            shortDescription: row.short_description || "",
+            productDetails: row.product_details || "",
+            keyFeatures: splitPipe(row.key_features),
+            benefits: splitPipe(row.benefits),
+            whatsInTheBox: splitPipe(row.whats_in_the_box),
+            specifications: parseSpecs(row.specifications),
+            metaTitle: row.meta_title || "",
+            metaDescription: row.meta_description || "",
+            tags: String(row.tags || "")
+              .split(",")
+              .map((t) => t.trim())
+              .filter(Boolean),
+            files: [],
+            existingMedia: images.map((img) => ({ url: img.url, id: img.id })),
+            visibility: "Hidden",
+            listing_status: mode === "admin" ? "published" : "pending_review",
+          };
+          const built = buildSmartListingFormData(state, {
+            requestPublish: mode === "vendor",
+            adminPublish: mode === "admin",
+          });
+          built.formData.append("staged_image_ids", JSON.stringify(stagedIds));
           const res = await addProduct(built.formData);
           if (res?.status === 1) {
             success += 1;
@@ -2311,14 +2488,20 @@ export default function BulkListingWizard({
           visibility: "Hidden",
           listing_status: mode === "admin" ? "published" : "pending_review",
         };
+        const stagedIds = images.map((img) => img.id).filter(Boolean);
+        if (!stagedIds.length) {
+          failed.push({
+            sku: row.sku,
+            error:
+              "Photos are not stored on the server yet. Re-upload the ZIP or folder, then submit.",
+          });
+          continue;
+        }
         const built = buildSmartListingFormData(state, {
           requestPublish: mode === "vendor",
           adminPublish: mode === "admin",
         });
-        built.formData.append(
-          "staged_image_ids",
-          JSON.stringify(images.map((img) => img.id).filter(Boolean)),
-        );
+        built.formData.append("staged_image_ids", JSON.stringify(stagedIds));
         const res = await addProduct(built.formData);
         if (res?.status === 1) {
           success += 1;
@@ -2342,7 +2525,7 @@ export default function BulkListingWizard({
       at: new Date().toISOString(),
       fileName: excelName,
     };
-    if (success) {
+    if (success && !failed.length) {
       const previous = snapshotKindSession(listingKind);
       filesByKind.current[listingKind] = {};
       lastAiKey.current = "";

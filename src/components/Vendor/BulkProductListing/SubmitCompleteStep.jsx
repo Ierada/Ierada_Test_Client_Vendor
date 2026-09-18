@@ -16,7 +16,7 @@ function formatSubmittedAt(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("en-GB", {
+  return d.toLocaleString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",

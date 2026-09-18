@@ -95,19 +95,9 @@ export const searchProducts = async (keyword) => {
 export const addProduct = async (productData) => {
   try {
     const res = await apiClient.post(`/product/addProduct`, productData);
-    // if (res.data.status === 1) {
-    //   notifyOnSuccess(res.data.message);
-    // } else {
-    //   notifyOnFail(res.data.message);
-    // }
     return res.data;
-    } catch (error) {
-    notifyOnFail(
-      getApiErrorMessage(
-        error,
-        "There was an error adding the product. Please try again later.",
-      ),
-    );
+  } catch (error) {
+    console.error(error);
     return error.response?.data || { status: 0, message: "Error adding product" };
   }
 };

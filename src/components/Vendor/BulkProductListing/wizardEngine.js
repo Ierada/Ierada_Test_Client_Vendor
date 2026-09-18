@@ -193,25 +193,93 @@ const HEADER_ALIASES = {
 };
 
 const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|avif)$/i;
-const SLOT = /^(.*)-([1-9]|10)$/;
+const SLOT_AT_END = /^(.*?)[-_ ]+(10|[1-9]|0[1-9])$/;
+const SLOT_ONLY = /^(10|[1-9]|0[1-9])$/;
+const GENERIC_DIR =
+  /^(?:__macosx|\.|images?|imgs?|photos?|pics?|uploads?|files?|assets?|media|product[\s._-]*images?)$/i;
+
+function pathParts(name) {
+  return String(name || "")
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((p) => p.trim())
+    .filter((p) => p && p !== ".");
+}
+
+function cleanStem(stem) {
+  return String(stem || "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function folderSku(parts) {
+  for (let i = parts.length - 2; i >= 0; i -= 1) {
+    const folder = cleanStem(parts[i]);
+    if (!folder || GENERIC_DIR.test(folder)) continue;
+    return folder;
+  }
+  return "";
+}
+
+function stripImageExt(name) {
+  let stem = String(name || "");
+  for (let i = 0; i < 3 && IMAGE_EXT.test(stem); i += 1) {
+    stem = stem.replace(IMAGE_EXT, "");
+  }
+  return cleanStem(stem);
+}
+
+function slotNumber(raw) {
+  const n = Number(String(raw).replace(/^0+/, "") || raw);
+  return n >= 1 && n <= 10 ? n : null;
+}
 
 export function parseSkuImageFilename(originalName) {
-  const base = String(originalName || "").replace(/\\/g, "/").split("/").pop() || "";
-  const trimmed = base.trim();
-  if (!trimmed) return null;
-  const stem = trimmed.replace(IMAGE_EXT, "").trim();
-  if (!stem) return { sku: null, order: null, filename: trimmed, ignored: true };
-  const match = stem.match(SLOT);
-  if (!match || !match[1].trim()) {
-    return { sku: null, order: null, filename: trimmed, ignored: true };
+  const parts = pathParts(originalName);
+  const base = parts[parts.length - 1] || "";
+  if (!base) return null;
+  const stem = stripImageExt(base);
+  if (!stem) return { sku: null, order: null, filename: base, ignored: true };
+
+  const fromFolder = folderSku(parts);
+  const only = stem.match(SLOT_ONLY);
+  if (only) {
+    const order = slotNumber(only[1]);
+    if (!fromFolder) return { sku: null, order, filename: base, ignored: true };
+    return { sku: fromFolder, order, filename: base, ignored: false };
   }
-  return { sku: match[1].trim(), order: Number(match[2]), filename: trimmed, ignored: false };
+
+  const match = stem.match(SLOT_AT_END);
+  if (match && match[1].trim()) {
+    const parsedSku = match[1].trim();
+    const order = slotNumber(match[2]);
+    const sameFolder =
+      fromFolder &&
+      (normalizeSkuKey(parsedSku) === normalizeSkuKey(fromFolder) ||
+        normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}-`) ||
+        normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}_`));
+    const sku = fromFolder && !sameFolder ? fromFolder : parsedSku;
+    return { sku, order, filename: base, ignored: false };
+  }
+
+  if (fromFolder) {
+    return { sku: fromFolder, order: null, filename: base, ignored: false };
+  }
+
+  if (stem) {
+    return { sku: stem, order: null, filename: base, ignored: false };
+  }
+
+  return { sku: null, order: null, filename: base, ignored: true };
 }
 
 export function normalizeSkuKey(sku) {
   return String(sku || "")
     .replace(/[\u2010-\u2015\u2212]/g, "-")
     .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
@@ -219,7 +287,7 @@ export function normalizeSkuKey(sku) {
 export function indexImageFilesBySku(files) {
   const bySku = {};
   Array.from(files || []).forEach((file) => {
-    const name = file?.name || file?.originalName || "";
+    const name = file?.webkitRelativePath || file?.zipPath || file?.name || file?.originalName || "";
     const parsed = parseSkuImageFilename(name);
     if (!parsed?.sku) return;
     if (!bySku[parsed.sku]) bySku[parsed.sku] = [];
@@ -237,6 +305,20 @@ export function indexImageFilesBySku(files) {
     });
   });
   Object.values(bySku).forEach((list) => {
+    const used = new Set(
+      list.map((img) => Number(img.order)).filter((n) => n >= 1 && n <= 10),
+    );
+    let next = 1;
+    list.forEach((img) => {
+      const n = Number(img.order);
+      if (n >= 1 && n <= 10) return;
+      while (used.has(next) && next <= 10) next += 1;
+      if (next <= 10) {
+        img.order = next;
+        used.add(next);
+        next += 1;
+      }
+    });
     list.sort((a, b) => Number(a.order || 99) - Number(b.order || 99));
   });
   return bySku;
@@ -255,6 +337,7 @@ export function mergeImagesBySku(...maps) {
         const existing = out[key].find((item) => {
           const itemName = String(item.originalName || item.filename || "").toLowerCase();
           if (name && itemName && name === itemName) return true;
+          if (!Number.isFinite(order) || order < 1) return false;
           return Number(item.order) === order;
         });
         if (existing) {
@@ -269,6 +352,20 @@ export function mergeImagesBySku(...maps) {
     });
   });
   Object.values(out).forEach((list) => {
+    const used = new Set(
+      list.map((img) => Number(img.order)).filter((n) => n >= 1 && n <= 10),
+    );
+    let next = 1;
+    list.forEach((img) => {
+      const n = Number(img.order);
+      if (n >= 1 && n <= 10) return;
+      while (used.has(next) && next <= 10) next += 1;
+      if (next <= 10) {
+        img.order = next;
+        used.add(next);
+        next += 1;
+      }
+    });
     list.sort((a, b) => Number(a.order || 99) - Number(b.order || 99));
   });
   return out;
@@ -292,13 +389,13 @@ export function imagesForSku(imagesBySku, sku) {
   const seen = new Set();
   Object.entries(imagesBySku).forEach(([key, list]) => {
     (list || []).forEach((img) => {
-      const parsed = parseSkuImageFilename(img.originalName || img.filename || key);
-      const imgSku = normalizeSkuKey(parsed?.sku || img.sku || key);
+      const parsed = parseSkuImageFilename(img.zipPath || img.originalName || img.filename || key);
+      const imgSku = normalizeSkuKey(img.sku || key || parsed?.sku);
       if (imgSku !== want) return;
       const token = `${String(img.originalName || img.filename || "").toLowerCase()}#${Number(img.order || parsed?.order || 0)}`;
       if (seen.has(token)) return;
       seen.add(token);
-      collected.push({ ...img, sku: parsed?.sku || img.sku || key, order: parsed?.order || img.order });
+      collected.push({ ...img, sku: img.sku || key || parsed?.sku, order: img.order || parsed?.order });
     });
   });
   collected.sort((a, b) => Number(a.order || 99) - Number(b.order || 99));

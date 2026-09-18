@@ -17,27 +17,6 @@ const inr = (value) =>
 
 const int = (value) => Number(value || 0).toLocaleString("en-IN");
 
-const Sparkline = ({ points = [], color = "#6366F1" }) => {
-  const w = 48;
-  const h = 15;
-  const nums = points.length ? points : [0, 0, 0, 0, 0, 0, 0];
-  const min = Math.min(...nums);
-  const max = Math.max(...nums);
-  const span = max - min || 1;
-  const d = nums
-    .map((n, i) => {
-      const x = (i / Math.max(nums.length - 1, 1)) * w;
-      const y = h - 4 - ((n - min) / span) * (h - 8);
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="shrink-0">
-      <path d={d} fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
-  );
-};
-
 const ChangeLine = ({ change, href, linkLabel }) => {
   if (href) {
     return (
@@ -68,8 +47,6 @@ const KpiCard = ({
   change,
   href,
   linkLabel,
-  spark,
-  sparkColor,
 }) => (
   <div className="rounded-xl border border-[#EEF0F4] bg-white px-3 py-1.5 shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
     <div className="flex items-center gap-2.5">
@@ -83,18 +60,13 @@ const KpiCard = ({
         </p>
       </div>
     </div>
-    <div className="mt-1 flex items-end justify-between gap-2">
-      <ChangeLine change={change} href={href} linkLabel={linkLabel} />
-      <Sparkline points={spark} color={sparkColor} />
+    <div className="mt-1">
+      {(href || change != null) && (
+        <ChangeLine change={change} href={href} linkLabel={linkLabel} />
+      )}
     </div>
   </div>
 );
-
-const sparkFrom = (value) => {
-  const base = Number(value || 0);
-  if (!base) return [0, 0, 0, 0, 0, 0, 0];
-  return [0.72, 0.78, 0.74, 0.86, 0.9, 0.84, 1].map((n) => base * n);
-};
 
 const DashboardKpiStrip = ({ data = {} }) => {
   const cards = [
@@ -105,8 +77,6 @@ const DashboardKpiStrip = ({ data = {} }) => {
       iconWrap: "bg-[#F3E8FF]",
       iconColor: "text-[#7C3AED]",
       change: data.revenue_change,
-      spark: data.revenue_spark || sparkFrom(data.total_revenue),
-      sparkColor: "#8B5CF6",
     },
     {
       title: "Total Orders",
@@ -115,18 +85,15 @@ const DashboardKpiStrip = ({ data = {} }) => {
       iconWrap: "bg-[#FFF1E8]",
       iconColor: "text-[#EA580C]",
       change: data.orders_change,
-      spark: data.orders_spark || sparkFrom(data.total_sales ?? data.completed_order),
-      sparkColor: "#F97316",
     },
     {
-      title: "Total Products",
-      value: int(data.total_products),
+      title: "Published Products",
+      value: int(data.published_products ?? data.total_products),
       icon: Package,
       iconWrap: "bg-[#FFF8E1]",
       iconColor: "text-[#D97706]",
-      change: data.products_change,
-      spark: data.products_spark || sparkFrom(data.total_products),
-      sparkColor: "#F59E0B",
+      href: "/product/list",
+      linkLabel: `${int(data.total_products)} listed`,
     },
     {
       title: "Total Customers",
@@ -135,8 +102,6 @@ const DashboardKpiStrip = ({ data = {} }) => {
       iconWrap: "bg-[#ECFDF3]",
       iconColor: "text-[#16A34A]",
       change: data.customers_change,
-      spark: data.customers_spark || sparkFrom(data.total_users),
-      sparkColor: "#22C55E",
     },
     {
       title: "Pending Payout",
@@ -146,8 +111,6 @@ const DashboardKpiStrip = ({ data = {} }) => {
       iconColor: "text-[#E11D48]",
       href: "/payments",
       linkLabel: "View Payouts",
-      spark: data.payout_spark || sparkFrom(data.pending_payout),
-      sparkColor: "#FB7185",
     },
     {
       title: "Store Rating",
@@ -156,8 +119,6 @@ const DashboardKpiStrip = ({ data = {} }) => {
       iconWrap: "bg-[#FFF7ED]",
       iconColor: "text-[#F59E0B]",
       change: data.rating_change,
-      spark: data.rating_spark || sparkFrom(data.store_rating || 0),
-      sparkColor: "#F59E0B",
     },
   ];
 

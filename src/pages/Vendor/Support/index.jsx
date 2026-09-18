@@ -4,6 +4,8 @@ import * as supportApi from "../../../services/api.supportV1";
 import { useSupportSocket } from "../../../hooks/useSupportSocket";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
 
+const QUICK_CHIPS = ["Payout delay", "Order not showing", "Product listing issue"];
+
 const countWords = (value) =>
   value.trim().split(/\s+/).filter(Boolean).length;
 
@@ -37,8 +39,13 @@ const SupportPage = () => {
   const [subjectTouched, setSubjectTouched] = useState(false);
 
   const loadTickets = async () => {
-    const res = await supportApi.listTickets();
-    if (res.data?.status === 1) setTickets(res.data.data || []);
+    try {
+      const res = await supportApi.listTickets();
+      if (res.data?.status === 1) setTickets(res.data.data || []);
+      else notifyOnFail(res.data?.message || "Could not load tickets");
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Could not load tickets");
+    }
   };
 
   useEffect(() => {
@@ -52,8 +59,10 @@ const SupportPage = () => {
         if (ctxRes.data?.status === 1) setContext(ctxRes.data.data);
         if (catRes.data?.status === 1) setCategories(catRes.data.data || []);
         if (botRes.data?.status === 1) {
-          setSessionId(botRes.data.data.session_id);
-          setMessages([{ role: "bot", text: botRes.data.data.greeting }]);
+          setSessionId(botRes.data.data?.session_id);
+          setMessages([{ role: "bot", text: botRes.data.data?.greeting }]);
+        } else {
+          notifyOnFail(botRes.data?.message || "Support assistant is unavailable");
         }
         if (statusRes.data?.status === 1) setSupportStatus(statusRes.data.data);
         return loadTickets();
@@ -92,6 +101,11 @@ const SupportPage = () => {
     const text = input.trim();
     if (!text || !sessionId || busy) return;
     setInput("");
+    await askBotText(text);
+  };
+
+  const askBotText = async (text) => {
+    if (!text || !sessionId || busy) return;
     setMessages((current) => [...current, { role: "user", text }]);
     setBusy(true);
     try {
@@ -137,8 +151,12 @@ const SupportPage = () => {
       }
       notifyOnSuccess(`Ticket ${res.data.data.ticket_number} created`);
       setShowHumanForm(false);
-      await loadTickets();
-      await openTicket(res.data.data.id);
+      try {
+        await loadTickets();
+        await openTicket(res.data.data.id);
+      } catch (afterErr) {
+        notifyOnFail(afterErr?.response?.data?.message || "Ticket created, but the list could not refresh");
+      }
     } catch (err) {
       notifyOnFail(err?.response?.data?.message || "Failed to create ticket");
     } finally {
@@ -147,8 +165,13 @@ const SupportPage = () => {
   };
 
   const openTicket = async (id) => {
-    const res = await supportApi.getTicket(id);
-    if (res.data?.status === 1) setSelectedTicket(res.data.data);
+    try {
+      const res = await supportApi.getTicket(id);
+      if (res.data?.status === 1) setSelectedTicket(res.data.data);
+      else notifyOnFail(res.data?.message || "Ticket not found");
+    } catch (err) {
+      notifyOnFail(err?.response?.data?.message || "Could not open ticket");
+    }
   };
 
   useSupportSocket(selectedTicket?.id || null, () => {
@@ -157,27 +180,35 @@ const SupportPage = () => {
 
   const sendReply = async (event) => {
     event.preventDefault();
-    if (!selectedTicket || !reply.trim()) return;
+    if (!selectedTicket || !reply.trim()) {
+      notifyOnFail("Type a reply first");
+      return;
+    }
     const form = new FormData();
     form.set("message", reply.trim());
     form.set("channel", "chat");
+    setBusy(true);
     try {
       const res = await supportApi.replyToTicket(selectedTicket.id, form);
       if (res.data?.status === 1) {
         setReply("");
+        notifyOnSuccess("Reply sent");
         await openTicket(selectedTicket.id);
       } else {
         notifyOnFail(res.data?.message || "Failed to send reply");
       }
     } catch (err) {
       notifyOnFail(err?.response?.data?.message || "Failed to send reply");
+    } finally {
+      setBusy(false);
     }
   };
 
   return (
-    <main className="p-4 md:p-6 lg:p-8 space-y-6">
-      <h2 className="text-2xl font-semibold">Support</h2>
-
+    <main className="p-4 md:p-6 lg:p-8">
+      <h2 className="mb-4 text-2xl font-semibold">Support</h2>
+      <div className="grid gap-4 lg:grid-cols-12 lg:items-start">
+      <div className="space-y-4 lg:col-span-8 lg:col-start-5">
       <section className="rounded-2xl border bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center gap-3">
           <Bot className="text-primary-100" />
@@ -228,6 +259,19 @@ const SupportPage = () => {
             <Send size={18} />
           </button>
         </form>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {QUICK_CHIPS.map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              disabled={busy || !sessionId}
+              onClick={() => askBotText(chip)}
+              className="rounded-full border px-3 py-1 text-xs text-gray-700 hover:border-primary-100 hover:text-primary-100 disabled:opacity-40"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
         <div className="mt-3">
           <button
             type="button"
@@ -346,7 +390,9 @@ const SupportPage = () => {
           </button>
         </form>
       )}
+      </div>
 
+      <div className="space-y-4 lg:col-span-4 lg:col-start-1 lg:row-start-1">
       <section className="rounded-2xl border bg-white p-5">
         <h3 className="mb-3 font-bold">My tickets</h3>
         {tickets.length === 0 ? (
@@ -362,7 +408,9 @@ const SupportPage = () => {
               <button
                 key={ticket.id}
                 onClick={() => openTicket(ticket.id)}
-                className="cursor-pointer rounded-xl border p-3 text-left hover:border-primary-100"
+                className={`cursor-pointer rounded-xl border p-3 text-left hover:border-primary-100 ${
+                  selectedTicket?.id === ticket.id ? "border-primary-100 bg-orange-50" : ""
+                }`}
               >
                 <div className="font-semibold">{ticket.ticket_number}</div>
                 <div className="text-sm">{ticket.subject}</div>
@@ -401,6 +449,8 @@ const SupportPage = () => {
           )}
         </section>
       )}
+      </div>
+      </div>
     </main>
   );
 };

@@ -46,12 +46,13 @@ export async function stageBulkListingImages({
   if (jobId) fd.append("job_id", jobId);
   if (vendorId) fd.append("vendor_id", String(vendorId));
   files.forEach((file) => fd.append("images", file));
+  files.forEach((file) => fd.append("image_paths", file.webkitRelativePath || file.name || ""));
   zips.forEach((file) => fd.append("zip", file));
   const res = await apiClient.post(
     jobId ? `/bulk-listing-wizard/jobs/${jobId}/images` : "/bulk-listing-wizard/images",
     fd,
     {
-      timeout: 0,
+      timeout: 10 * 60 * 1000,
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       onUploadProgress: (ev) => {
@@ -108,7 +109,7 @@ export async function uploadBulkListingZipInChunks({
         : "/bulk-listing-wizard/zip-chunk",
       fd,
       {
-        timeout: 0,
+        timeout: 10 * 60 * 1000,
         signal,
         maxBodyLength: Infinity,
         maxContentLength: Infinity,

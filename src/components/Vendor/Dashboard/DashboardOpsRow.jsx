@@ -22,10 +22,11 @@ const DashboardOpsRow = ({
   const inStock = Number(inventory.in_stock || 0);
   const lowStock = Number(inventory.low_stock || 0);
   const outStock = Number(inventory.out_of_stock || 0);
-  const availableTotal = inStock + outStock;
-  const healthy = availableTotal
-    ? Math.round((inStock / availableTotal) * 100)
-    : 0;
+  const totalStock = Number(inventory.total_stock || 0);
+  const published = Number(inventory.published_products || 0);
+  const healthyCount = Math.max(0, inStock - lowStock);
+  const listed = inStock + outStock;
+  const healthy = listed ? Math.round((healthyCount / listed) * 100) : 0;
 
   return (
     <div className="mb-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-12">
@@ -112,7 +113,15 @@ const DashboardOpsRow = ({
           </div>
           <ul className="space-y-2 text-[12px]">
             <li className="flex items-center justify-between gap-6 text-[#6B7280]">
-              <span>In Stock</span>
+              <span>Published</span>
+              <span className="font-semibold text-[#111827]">{published}</span>
+            </li>
+            <li className="flex items-center justify-between gap-6 text-[#6B7280]">
+              <span>Units in stock</span>
+              <span className="font-semibold text-[#111827]">{totalStock}</span>
+            </li>
+            <li className="flex items-center justify-between gap-6 text-[#6B7280]">
+              <span>Has stock</span>
               <span className="font-semibold text-[#111827]">{inStock}</span>
             </li>
             <li className="flex items-center justify-between gap-6 text-[#6B7280]">

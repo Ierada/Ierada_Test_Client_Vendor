@@ -14,6 +14,7 @@ import DashboardFinanceRow from "../../../components/Vendor/Dashboard/DashboardF
 import DashboardGrowPromo from "../../../components/Vendor/Dashboard/DashboardGrowPromo.jsx";
 import DashboardQuickActions from "../../../components/Vendor/Dashboard/DashboardQuickActions.jsx";
 import DashboardCalendarRow from "../../../components/Vendor/Dashboard/DashboardCalendarRow.jsx";
+import { notifyOnFail } from "../../../utils/notification/toast";
 
 const countByStatus = (orders, matchers) =>
   orders.filter((order) => {
@@ -49,9 +50,14 @@ export default function ECommerce() {
   useEffect(() => {
     if (!user?.id) return;
     const fetchDashboardData = async () => {
-      const response = await getDesignerDashboard(user.id);
-      const payload = response?.data?.dashboardData;
-      if (payload) setDashboardData((prev) => ({ ...prev, ...payload }));
+      try {
+        const response = await getDesignerDashboard(user.id);
+        const payload = response?.data?.dashboardData;
+        if (payload) setDashboardData((prev) => ({ ...prev, ...payload }));
+        else notifyOnFail("Could not load dashboard");
+      } catch {
+        notifyOnFail("Could not load dashboard");
+      }
     };
     const fetchOrders = async () => {
       try {
@@ -62,6 +68,7 @@ export default function ECommerce() {
       } catch {
         setAllOrders([]);
         setRecentOrders([]);
+        notifyOnFail("Could not load recent orders");
       }
     };
     const fetchReviews = async () => {
@@ -101,6 +108,8 @@ export default function ECommerce() {
           in_stock: dashboardData.in_stock,
           low_stock: dashboardData.low_stock,
           out_of_stock: dashboardData.out_of_stock,
+          total_stock: dashboardData.total_stock,
+          published_products: dashboardData.published_products,
         }}
         categories={(dashboardData.top_categories || dashboardData.topSellingProducts || []).map(
           (item) => ({
