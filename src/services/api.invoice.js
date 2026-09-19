@@ -100,7 +100,7 @@ export const getAllBills = async () => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error fetching address"));
+    notifyOnFail(getApiErrorMessage(error, "Could not load bills"));
     console.error(error);
   }
 };
@@ -118,12 +118,10 @@ export const updateInvoiceStatus = async (id, newStatus) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error fetching address"));
+    notifyOnFail(getApiErrorMessage(error, "Could not update invoice status"));
     console.error(error);
   }
 };
-
-export const deleteBill = async (id) => {
   try {
     const response = await apiClient.delete(`/invoice/delete/${id}`);
     if (response.data.status === 1) {
@@ -133,7 +131,7 @@ export const deleteBill = async (id) => {
       notifyOnFail(response.data.message);
     }
   } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error deleting the Banner"));
+    notifyOnFail(getApiErrorMessage(error, "Could not delete bill"));
     console.error(error);
   }
 };
