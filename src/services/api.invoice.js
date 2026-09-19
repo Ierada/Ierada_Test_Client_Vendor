@@ -122,6 +122,8 @@ export const updateInvoiceStatus = async (id, newStatus) => {
     console.error(error);
   }
 };
+
+export const deleteBill = async (id) => {
   try {
     const response = await apiClient.delete(`/invoice/delete/${id}`);
     if (response.data.status === 1) {

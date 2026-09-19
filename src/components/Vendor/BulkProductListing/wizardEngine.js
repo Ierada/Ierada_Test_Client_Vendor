@@ -241,14 +241,14 @@ export function parseSkuImageFilename(originalName) {
   const base = parts[parts.length - 1] || "";
   if (!base) return null;
   const stem = stripImageExt(base);
-  if (!stem) return { sku: null, order: null, filename: base, ignored: true };
+  if (!stem) return { sku: null, order: null, filename: base, ignored: true, stem };
 
   const fromFolder = folderSku(parts);
   const only = stem.match(SLOT_ONLY);
   if (only) {
     const order = slotNumber(only[1]);
-    if (!fromFolder) return { sku: null, order, filename: base, ignored: true };
-    return { sku: fromFolder, order, filename: base, ignored: false };
+    if (!fromFolder) return { sku: null, order, filename: base, ignored: true, stem };
+    return { sku: fromFolder, order, filename: base, ignored: false, stem };
   }
 
   const match = stem.match(SLOT_AT_END);
@@ -261,18 +261,18 @@ export function parseSkuImageFilename(originalName) {
         normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}-`) ||
         normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}_`));
     const sku = fromFolder && !sameFolder ? fromFolder : parsedSku;
-    return { sku, order, filename: base, ignored: false };
+    return { sku, order, filename: base, ignored: false, stem };
   }
 
   if (fromFolder) {
-    return { sku: fromFolder, order: null, filename: base, ignored: false };
+    return { sku: fromFolder, order: null, filename: base, ignored: false, stem };
   }
 
   if (stem) {
-    return { sku: stem, order: null, filename: base, ignored: false };
+    return { sku: stem, order: null, filename: base, ignored: false, stem };
   }
 
-  return { sku: null, order: null, filename: base, ignored: true };
+  return { sku: null, order: null, filename: base, ignored: true, stem };
 }
 
 export function normalizeSkuKey(sku) {
@@ -390,16 +390,49 @@ export function imagesForSku(imagesBySku, sku) {
   Object.entries(imagesBySku).forEach(([key, list]) => {
     (list || []).forEach((img) => {
       const parsed = parseSkuImageFilename(img.zipPath || img.originalName || img.filename || key);
-      const imgSku = normalizeSkuKey(img.sku || key || parsed?.sku);
-      if (imgSku !== want) return;
+      const imgSku = img.sku || key || parsed?.sku;
+      const keys = imageMatchKeys({
+        sku: imgSku,
+        order: img.order || parsed?.order,
+        stem: parsed?.stem || img.stem,
+      });
+      if (!keys.includes(want)) return;
       const token = `${String(img.originalName || img.filename || "").toLowerCase()}#${Number(img.order || parsed?.order || 0)}`;
       if (seen.has(token)) return;
       seen.add(token);
-      collected.push({ ...img, sku: img.sku || key || parsed?.sku, order: img.order || parsed?.order });
+      const misreadSlot = normalizeSkuKey(imgSku) !== want;
+      collected.push({
+        ...img,
+        sku: img.sku || key || parsed?.sku,
+        order: misreadSlot ? null : img.order || parsed?.order,
+      });
     });
+  });
+  const used = new Set(
+    collected.map((img) => Number(img.order)).filter((n) => n >= 1 && n <= 10),
+  );
+  let next = 1;
+  collected.forEach((img) => {
+    const n = Number(img.order);
+    if (n >= 1 && n <= 10) return;
+    while (used.has(next) && next <= 10) next += 1;
+    if (next <= 10) {
+      img.order = next;
+      used.add(next);
+      next += 1;
+    }
   });
   collected.sort((a, b) => Number(a.order || 99) - Number(b.order || 99));
   return collected;
+}
+
+function imageMatchKeys({ sku, order, stem } = {}) {
+  const keys = [sku, stem];
+  const n = Number(order);
+  if (sku && n >= 1 && n <= 10) {
+    keys.push(`${sku}-${n}`, `${sku}_${n}`);
+  }
+  return [...new Set(keys.map((k) => normalizeSkuKey(k)).filter(Boolean))];
 }
 
 export function filesForSku(filesBySku, sku) {
