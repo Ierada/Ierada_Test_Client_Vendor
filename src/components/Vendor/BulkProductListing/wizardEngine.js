@@ -1174,6 +1174,117 @@ function lookupByNameOrId(list, value, extraMatch) {
   );
 }
 
+function tokenizeHint(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+}
+
+const HINT_STOP = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "this",
+  "that",
+  "product",
+  "image",
+  "cover",
+  "file",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "sku",
+  "size",
+  "pack",
+  "item",
+]);
+
+export function applyCategorySuggestion(row, data, taxonomy) {
+  if (!data || !row) return row;
+  const cat = lookupByNameOrId(
+    taxonomy?.categories,
+    data.categoryTitle || data.category || data.category_id,
+  );
+  const subPool = (taxonomy?.subCategories || []).filter(
+    (s) => !cat || String(s.categoryId) === String(cat.id),
+  );
+  const sub = lookupByNameOrId(
+    subPool.length ? subPool : taxonomy?.subCategories,
+    data.subCategoryTitle || data.sub_category || data.sub_category_id,
+  );
+  const innerVal =
+    data.innerSubCategoryTitle || data.inner_sub_category || data.inner_sub_category_id;
+  let inner = null;
+  if (String(innerVal || "").trim()) {
+    const innerPool = (taxonomy?.innerSubCategories || []).filter(
+      (i) => !sub || String(i.subCategoryId) === String(sub.id),
+    );
+    inner = lookupByNameOrId(
+      innerPool.length ? innerPool : taxonomy?.innerSubCategories,
+      innerVal,
+    );
+  }
+  return {
+    ...row,
+    category: cat?.name || cat?.title || data.categoryTitle || row.category,
+    sub_category: sub?.name || sub?.title || data.subCategoryTitle || row.sub_category,
+    inner_sub_category:
+      inner?.name || inner?.title || data.innerSubCategoryTitle || row.inner_sub_category || "",
+  };
+}
+
+export function guessTaxonomyFromHints(taxonomy, hints = {}) {
+  const tokens = [
+    ...tokenizeHint(hints.name),
+    ...tokenizeHint(hints.sku),
+    ...tokenizeHint(hints.filename),
+    ...tokenizeHint(hints.zipPath),
+    ...tokenizeHint(hints.notes),
+  ].filter((t) => !HINT_STOP.has(t));
+  if (!tokens.length) return null;
+  const tokenSet = new Set(tokens);
+  const scoreName = (name) => {
+    const parts = tokenizeHint(name);
+    let score = 0;
+    parts.forEach((p) => {
+      if (tokenSet.has(p)) score += p.length >= 5 ? 4 : 3;
+      else if (tokens.some((t) => t.length >= 4 && (p.includes(t) || t.includes(p)))) score += 1;
+    });
+    return score;
+  };
+  let best = null;
+  let bestScore = 0;
+  (taxonomy?.innerSubCategories || []).forEach((inner) => {
+    const sub = (taxonomy?.subCategories || []).find(
+      (s) => String(s.id) === String(inner.subCategoryId),
+    );
+    const cat =
+      sub &&
+      (taxonomy?.categories || []).find((c) => String(c.id) === String(sub.categoryId));
+    if (!cat || !sub) return;
+    const score = scoreName(inner.name) * 3 + scoreName(sub.name) * 2 + scoreName(cat.name);
+    if (score > bestScore) {
+      bestScore = score;
+      best = { category: cat.name, sub_category: sub.name, inner_sub_category: inner.name };
+    }
+  });
+  (taxonomy?.subCategories || []).forEach((sub) => {
+    const cat = (taxonomy?.categories || []).find((c) => String(c.id) === String(sub.categoryId));
+    if (!cat) return;
+    const score = scoreName(sub.name) * 2 + scoreName(cat.name);
+    if (score > bestScore) {
+      bestScore = score;
+      best = { category: cat.name, sub_category: sub.name, inner_sub_category: "" };
+    }
+  });
+  return bestScore >= 3 ? best : null;
+}
+
 const COLOUR_ALIASES = {
   creame: "cream",
   creme: "cream",

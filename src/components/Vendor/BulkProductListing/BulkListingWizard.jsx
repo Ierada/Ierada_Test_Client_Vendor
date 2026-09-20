@@ -33,7 +33,6 @@ import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
-import { resolveCategoryGst } from "../../../services/api.categoryGst";
 import { getBulkListingWizardJob, stageBulkListingImages, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
@@ -49,7 +48,6 @@ import {
   mergeAiDraft,
   taxFromCategoryTree,
 } from "../SmartListing/utils/aiDraft";
-import { fileToSuggestPayload } from "../SmartListing/utils/fileToSuggestPayload";
 import innerHsnGstLookup from "../SmartListing/utils/innerHsnGstLookup.json";
 import { gstFromBands } from "../SmartListing/utils/gstBands";
 import {
@@ -79,6 +77,8 @@ import {
   wizardImageSrc,
   rowHasAiCopy,
   rowNeedsAiFill,
+  applyCategorySuggestion,
+  guessTaxonomyFromHints,
   mergeGeneratedRows,
   expandMappedRowsBySize,
   duplicateSkuKeys,
@@ -776,20 +776,12 @@ function NeedHelpCard({ onGuide, supportTo }) {
   );
 }
 
-async function fileFromCover(img, localFile) {
-  if (localFile instanceof File) return localFile;
-  // After a reload the File handles are gone and preview URLs are stripped,
-  // so fall back to the staged copy on the server.
-  const url = img?.previewUrl || img?.url || wizardImageSrc(img);
-  if (!url) return null;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return new File([blob], "cover.jpg", { type: blob.type || "image/jpeg" });
-  } catch {
-    return null;
-  }
+function coverFilename(img) {
+  const raw = String(img?.filename || "").split(/[/\\]/).pop();
+  if (raw && !raw.includes("..")) return raw;
+  const url = String(img?.url || wizardImageSrc(img) || "");
+  const hit = url.match(/files\/([^/?#]+)/i);
+  return hit?.[1] ? decodeURIComponent(hit[1]) : "";
 }
 
 const AI_SHARE_KEYS = [
@@ -891,6 +883,22 @@ function pipeJoin(list) {
   return String(list || "").trim();
 }
 
+async function mapLimit(items, limit, fn) {
+  const list = items || [];
+  if (!list.length) return [];
+  const out = new Array(list.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(Math.max(limit, 1), list.length) }, async () => {
+    while (cursor < list.length) {
+      const idx = cursor;
+      cursor += 1;
+      out[idx] = await fn(list[idx], idx);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 function ListingTypePicker({ value, onChange, onDownload }) {
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-3">
@@ -971,6 +979,7 @@ export default function BulkListingWizard({
   const sessionReady = useRef(false);
   const aiJob = useRef(null);
   const lastAiKey = useRef("");
+  const lastAutoFixKey = useRef("");
   const lastRecoverKey = useRef("");
   const filesByKind = useRef({ single: {}, color_size: {}, custom: {} });
   const kindSwitchGen = useRef(0);
@@ -1204,6 +1213,7 @@ export default function BulkListingWizard({
     setRevalidating(false);
     setUploadProgress(null);
     lastAiKey.current = "";
+    lastAutoFixKey.current = "";
     lastRecoverKey.current = "";
     aiJob.current = null;
   };
@@ -1343,7 +1353,7 @@ export default function BulkListingWizard({
       let lastSummary = null;
       let lastRes = null;
 
-      const CHUNK = 20;
+      const CHUNK = 40;
       for (let i = 0; i < files.length; i += CHUNK) {
         const batch = files.slice(i, i + CHUNK);
         const batchBytes = batch.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
@@ -1581,68 +1591,73 @@ export default function BulkListingWizard({
     if (aiJob.current) return aiJob.current;
     const run = (async () => {
       const source = list || [];
-      const total = source.length;
-      const next = [];
       const groupFill = new Map();
+      let catalog = taxonomy;
+      if (!catalog?.categories?.length) {
+        try {
+          const lookups = await loadLookups();
+          catalog = lookups.taxonomy || catalog;
+        } catch {
+          /* keep current taxonomy */
+        }
+      }
       setBusy("Generating listing details…");
-      for (let i = 0; i < source.length; i += 1) {
-        const row = source[i];
-        setAiProgress({
-          current: i + 1,
-          total,
-          sku: row.sku || "",
-          percent: Math.round((i / Math.max(total, 1)) * 100),
-          label: `Filling title, category and copy for ${row.sku || `row ${i + 1}`}`,
-        });
+      const unique = [];
+      const seenKeys = new Set();
+      source.forEach((row) => {
+        const key = variationAiCacheKey(row, listingKind);
+        if (seenKeys.has(key)) return;
+        seenKeys.add(key);
+        unique.push(row);
+      });
+      const total = unique.length;
+      let done = 0;
+      const fillOne = async (row) => {
+        const cacheKey = variationAiCacheKey(row, listingKind);
         let working = { ...row };
-        const cacheKey = variationAiCacheKey(working, listingKind);
-        const shared = groupFill.get(cacheKey);
-        if (shared) working = { ...working, ...shared };
+        if (!rowNeedsAiFill(working)) {
+          groupFill.set(cacheKey, { ...pickAiShare(working) });
+          return working;
+        }
         const media = coverMediaForRow(working, source, imagesBySku, imageFilesBySku);
         const images = media.images;
         const cover = images.find((img) => Number(img.order) === 1) || images[0];
-        const localFiles = media.files;
-        const localCover = localFiles[1] || localFiles["1"];
-        const alreadyFilled = !rowNeedsAiFill(working);
-        if (alreadyFilled) {
-          groupFill.set(cacheKey, { ...pickAiShare(working) });
-          next.push(working);
-          setRows(next.slice());
-          continue;
-        }
-
         const extras = customAttributeState(working);
-        // ZIP uploads leave no File handles, so pull the cover back from the
-        // staged copy before both the category guess and the copy draft.
-        const coverFile = await fileFromCover(cover, localCover);
+        const filename = coverFilename(cover);
         if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
-          if (coverFile) {
-            try {
-              const payload = await fileToSuggestPayload(coverFile);
-              const res = await suggestListingCategory({
-                ...payload,
-                listing_type: listingKind || "single",
-                product_name: working.name || "",
-                extra_notes: extras.extraNotes || "",
-              });
+          try {
+            const payload = {
+              listing_type: listingKind || "single",
+              product_name: working.name || "",
+              extra_notes: [extras.extraNotes, working.sku, cover?.originalName, cover?.zipPath]
+                .filter(Boolean)
+                .join("\n"),
+              filename,
+              sku: working.sku || "",
+              fast: true,
+            };
+            if (payload.filename || payload.product_name || payload.sku) {
+              const res = await suggestListingCategory(payload);
               if (res?.status === 1 && res?.data) {
-                const d = res.data;
-                working = {
-                  ...working,
-                  category: d.categoryTitle || d.category_id || working.category,
-                  sub_category: d.subCategoryTitle || d.sub_category_id || working.sub_category,
-                  inner_sub_category:
-                    d.innerSubCategoryTitle || d.inner_sub_category_id || working.inner_sub_category || "",
-                };
+                working = applyCategorySuggestion(working, res.data, catalog);
               }
-            } catch {
-              /* validation flags missing category */
             }
+          } catch {
+            /* local filename/SKU match below */
+          }
+          if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
+            const guessed = guessTaxonomyFromHints(catalog, {
+              name: working.name,
+              sku: working.sku,
+              filename: cover?.originalName || cover?.zipPath || filename,
+              notes: extras.extraNotes,
+            });
+            if (guessed) working = { ...working, ...guessed };
           }
         }
 
         const preview = validateListingRow(working, {
-          taxonomy,
+          taxonomy: catalog,
           colors,
           sizes,
           imagesBySku,
@@ -1652,44 +1667,24 @@ export default function BulkListingWizard({
         const category = preview.resolved.category;
         const subCategory = preview.resolved.subCategory;
         const inner = preview.resolved.inner;
-        const tax = taxFromCategoryTree({
+        const treeTax = taxFromCategoryTree({
           category,
           subCategory,
           innerSubCategory: inner,
         });
         const lookup = inner?.id ? innerHsnGstLookup[String(inner.id)] : null;
         if (!String(working.hsn_code || "").trim()) {
-          working.hsn_code = lookup?.hsn || tax.hsn_code || "";
+          working.hsn_code = lookup?.hsn || treeTax.hsn_code || "";
         }
         if (working.gst === "" || working.gst == null) {
           const bandGst = gstFromBands(
             lookup?.bands,
             Number(working.selling_price || working.mrp),
-            lookup?.tax != null ? lookup.tax : tax.gst,
+            lookup?.tax != null ? lookup.tax : treeTax.gst,
           );
           if (bandGst != null) working.gst = bandGst;
           else if (lookup?.tax != null) working.gst = lookup.tax;
-          else if (tax.gst != null) working.gst = tax.gst;
-        }
-        if (category?.id && (working.gst === "" || working.gst == null || !String(working.hsn_code || "").trim())) {
-          try {
-            const gstRes = await resolveCategoryGst({
-              category_id: category.id,
-              sub_category_id: subCategory?.id || undefined,
-              inner_sub_category_id: inner?.id || undefined,
-              price: Number(working.selling_price || working.mrp),
-            });
-            if (gstRes?.status === 1 && gstRes?.data) {
-              if (gstRes.data.gst_percent != null && (working.gst === "" || working.gst == null)) {
-                working.gst = gstRes.data.gst_percent;
-              }
-              if (gstRes.data.hsn_code && !String(working.hsn_code || "").trim()) {
-                working.hsn_code = gstRes.data.hsn_code;
-              }
-            }
-          } catch {
-            /* keep tree tax */
-          }
+          else if (treeTax.gst != null) working.gst = treeTax.gst;
         }
 
         const skipAi = rowHasAiCopy(working) && String(working.name || "").trim();
@@ -1707,8 +1702,8 @@ export default function BulkListingWizard({
             original_price: working.mrp,
             discounted_price: working.selling_price,
             countryOfOrigin: working.country_of_origin || "India",
-            files: coverFile ? [coverFile] : [],
-            existingMedia: images.map((img) => ({ url: wizardImageSrc(img) })),
+            files: [],
+            existingMedia: [],
             extraNotes: extras.extraNotes,
             customRows: extras.customRows,
             colorGroups: extras.colorGroups,
@@ -1746,17 +1741,25 @@ export default function BulkListingWizard({
           };
         }
         groupFill.set(cacheKey, { ...pickAiShare(working) });
-        next.push(working);
-        setRows(next.slice());
-        setAiProgress({
-          current: i + 1,
-          total,
-          sku: working.sku || "",
-          percent: Math.round(((i + 1) / Math.max(total, 1)) * 100),
-          label: `Filled ${working.sku || `row ${i + 1}`}`,
-        });
-      }
-      const filled = next.map((row) => {
+        return working;
+      };
+
+      await mapLimit(unique, 3, async (row) => {
+        try {
+          await fillOne(row);
+        } finally {
+          done += 1;
+          setAiProgress({
+            current: done,
+            total,
+            sku: row.sku || "",
+            percent: Math.round((done / Math.max(total, 1)) * 100),
+            label: `Filled ${done} of ${total}`,
+          });
+        }
+      });
+
+      const filled = source.map((row) => {
         const shared = groupFill.get(variationAiCacheKey(row, listingKind));
         return shared ? { ...row, ...shared, sku: row.sku, image_sku: row.image_sku, size: row.size } : row;
       });
@@ -1881,6 +1884,8 @@ export default function BulkListingWizard({
       notifyOnFail(`Map mandatory fields: ${missingMandatory.map((f) => f.label).join(", ")}`);
       return;
     }
+    lastAiKey.current = "";
+    lastAutoFixKey.current = "";
     let filled = rows;
     if (aiJob.current) filled = (await aiJob.current) || filled;
     const merged = expandMappedRowsBySize(mergeGeneratedRows(mappedRows, filled));
@@ -2875,9 +2880,11 @@ export default function BulkListingWizard({
           onRevalidate={revalidateNow}
           revalidating={revalidating}
           onGuide={() => setGuideOpen(true)}
-          onFix={(row) => {
+          onFix={async () => {
             setFilter("errors");
-            notifyOnFail(row.errors?.[0] || "Fix the highlighted issues, then re-validate");
+            lastAiKey.current = "";
+            lastAutoFixKey.current = "";
+            await revalidateNow();
           }}
           onView={(row) => {
             const issues = [...(row.errors || []), ...(row.warnings || [])];

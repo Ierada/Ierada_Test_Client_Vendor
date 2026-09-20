@@ -142,7 +142,7 @@ export async function waitForStagedBulkListingImages(
     const progress = data.progress || {};
     if (typeof onProgress === "function") onProgress(progress, data);
     if (data.processing) {
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      await new Promise((resolve) => setTimeout(resolve, 400));
       continue;
     }
     if (progress.status === "error") {
