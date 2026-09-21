@@ -587,6 +587,53 @@ async function fileFromImageUrl(url) {
   return new File([blob], "listing-photo.jpg", { type });
 }
 
+async function listingImagePayloads(state, max = 8) {
+  const out = [];
+  const seen = new Set();
+  const addFile = async (file) => {
+    if (!file || out.length >= max) return;
+    try {
+      const img = await fileToSuggestPayload(file);
+      const key = String(img.image_base64 || "").slice(0, 64);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push({ image_base64: img.image_base64, mime_type: img.mime_type });
+    } catch {
+      /* skip unreadable photo */
+    }
+  };
+  const files = [];
+  const pushFile = (f) => {
+    if (!f) return;
+    if (typeof File !== "undefined" && f instanceof File) files.push(f);
+    else if (typeof Blob !== "undefined" && f instanceof Blob) files.push(f);
+    else if (f.file) pushFile(f.file);
+  };
+  (state.files || []).forEach(pushFile);
+  (state.colorGroups || []).forEach((g) => (g.media || []).forEach(pushFile));
+  for (const file of files) {
+    if (out.length >= max) break;
+    await addFile(file);
+  }
+  const urls = [];
+  const pushUrl = (url) => {
+    const u = String(url || "").trim();
+    if (u && !u.startsWith("blob:") && !urls.includes(u)) urls.push(u);
+  };
+  (state.existingMedia || []).forEach((m) => pushUrl(m?.url));
+  const cover = listingCoverPreviewSrc(state);
+  if (cover) pushUrl(cover);
+  for (const url of urls) {
+    if (out.length >= max) break;
+    try {
+      await addFile(await fileFromImageUrl(url));
+    } catch {
+      /* skip unreachable photo */
+    }
+  }
+  return out;
+}
+
 export async function resolveListingImageFile(state) {
   const photo = firstListingImageFile(state);
   if (photo instanceof File) return photo;
@@ -677,15 +724,11 @@ export async function buildListingAiPayload(state, vendorContext = {}) {
     vendorBrandName: vendorContext.brand_name || state.vendorBrandName || "",
   };
 
-  const file = await resolveListingImageFile(state);
-  if (file) {
-    try {
-      const img = await fileToSuggestPayload(file);
-      payload.image_base64 = img.image_base64;
-      payload.mime_type = img.mime_type;
-    } catch {
-      /* text-only draft if photo cannot be compressed */
-    }
+  const imagePayloads = await listingImagePayloads(state);
+  if (imagePayloads[0]) {
+    payload.image_base64 = imagePayloads[0].image_base64;
+    payload.mime_type = imagePayloads[0].mime_type;
+    payload.images = imagePayloads;
   }
   return payload;
 }

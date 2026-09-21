@@ -1603,6 +1603,19 @@ export function splitPipe(value) {
     .filter(Boolean);
 }
 
+export function splitWhatsInTheBox(value) {
+  return splitPipe(value).map((part) => {
+    const colon = part.indexOf(":");
+    if (colon > 0) {
+      return {
+        title: part.slice(0, colon).trim(),
+        details: part.slice(colon + 1).trim(),
+      };
+    }
+    return { title: part, details: "" };
+  });
+}
+
 export function parseSpecs(value) {
   return splitPipe(value).map((part) => {
     const [feature, ...rest] = part.split(":");

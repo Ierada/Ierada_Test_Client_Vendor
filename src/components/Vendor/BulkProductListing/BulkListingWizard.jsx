@@ -86,6 +86,7 @@ import {
   sizeVariantSku,
   groupColorSizeSubmitRows,
   splitPipe,
+  splitWhatsInTheBox,
   validateListingRow,
   isVariationListingKind,
   isCustomListingKind,
@@ -1689,11 +1690,28 @@ export default function BulkListingWizard({
 
         const skipAi = rowHasAiCopy(working) && String(working.name || "").trim();
         if (!skipAi) {
+          const listingFiles = Object.entries(media.files || {})
+            .sort((a, b) => Number(a[0]) - Number(b[0]))
+            .map(([, file]) => file?.file || file)
+            .filter(Boolean);
+          const listingMedia = (images || [])
+            .map((img, i) => ({
+              url: wizardImageSrc(img),
+              id: img.id,
+              label: Number(img.order) === 1 || i === 0 ? "front" : `photo-${i + 1}`,
+            }))
+            .filter((item) => item.url);
           const state = {
-            listingType: "single",
+            listingType:
+              listingKind === "color_size" || listingKind === "custom"
+                ? listingKind
+                : "single",
             brandType: String(working.brand_type || "").toLowerCase() === "branded" ? "branded" : "generic",
             brand: working.brand,
             name: working.name,
+            category_id: category?.id || "",
+            sub_category_id: subCategory?.id || "",
+            inner_sub_category_id: inner?.id || "",
             categoryTitle: category?.name || working.category,
             subCategoryTitle: subCategory?.name || working.sub_category,
             innerSubCategoryTitle: inner?.name || working.inner_sub_category,
@@ -1701,9 +1719,13 @@ export default function BulkListingWizard({
             gst: working.gst,
             original_price: working.mrp,
             discounted_price: working.selling_price,
+            package_length: working.package_length,
+            package_width: working.package_width,
+            package_height: working.package_height,
+            package_weight: working.package_weight,
             countryOfOrigin: working.country_of_origin || "India",
-            files: [],
-            existingMedia: [],
+            files: listingFiles,
+            existingMedia: listingMedia,
             extraNotes: extras.extraNotes,
             customRows: extras.customRows,
             colorGroups: extras.colorGroups,
@@ -2213,7 +2235,7 @@ export default function BulkListingWizard({
             productDetails: row.product_details || "",
             keyFeatures: splitPipe(row.key_features),
             benefits: splitPipe(row.benefits),
-            whatsInTheBox: splitPipe(row.whats_in_the_box),
+            whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),
             specifications: parseSpecs(row.specifications),
             metaTitle: row.meta_title || "",
             metaDescription: row.meta_description || "",
@@ -2393,7 +2415,7 @@ export default function BulkListingWizard({
             productDetails: row.product_details || "",
             keyFeatures: splitPipe(row.key_features),
             benefits: splitPipe(row.benefits),
-            whatsInTheBox: splitPipe(row.whats_in_the_box),
+            whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),
             specifications: parseSpecs(row.specifications),
             metaTitle: row.meta_title || "",
             metaDescription: row.meta_description || "",
@@ -2480,7 +2502,7 @@ export default function BulkListingWizard({
           productDetails: row.product_details || "",
           keyFeatures: splitPipe(row.key_features),
           benefits: splitPipe(row.benefits),
-          whatsInTheBox: splitPipe(row.whats_in_the_box),
+          whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),
           specifications: parseSpecs(row.specifications),
           metaTitle: row.meta_title || "",
           metaDescription: row.meta_description || "",
