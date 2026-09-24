@@ -46,6 +46,7 @@ export async function stageBulkListingImages({
   const fd = new FormData();
   if (jobId) fd.append("job_id", jobId);
   if (vendorId) fd.append("vendor_id", String(vendorId));
+  if (files.length) fd.append("light", "1");
   files.forEach((file) => fd.append("images", file));
   files.forEach((file) => fd.append("image_paths", file.webkitRelativePath || file.name || ""));
   zips.forEach((file) => fd.append("zip", file));
@@ -75,8 +76,9 @@ export async function stageBulkListingImages({
 }
 
 const ZIP_CHUNK_BYTES = 6 * 1024 * 1024;
-const IMAGE_SLICE_BYTES = 6 * 1024 * 1024;
-const IMAGE_SLICE_FILES = 12;
+const IMAGE_SLICE_BYTES = 16 * 1024 * 1024;
+const IMAGE_SLICE_FILES = 40;
+const IMAGE_UPLOAD_CONCURRENCY = 4;
 
 /** Keep each POST under the proxy body cap. A single photo larger than the cap goes alone. */
 export function sliceImageFiles(
@@ -117,39 +119,56 @@ export async function uploadBulkListingImagesInSlices({
 }) {
   const slices = sliceImageFiles(files);
   const total = files.reduce((sum, file) => sum + (Number(file?.size) || 0), 0);
-  let sent = 0;
   let currentJob = jobId || "";
-  let last = null;
+  if (!currentJob) {
+    const created = await createBulkListingWizardJob(
+      vendorId ? { vendor_id: vendorId } : {},
+    );
+    if (created?.status !== 1) {
+      throw new Error(created?.message || "Could not start the image upload");
+    }
+    currentJob = created.data?.job_id || "";
+  }
+  const loaded = new Array(slices.length).fill(0);
   const failed = [];
+  const report = () => {
+    if (typeof onProgress !== "function") return;
+    const sum = loaded.reduce((n, value) => n + value, 0);
+    onProgress({ loaded: Math.min(total, sum), total });
+  };
+  let cursor = 0;
 
-  for (const batch of slices) {
+  async function nextSlice() {
+    const index = cursor;
+    cursor += 1;
+    if (index >= slices.length) return;
+    const batch = slices[index];
     const batchBytes = batch.reduce((sum, file) => sum + (Number(file?.size) || 0), 0);
     const res = await stageBulkListingImages({
       jobId: currentJob,
       vendorId,
       files: batch,
       signal,
-      onProgress: ({ loaded }) => {
-        if (typeof onProgress !== "function") return;
-        const inBatch = Math.min(Number(loaded) || 0, batchBytes);
-        onProgress({ loaded: Math.min(total, sent + inBatch), total });
+      onProgress: ({ loaded: inBatch }) => {
+        loaded[index] = Math.min(Number(inBatch) || 0, batchBytes);
+        report();
       },
     });
     if (res?.status !== 1) {
       throw new Error(res?.message || "Image upload failed");
     }
-    currentJob = res.data?.job_id || currentJob;
     if (Array.isArray(res.data?.failed)) failed.push(...res.data.failed);
-    last = res;
-    sent += batchBytes;
-    if (typeof onProgress === "function") onProgress({ loaded: Math.min(total, sent), total });
+    loaded[index] = batchBytes;
+    report();
+    await nextSlice();
   }
 
-  if (last?.data) {
-    last.data.job_id = currentJob;
-    last.data.failed = failed;
-  }
-  return last;
+  const workers = Math.min(IMAGE_UPLOAD_CONCURRENCY, slices.length || 1);
+  await Promise.all(Array.from({ length: workers }, () => nextSlice()));
+
+  const finished = await getBulkListingWizardJob(currentJob);
+  if (finished?.data) finished.data.failed = failed;
+  return finished;
 }
 
 /**

@@ -1313,13 +1313,13 @@ export default function BulkListingWizard({
     const startedAt = Date.now();
     // Bytes on the wire drive 0–85%; the server's stored/total drives 85–99%.
     let sentBytes = 0;
-    const reportUpload = (bytesInCurrent, what) => {
+    const reportUpload = (bytesInCurrent, what, cap = 85) => {
       const done = Math.min(expectedBytes, sentBytes + Math.max(0, bytesInCurrent));
       const elapsed = Math.max(0.2, (Date.now() - startedAt) / 1000);
       const rate = done / elapsed;
       setUploadProgress({
         percent: expectedBytes
-          ? Math.min(85, Math.round((done / expectedBytes) * 85))
+          ? Math.min(cap, Math.round((done / expectedBytes) * cap))
           : 0,
         label: `Uploading ${what}…`,
         eta: rate > 1 ? formatEta((expectedBytes - done) / rate) : "",
@@ -1362,7 +1362,7 @@ export default function BulkListingWizard({
           vendorId,
           files,
           onProgress: ({ loaded }) =>
-            reportUpload(Math.min(Number(loaded) || 0, imageBytes), `${files.length} images`),
+            reportUpload(Math.min(Number(loaded) || 0, imageBytes), `${files.length} images`, 99),
         });
         if (res?.status !== 1) throw new Error(res?.message || "Upload failed");
         currentJob = res.data.job_id;
