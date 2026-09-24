@@ -41,6 +41,7 @@ export async function stageBulkListingImages({
   files = [],
   zips = [],
   onProgress,
+  signal,
 }) {
   const fd = new FormData();
   if (jobId) fd.append("job_id", jobId);
@@ -53,6 +54,7 @@ export async function stageBulkListingImages({
     fd,
     {
       timeout: 10 * 60 * 1000,
+      signal,
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
       onUploadProgress: (ev) => {
@@ -73,6 +75,82 @@ export async function stageBulkListingImages({
 }
 
 const ZIP_CHUNK_BYTES = 6 * 1024 * 1024;
+const IMAGE_SLICE_BYTES = 6 * 1024 * 1024;
+const IMAGE_SLICE_FILES = 12;
+
+/** Keep each POST under the proxy body cap. A single photo larger than the cap goes alone. */
+export function sliceImageFiles(
+  files = [],
+  maxBytes = IMAGE_SLICE_BYTES,
+  maxFiles = IMAGE_SLICE_FILES,
+) {
+  const slices = [];
+  let batch = [];
+  let bytes = 0;
+  for (const file of files) {
+    const size = Number(file?.size) || 0;
+    const full =
+      batch.length > 0 && (bytes + size > maxBytes || batch.length >= maxFiles);
+    if (full) {
+      slices.push(batch);
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(file);
+    bytes += size;
+  }
+  if (batch.length) slices.push(batch);
+  return slices;
+}
+
+/**
+ * Folder and Choose Images used to send 40 photos in one body. A 1.8 GB
+ * folder made that first body ~200 MB, the proxy dropped it, and the bar
+ * froze near 9%. Same 6 MB slices as ZIP.
+ */
+export async function uploadBulkListingImagesInSlices({
+  jobId,
+  vendorId,
+  files = [],
+  onProgress,
+  signal,
+}) {
+  const slices = sliceImageFiles(files);
+  const total = files.reduce((sum, file) => sum + (Number(file?.size) || 0), 0);
+  let sent = 0;
+  let currentJob = jobId || "";
+  let last = null;
+  const failed = [];
+
+  for (const batch of slices) {
+    const batchBytes = batch.reduce((sum, file) => sum + (Number(file?.size) || 0), 0);
+    const res = await stageBulkListingImages({
+      jobId: currentJob,
+      vendorId,
+      files: batch,
+      signal,
+      onProgress: ({ loaded }) => {
+        if (typeof onProgress !== "function") return;
+        const inBatch = Math.min(Number(loaded) || 0, batchBytes);
+        onProgress({ loaded: Math.min(total, sent + inBatch), total });
+      },
+    });
+    if (res?.status !== 1) {
+      throw new Error(res?.message || "Image upload failed");
+    }
+    currentJob = res.data?.job_id || currentJob;
+    if (Array.isArray(res.data?.failed)) failed.push(...res.data.failed);
+    last = res;
+    sent += batchBytes;
+    if (typeof onProgress === "function") onProgress({ loaded: Math.min(total, sent), total });
+  }
+
+  if (last?.data) {
+    last.data.job_id = currentJob;
+    last.data.failed = failed;
+  }
+  return last;
+}
 
 /**
  * Sends a ZIP in slices. A single large POST stalls behind the proxy and the

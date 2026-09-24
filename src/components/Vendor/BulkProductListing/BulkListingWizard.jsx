@@ -33,7 +33,7 @@ import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
-import { getBulkListingWizardJob, stageBulkListingImages, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
+import { getBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
 import ValidateDataStep, { AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
@@ -1354,24 +1354,20 @@ export default function BulkListingWizard({
       let lastSummary = null;
       let lastRes = null;
 
-      const CHUNK = 40;
-      for (let i = 0; i < files.length; i += CHUNK) {
-        const batch = files.slice(i, i + CHUNK);
-        const batchBytes = batch.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
-        const batchLabel = `${Math.min(i + CHUNK, files.length)} of ${files.length}`;
-        setBusy(`Uploading images… ${batchLabel}`);
-        const res = await stageBulkListingImages({
+      if (files.length) {
+        const imageBytes = files.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
+        setBusy(`Uploading images… 0 of ${files.length}`);
+        const res = await uploadBulkListingImagesInSlices({
           jobId: currentJob,
           vendorId,
-          files: batch,
-          zips: [],
+          files,
           onProgress: ({ loaded }) =>
-            reportUpload(Math.min(Number(loaded) || 0, batchBytes), batchLabel),
+            reportUpload(Math.min(Number(loaded) || 0, imageBytes), `${files.length} images`),
         });
         if (res?.status !== 1) throw new Error(res?.message || "Upload failed");
         currentJob = res.data.job_id;
         setJobId(currentJob);
-        sentBytes += batchBytes;
+        sentBytes += imageBytes;
         lastSummary = res.data.summary;
         lastRes = res;
         mergeImageSummary(lastSummary, localBySku);
