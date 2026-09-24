@@ -829,30 +829,11 @@ const AI_SHARE_KEYS = [
   "country_of_origin",
 ];
 
-const IMAGE_COPY_KEYS = new Set([
-  "name",
-  "category",
-  "sub_category",
-  "inner_sub_category",
-  "short_description",
-  "product_details",
-  "general_info",
-  "key_features",
-  "benefits",
-  "specifications",
-  "meta_title",
-  "meta_description",
-  "tags",
-]);
-
 function pickAiShare(row) {
   const out = {};
   AI_SHARE_KEYS.forEach((key) => {
-    if (IMAGE_COPY_KEYS.has(key)) {
-      out[key] = row[key] ?? "";
-      return;
-    }
-    if (row[key] != null && String(row[key]).trim() !== "") out[key] = row[key];
+    if (row[key] == null || String(row[key]).trim() === "") return;
+    out[key] = row[key];
   });
   return out;
 }
@@ -1777,7 +1758,9 @@ export default function BulkListingWizard({
             draft = null;
           }
           if (!draft) {
-            groupFill.set(cacheKey, { ...pickAiShare(working) });
+            const kept = pickAiShare(working);
+            groupFill.set(cacheKey, kept);
+            publishFilledRow(cacheKey, kept);
             return working;
           }
           const merged = mergeAiDraft(state, {
@@ -1800,8 +1783,22 @@ export default function BulkListingWizard({
             country_of_origin: working.country_of_origin || merged.countryOfOrigin || "India",
           };
         }
-        groupFill.set(cacheKey, { ...pickAiShare(working) });
+        const shared = pickAiShare(working);
+        groupFill.set(cacheKey, shared);
+        publishFilledRow(cacheKey, shared);
         return working;
+      };
+
+      const publishFilledRow = (cacheKey, shared) => {
+        if (!shared || !Object.keys(shared).length) return;
+        setRows((prev) => {
+          const base = prev.length ? prev : source;
+          return base.map((row) =>
+            variationAiCacheKey(row, listingKind) === cacheKey
+              ? { ...row, ...shared, sku: row.sku, image_sku: row.image_sku, size: row.size }
+              : row,
+          );
+        });
       };
 
       await mapLimit(unique, 8, async (row) => {
@@ -2052,7 +2049,12 @@ export default function BulkListingWizard({
     const imageCount = stagedImageCount(imageSummary, imagesBySku);
     if (!mappedRows.length || !imageCount) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
-    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|image-fields`;
+    const ready = merged.filter(
+      (row) =>
+        rowNeedsAiFill(row) && imagesForSku(imagesBySku, rowImageKey(row) || row.sku).length,
+    );
+    if (!ready.length) return undefined;
+    const key = `${excelName}|${mappedRows.length}|${ready.length}|${listingKind}|image-visible`;
     if (lastAiKey.current === key) return undefined;
     lastAiKey.current = key;
     generateListingFields(merged).catch(() => {
