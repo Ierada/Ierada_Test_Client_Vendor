@@ -44,7 +44,6 @@ import { getApiErrorMessage } from "../../../utils/apiError";
 import { buildSmartListingFormData } from "../SmartListing/utils/buildFormData";
 import {
   buildListingAiPayload,
-  localAiDraft,
   mergeAiDraft,
   taxFromCategoryTree,
 } from "../SmartListing/utils/aiDraft";
@@ -76,10 +75,8 @@ import {
   mergeImagesBySku,
   stagedImageCount,
   wizardImageSrc,
-  rowHasAiCopy,
   rowNeedsAiFill,
   applyCategorySuggestion,
-  guessTaxonomyFromHints,
   mergeGeneratedRows,
   expandMappedRowsBySize,
   duplicateSkuKeys,
@@ -1672,14 +1669,7 @@ export default function BulkListingWizard({
               }
             }
           } catch {
-            /* local filename/SKU match below */
-          }
-          if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
-            const guessed = guessTaxonomyFromHints(catalog, {
-              sku: working.sku,
-              filename: cover?.originalName || cover?.zipPath || filename,
-            });
-            if (guessed) working = { ...working, ...guessed };
+            /* category stays empty until the cover photo can be read */
           }
         }
 
@@ -1714,7 +1704,7 @@ export default function BulkListingWizard({
           else if (treeTax.gst != null) working.gst = treeTax.gst;
         }
 
-        const skipAi = rowHasAiCopy(working) && String(working.name || "").trim();
+        const skipAi = !coverImage?.image_base64 && !filename;
         if (!skipAi) {
           const listingFiles = Object.entries(media.files || {})
             .sort((a, b) => Number(a[0]) - Number(b[0]))
@@ -1765,17 +1755,19 @@ export default function BulkListingWizard({
             const res = await generateListingAiDraft(payload);
             if (res?.status === 1) {
               draft = res?.data?.draft || res?.data || res?.draft || res;
-            } else {
-              draft = localAiDraft(state);
             }
           } catch {
-            draft = localAiDraft(state);
+            draft = null;
+          }
+          if (!draft) {
+            groupFill.set(cacheKey, { ...pickAiShare(working) });
+            return working;
           }
           const merged = mergeAiDraft(state, {
-            draft: draft || localAiDraft(state),
+            draft,
             forceOverwrite: true,
           });
-          const photoCopy = Boolean(coverImage?.image_base64 || filename);
+          const photoCopy = true;
           working = {
             ...working,
             name: (photoCopy && merged.name) || working.name,
@@ -2046,7 +2038,7 @@ export default function BulkListingWizard({
     if (!mappedRows.length || !imageCount) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
     if (!merged.some((row) => rowNeedsAiFill(row))) return undefined;
-    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|cover-photo`;
+    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|image-only`;
     if (lastAiKey.current === key) return undefined;
     lastAiKey.current = key;
     generateListingFields(merged).catch(() => {
