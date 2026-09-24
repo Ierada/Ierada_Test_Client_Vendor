@@ -1804,7 +1804,7 @@ export default function BulkListingWizard({
         return working;
       };
 
-      await mapLimit(unique, 3, async (row) => {
+      await mapLimit(unique, 8, async (row) => {
         try {
           await fillOne(row);
         } finally {
