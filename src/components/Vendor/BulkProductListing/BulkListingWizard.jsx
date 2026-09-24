@@ -818,6 +818,7 @@ const AI_SHARE_KEYS = [
   "gst",
   "short_description",
   "product_details",
+  "general_info",
   "key_features",
   "benefits",
   "whats_in_the_box",
@@ -828,9 +829,29 @@ const AI_SHARE_KEYS = [
   "country_of_origin",
 ];
 
+const IMAGE_COPY_KEYS = new Set([
+  "name",
+  "category",
+  "sub_category",
+  "inner_sub_category",
+  "short_description",
+  "product_details",
+  "general_info",
+  "key_features",
+  "benefits",
+  "specifications",
+  "meta_title",
+  "meta_description",
+  "tags",
+]);
+
 function pickAiShare(row) {
   const out = {};
   AI_SHARE_KEYS.forEach((key) => {
+    if (IMAGE_COPY_KEYS.has(key)) {
+      out[key] = row[key] ?? "";
+      return;
+    }
     if (row[key] != null && String(row[key]).trim() !== "") out[key] = row[key];
   });
   return out;
@@ -1636,10 +1657,6 @@ export default function BulkListingWizard({
       const fillOne = async (row) => {
         const cacheKey = variationAiCacheKey(row, listingKind);
         let working = { ...row };
-        if (!rowNeedsAiFill(working)) {
-          groupFill.set(cacheKey, { ...pickAiShare(working) });
-          return working;
-        }
         const media = coverMediaForRow(working, source, imagesBySku, imageFilesBySku);
         const images = media.images;
         const cover = images.find((img) => Number(img.order) === 1) || images[0];
@@ -1651,7 +1668,7 @@ export default function BulkListingWizard({
         } catch {
           coverImage = null;
         }
-        if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
+        if (coverImage?.image_base64 || filename) {
           try {
             const payload = {
               listing_type: listingKind || "single",
@@ -1743,7 +1760,7 @@ export default function BulkListingWizard({
             countryOfOrigin: working.country_of_origin || "India",
             files: listingFiles,
             existingMedia: listingMedia,
-            extraNotes: extras.extraNotes,
+            extraNotes: "",
             customRows: extras.customRows,
             colorGroups: extras.colorGroups,
           };
@@ -1767,21 +1784,19 @@ export default function BulkListingWizard({
             draft,
             forceOverwrite: true,
           });
-          const photoCopy = true;
+          const tags = Array.isArray(merged.tags) ? merged.tags.join(", ") : String(merged.tags || "");
           working = {
             ...working,
-            name: (photoCopy && merged.name) || working.name,
-            short_description: (photoCopy && merged.shortDescription) || working.short_description || merged.shortDescription || "",
-            product_details: (photoCopy && merged.productDetails) || working.product_details || merged.productDetails || "",
-            key_features: (photoCopy && pipeJoin(merged.keyFeatures)) || working.key_features || pipeJoin(merged.keyFeatures),
-            benefits: (photoCopy && pipeJoin(merged.benefits)) || working.benefits || pipeJoin(merged.benefits),
-            specifications: (photoCopy && pipeJoin(merged.specifications)) || working.specifications || pipeJoin(merged.specifications),
-            meta_title: (photoCopy && merged.metaTitle) || working.meta_title || merged.metaTitle || "",
-            meta_description: (photoCopy && merged.metaDescription) || working.meta_description || merged.metaDescription || "",
-            tags:
-              (photoCopy && (Array.isArray(merged.tags) ? merged.tags.join(", ") : merged.tags)) ||
-              working.tags ||
-              (Array.isArray(merged.tags) ? merged.tags.join(", ") : merged.tags || ""),
+            name: String(merged.name || "").trim(),
+            short_description: String(merged.shortDescription || "").trim(),
+            product_details: String(merged.productDetails || "").trim(),
+            general_info: String(merged.generalInfo || "").trim(),
+            key_features: pipeJoin(merged.keyFeatures),
+            benefits: pipeJoin(merged.benefits),
+            specifications: pipeJoin(merged.specifications),
+            meta_title: String(merged.metaTitle || "").trim(),
+            meta_description: String(merged.metaDescription || "").trim(),
+            tags,
             country_of_origin: working.country_of_origin || merged.countryOfOrigin || "India",
           };
         }
@@ -2037,8 +2052,7 @@ export default function BulkListingWizard({
     const imageCount = stagedImageCount(imageSummary, imagesBySku);
     if (!mappedRows.length || !imageCount) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
-    if (!merged.some((row) => rowNeedsAiFill(row))) return undefined;
-    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|image-only`;
+    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|image-fields`;
     if (lastAiKey.current === key) return undefined;
     lastAiKey.current = key;
     generateListingFields(merged).catch(() => {
@@ -2256,6 +2270,7 @@ export default function BulkListingWizard({
             colorGroups,
             shortDescription: row.short_description || "",
             productDetails: row.product_details || "",
+            generalInfo: row.general_info || "",
             keyFeatures: splitPipe(row.key_features),
             benefits: splitPipe(row.benefits),
             whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),
@@ -2436,6 +2451,7 @@ export default function BulkListingWizard({
             customRows,
             shortDescription: row.short_description || "",
             productDetails: row.product_details || "",
+            generalInfo: row.general_info || "",
             keyFeatures: splitPipe(row.key_features),
             benefits: splitPipe(row.benefits),
             whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),
@@ -2523,6 +2539,7 @@ export default function BulkListingWizard({
           size_id: result.resolved.size?.id || "",
           shortDescription: row.short_description || "",
           productDetails: row.product_details || "",
+          generalInfo: row.general_info || "",
           keyFeatures: splitPipe(row.key_features),
           benefits: splitPipe(row.benefits),
           whatsInTheBox: splitWhatsInTheBox(row.whats_in_the_box),

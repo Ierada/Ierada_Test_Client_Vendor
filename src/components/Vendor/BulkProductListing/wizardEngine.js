@@ -93,6 +93,7 @@ const AUTO_IGNORE = /^(extra|extra_column|unused|ignore|n\/?a|not_required)$/i;
 export const AI_FIELD_KEYS = [
   "short_description",
   "product_details",
+  "general_info",
   "key_features",
   "benefits",
   "specifications",
