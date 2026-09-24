@@ -675,8 +675,19 @@ function flattenVariationWorkbook(wb, listingKind) {
   };
 }
 
-export function parseListingWorkbook(fileBuffer) {
+/** Official templates always include Guide + Products. Preview and sample downloads do not. */
+export function assertOfficialListingTemplate(wb) {
+  const names = (wb?.SheetNames || []).map((n) => String(n).trim().toLowerCase());
+  if (!names.includes("guide") || !names.includes("products")) {
+    throw new Error(
+      "Upload the IERADA bulk listing template only. Download the template, fill it, and upload that file. Sample and preview files are not accepted.",
+    );
+  }
+}
+
+export function parseListingWorkbook(fileBuffer, { templateOnly = false } = {}) {
   const wb = XLSX.read(fileBuffer, { type: "array" });
+  if (templateOnly) assertOfficialListingTemplate(wb);
   const listingKind = detectListingKind(wb);
   if (listingKind === "color_size" || listingKind === "custom") {
     return flattenVariationWorkbook(wb, listingKind);

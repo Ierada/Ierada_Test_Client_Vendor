@@ -1549,7 +1549,7 @@ export default function BulkListingWizard({
     if (!file) return;
     try {
       const buf = await file.arrayBuffer();
-      const parsed = parseListingWorkbook(buf);
+      const parsed = parseListingWorkbook(buf, { templateOnly: true });
       const parsedKind = normalizeListingKind(parsed.listingKind || "single");
       if (parsedKind !== listingKind) {
         notifyOnFail(
@@ -2788,7 +2788,7 @@ export default function BulkListingWizard({
           <section className="rounded-2xl border border-gray-200 bg-white p-5">
             <h2 className="text-base font-semibold text-[#1A2B48]">1. Upload Your Excel File</h2>
             <p className="mt-1 text-xs text-gray-500">
-              Download the {activeTemplate.name} template, fill it, then upload the file.
+              Download the {activeTemplate.name} template, fill it, then upload that file. Sample and preview downloads are not accepted.
             </p>
             <DropZone
               onFiles={(files) => {
@@ -2839,7 +2839,7 @@ export default function BulkListingWizard({
                 onChange={(e) => onExcel(e.target.files?.[0])}
               />
               <p className="mt-3 text-[11px] text-gray-400">
-                Maximum file size: 25 MB &nbsp;|&nbsp; Allowed format: .xlsx, .xls
+                Maximum file size: 25 MB &nbsp;|&nbsp; IERADA template .xlsx or .xls only
               </p>
             </DropZone>
           </section>
