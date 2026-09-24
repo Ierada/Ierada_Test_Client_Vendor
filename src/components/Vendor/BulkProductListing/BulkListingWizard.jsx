@@ -50,6 +50,7 @@ import {
 } from "../SmartListing/utils/aiDraft";
 import innerHsnGstLookup from "../SmartListing/utils/innerHsnGstLookup.json";
 import { gstFromBands } from "../SmartListing/utils/gstBands";
+import { fileToSuggestPayload } from "../SmartListing/utils/fileToSuggestPayload";
 import {
   IERADA_FIELDS,
   CUSTOM_ATTR_MAP_FIELDS,
@@ -778,11 +779,37 @@ function NeedHelpCard({ onGuide, supportTo }) {
 }
 
 function coverFilename(img) {
-  const raw = String(img?.filename || "").split(/[/\\]/).pop();
-  if (raw && !raw.includes("..")) return raw;
   const url = String(img?.url || wizardImageSrc(img) || "");
   const hit = url.match(/files\/([^/?#]+)/i);
-  return hit?.[1] ? decodeURIComponent(hit[1]) : "";
+  if (hit?.[1]) {
+    try {
+      return decodeURIComponent(hit[1]);
+    } catch {
+      return hit[1];
+    }
+  }
+  const raw = String(img?.filename || "").split(/[/\\]/).pop();
+  if (raw && !raw.includes("..")) return raw;
+  return "";
+}
+
+async function coverImagePayload(cover, files) {
+  const ordered = Object.entries(files || {}).sort((a, b) => Number(a[0]) - Number(b[0]));
+  const coverSlot = files?.[1] || files?.["1"] || ordered[0]?.[1];
+  let blob = coverSlot?.file || coverSlot;
+  if (!(blob instanceof Blob) && cover) {
+    const src = cover.previewUrl || wizardImageSrc(cover);
+    if (src) {
+      const res = await fetch(src);
+      if (res.ok) blob = await res.blob();
+    }
+  }
+  if (!(blob instanceof Blob)) return null;
+  const file =
+    blob instanceof File
+      ? blob
+      : new File([blob], "cover.jpg", { type: blob.type || "image/jpeg" });
+  return fileToSuggestPayload(file);
 }
 
 const AI_SHARE_KEYS = [
@@ -1621,19 +1648,24 @@ export default function BulkListingWizard({
         const cover = images.find((img) => Number(img.order) === 1) || images[0];
         const extras = customAttributeState(working);
         const filename = coverFilename(cover);
+        let coverImage = null;
+        try {
+          coverImage = await coverImagePayload(cover, media.files);
+        } catch {
+          coverImage = null;
+        }
         if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
           try {
             const payload = {
               listing_type: listingKind || "single",
-              product_name: working.name || "",
-              extra_notes: [extras.extraNotes, working.sku, cover?.originalName, cover?.zipPath]
-                .filter(Boolean)
-                .join("\n"),
               filename,
               sku: working.sku || "",
               fast: true,
+              from_image: true,
+              image_base64: coverImage?.image_base64 || "",
+              mime_type: coverImage?.mime_type || "image/jpeg",
             };
-            if (payload.filename || payload.product_name || payload.sku) {
+            if (payload.image_base64 || payload.filename) {
               const res = await suggestListingCategory(payload);
               if (res?.status === 1 && res?.data) {
                 working = applyCategorySuggestion(working, res.data, catalog);
@@ -1644,10 +1676,8 @@ export default function BulkListingWizard({
           }
           if (!String(working.category || "").trim() || !String(working.sub_category || "").trim()) {
             const guessed = guessTaxonomyFromHints(catalog, {
-              name: working.name,
               sku: working.sku,
               filename: cover?.originalName || cover?.zipPath || filename,
-              notes: extras.extraNotes,
             });
             if (guessed) working = { ...working, ...guessed };
           }
@@ -1704,7 +1734,8 @@ export default function BulkListingWizard({
                 : "single",
             brandType: String(working.brand_type || "").toLowerCase() === "branded" ? "branded" : "generic",
             brand: working.brand,
-            name: working.name,
+            name: "",
+            from_image: true,
             category_id: category?.id || "",
             sub_category_id: subCategory?.id || "",
             inner_sub_category_id: inner?.id || "",
@@ -1729,6 +1760,8 @@ export default function BulkListingWizard({
           let draft = null;
           try {
             const payload = await buildListingAiPayload(state);
+            payload.from_image = true;
+            payload.name = "";
             const res = await generateListingAiDraft(payload);
             if (res?.status === 1) {
               draft = res?.data?.draft || res?.data || res?.draft || res;
@@ -1740,19 +1773,21 @@ export default function BulkListingWizard({
           }
           const merged = mergeAiDraft(state, {
             draft: draft || localAiDraft(state),
-            forceOverwrite: !String(working.name || "").trim(),
+            forceOverwrite: true,
           });
+          const photoCopy = Boolean(coverImage?.image_base64 || filename);
           working = {
             ...working,
-            name: merged.name || working.name,
-            short_description: working.short_description || merged.shortDescription || "",
-            product_details: working.product_details || merged.productDetails || "",
-            key_features: working.key_features || pipeJoin(merged.keyFeatures),
-            benefits: working.benefits || pipeJoin(merged.benefits),
-            specifications: working.specifications || pipeJoin(merged.specifications),
-            meta_title: working.meta_title || merged.metaTitle || "",
-            meta_description: working.meta_description || merged.metaDescription || "",
+            name: (photoCopy && merged.name) || working.name,
+            short_description: (photoCopy && merged.shortDescription) || working.short_description || merged.shortDescription || "",
+            product_details: (photoCopy && merged.productDetails) || working.product_details || merged.productDetails || "",
+            key_features: (photoCopy && pipeJoin(merged.keyFeatures)) || working.key_features || pipeJoin(merged.keyFeatures),
+            benefits: (photoCopy && pipeJoin(merged.benefits)) || working.benefits || pipeJoin(merged.benefits),
+            specifications: (photoCopy && pipeJoin(merged.specifications)) || working.specifications || pipeJoin(merged.specifications),
+            meta_title: (photoCopy && merged.metaTitle) || working.meta_title || merged.metaTitle || "",
+            meta_description: (photoCopy && merged.metaDescription) || working.meta_description || merged.metaDescription || "",
             tags:
+              (photoCopy && (Array.isArray(merged.tags) ? merged.tags.join(", ") : merged.tags)) ||
               working.tags ||
               (Array.isArray(merged.tags) ? merged.tags.join(", ") : merged.tags || ""),
             country_of_origin: working.country_of_origin || merged.countryOfOrigin || "India",
@@ -2011,7 +2046,7 @@ export default function BulkListingWizard({
     if (!mappedRows.length || !imageCount) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
     if (!merged.some((row) => rowNeedsAiFill(row))) return undefined;
-    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}`;
+    const key = `${excelName}|${mappedRows.length}|${imageCount}|${listingKind}|cover-photo`;
     if (lastAiKey.current === key) return undefined;
     lastAiKey.current = key;
     generateListingFields(merged).catch(() => {
