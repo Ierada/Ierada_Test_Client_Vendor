@@ -36,7 +36,7 @@ import { generateListingAiDraft, suggestListingCategory } from "../../../service
 import { getBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
-import ValidateDataStep, { AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
+import ValidateDataStep, { AiCreditModal, AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
 import PreviewConfirmStep from "./PreviewConfirmStep";
 import SubmitCompleteStep from "./SubmitCompleteStep";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
@@ -775,6 +775,17 @@ function NeedHelpCard({ onGuide, supportTo }) {
   );
 }
 
+const LOW_AI_CREDIT_MESSAGE = "Low AI credit balance, please top up";
+
+function isAiBillingError(err) {
+  const code = String(err?.code || "");
+  const msg = String(err?.message || "");
+  return (
+    code === "OPENAI_BILLING" ||
+    /credit|insufficient_quota|billing/i.test(msg)
+  );
+}
+
 function coverFilename(img) {
   const url = String(img?.url || "");
   const hit = url.match(/files\/([^/?#]+)/i);
@@ -1018,6 +1029,7 @@ export default function BulkListingWizard({
   const [existingSkus, setExistingSkus] = useState(new Set());
   const [busy, setBusy] = useState("");
   const [aiProgress, setAiProgress] = useState(null);
+  const [aiCreditOpen, setAiCreditOpen] = useState(false);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1641,6 +1653,15 @@ export default function BulkListingWizard({
       : []),
   ];
 
+  const raiseLowAiCredit = () => {
+    setAiCreditOpen(true);
+    setBusy("");
+    setAiProgress(null);
+    const err = new Error(LOW_AI_CREDIT_MESSAGE);
+    err.code = "OPENAI_BILLING";
+    throw err;
+  };
+
   const generateListingFields = async (list) => {
     if (aiJob.current) return aiJob.current;
     const run = (async () => {
@@ -1696,11 +1717,14 @@ export default function BulkListingWizard({
               const res = await suggestListingCategory(payload);
               if (res?.status === 1 && res?.data) {
                 working = applyCategorySuggestion(working, res.data, catalog);
-              } else if (!failure) {
-                failure = res?.message || "Category was not read from the cover photo";
-              }
+            } else if (isAiBillingError(res)) {
+              raiseLowAiCredit();
+            } else if (!failure) {
+              failure = res?.message || "Category was not read from the cover photo";
+            }
             }
           } catch (err) {
+            if (isAiBillingError(err)) raiseLowAiCredit();
             if (!failure) failure = err?.message || "Category was not read from the cover photo";
           }
         }
@@ -1794,10 +1818,13 @@ export default function BulkListingWizard({
             const res = await generateListingAiDraft(payload);
             if (res?.status === 1) {
               draft = res?.data?.draft || res?.data || res?.draft || res;
+            } else if (isAiBillingError(res)) {
+              raiseLowAiCredit();
             } else if (!failure) {
               failure = res?.message || "Listing text was not read from the cover photo";
             }
           } catch (err) {
+            if (isAiBillingError(err)) raiseLowAiCredit();
             draft = null;
             if (!failure) failure = err?.message || "Listing text was not read from the cover photo";
           }
@@ -1845,20 +1872,28 @@ export default function BulkListingWizard({
         });
       };
 
-      await mapLimit(unique, 8, async (row) => {
-        try {
-          await fillOne(row);
-        } finally {
-          done += 1;
-          setAiProgress({
-            current: done,
-            total,
-            sku: row.sku || "",
-            percent: Math.round((done / Math.max(total, 1)) * 100),
-            label: `Filled ${done} of ${total}`,
-          });
-        }
-      });
+      try {
+        await mapLimit(unique, 8, async (row) => {
+          try {
+            await fillOne(row);
+          } catch (err) {
+            if (isAiBillingError(err)) raiseLowAiCredit();
+          } finally {
+            done += 1;
+            setAiProgress({
+              current: done,
+              total,
+              sku: row.sku || "",
+              percent: Math.round((done / Math.max(total, 1)) * 100),
+              label: `Filled ${done} of ${total}`,
+            });
+          }
+        });
+      } catch (err) {
+        setBusy("");
+        setAiProgress(null);
+        throw err;
+      }
 
       const filled = source.map((row) => {
         const shared = groupFill.get(variationAiCacheKey(row, listingKind));
@@ -2082,7 +2117,8 @@ export default function BulkListingWizard({
       else notifyOnSuccess("Listing details generated");
     } catch (e) {
       lastAiKey.current = "";
-      notifyOnFail(e.message || "Could not generate listing details");
+      if (isAiBillingError(e)) setAiCreditOpen(true);
+      else notifyOnFail(e.message || "Could not generate listing details");
     }
   };
 
@@ -2108,8 +2144,10 @@ export default function BulkListingWizard({
     const key = `${excelName}|${mappedRows.length}|${ready.length}|${listingKind}|image-visible`;
     if (lastAiKey.current === key) return undefined;
     lastAiKey.current = key;
-    generateListingFields(merged).catch(() => {
+    generateListingFields(merged).catch((err) => {
       lastAiKey.current = "";
+      if (isAiBillingError(err)) setAiCreditOpen(true);
+      else notifyOnFail(err?.message || "Could not generate listing details");
     });
     return undefined;
   }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind]);
@@ -3126,6 +3164,7 @@ export default function BulkListingWizard({
           </div>
         </div>
       ) : null}
+      <AiCreditModal open={aiCreditOpen} onClose={() => setAiCreditOpen(false)} />
       <AiProgressModal progress={aiProgress} />
     </div>
   );

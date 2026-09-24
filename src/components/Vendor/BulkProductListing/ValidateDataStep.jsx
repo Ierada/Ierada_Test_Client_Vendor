@@ -105,6 +105,29 @@ function StatusCell({ status }) {
   );
 }
 
+export function AiCreditModal({ open, onClose }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#1A2B48]/45 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="alertdialog" aria-labelledby="ai-credit-title">
+        <p id="ai-credit-title" className="text-base font-semibold text-[#1A2B48]">
+          Low AI credit balance, please top up
+        </p>
+        <p className="mt-2 text-sm text-gray-600">
+          Listing details were not generated. Top up the AI credit balance, then run Generate AI Fields again.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 rounded-lg bg-[#F56C43] px-4 py-2 text-sm font-semibold text-white"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AiProgressModal({ progress }) {
   if (!progress) return null;
   const pct = Math.max(0, Math.min(100, Number(progress.percent) || 0));
