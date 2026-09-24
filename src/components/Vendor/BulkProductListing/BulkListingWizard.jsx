@@ -776,7 +776,7 @@ function NeedHelpCard({ onGuide, supportTo }) {
 }
 
 function coverFilename(img) {
-  const url = String(img?.url || wizardImageSrc(img) || "");
+  const url = String(img?.url || "");
   const hit = url.match(/files\/([^/?#]+)/i);
   if (hit?.[1]) {
     try {
@@ -787,7 +787,30 @@ function coverFilename(img) {
   }
   const raw = String(img?.filename || "").split(/[/\\]/).pop();
   if (raw && !raw.includes("..")) return raw;
+  const shown = String(wizardImageSrc(img) || "");
+  const shownHit = shown.match(/files\/([^/?#]+)/i);
+  if (shownHit?.[1]) {
+    try {
+      return decodeURIComponent(shownHit[1]);
+    } catch {
+      return shownHit[1];
+    }
+  }
   return "";
+}
+
+function coverFetchUrls(cover) {
+  const urls = [];
+  const push = (value) => {
+    const src = String(value || "").trim();
+    if (src && !urls.includes(src)) urls.push(src);
+  };
+  const filename = coverFilename(cover);
+  if (filename) push(`/api/bulk-listing-wizard/files/${encodeURIComponent(filename)}`);
+  push(cover?.url);
+  push(wizardImageSrc(cover));
+  push(cover?.previewUrl);
+  return urls;
 }
 
 async function coverImagePayload(cover, files) {
@@ -795,10 +818,18 @@ async function coverImagePayload(cover, files) {
   const coverSlot = files?.[1] || files?.["1"] || ordered[0]?.[1];
   let blob = coverSlot?.file || coverSlot;
   if (!(blob instanceof Blob) && cover) {
-    const src = cover.previewUrl || wizardImageSrc(cover);
-    if (src) {
-      const res = await fetch(src);
-      if (res.ok) blob = await res.blob();
+    for (const src of coverFetchUrls(cover)) {
+      try {
+        const res = await fetch(src);
+        if (!res.ok) continue;
+        const body = await res.blob();
+        if (body?.size) {
+          blob = body;
+          break;
+        }
+      } catch {
+        /* try the next url for this cover */
+      }
     }
   }
   if (!(blob instanceof Blob)) return null;
@@ -1625,6 +1656,7 @@ export default function BulkListingWizard({
         }
       }
       setBusy("Generating listing details…");
+      let failure = "";
       const unique = [];
       const seenKeys = new Set();
       source.forEach((row) => {
@@ -1664,10 +1696,12 @@ export default function BulkListingWizard({
               const res = await suggestListingCategory(payload);
               if (res?.status === 1 && res?.data) {
                 working = applyCategorySuggestion(working, res.data, catalog);
+              } else if (!failure) {
+                failure = res?.message || "Category was not read from the cover photo";
               }
             }
-          } catch {
-            /* category stays empty until the cover photo can be read */
+          } catch (err) {
+            if (!failure) failure = err?.message || "Category was not read from the cover photo";
           }
         }
 
@@ -1739,8 +1773,8 @@ export default function BulkListingWizard({
             package_height: working.package_height,
             package_weight: working.package_weight,
             countryOfOrigin: working.country_of_origin || "India",
-            files: listingFiles,
-            existingMedia: listingMedia,
+            files: listingFiles.slice(0, 1),
+            existingMedia: listingMedia.slice(0, 1),
             extraNotes: "",
             customRows: extras.customRows,
             colorGroups: extras.colorGroups,
@@ -1750,12 +1784,22 @@ export default function BulkListingWizard({
             const payload = await buildListingAiPayload(state);
             payload.from_image = true;
             payload.name = "";
+            if (!payload.image_base64 && coverImage?.image_base64) {
+              payload.image_base64 = coverImage.image_base64;
+              payload.mime_type = coverImage.mime_type || "image/jpeg";
+              payload.images = [
+                { image_base64: coverImage.image_base64, mime_type: payload.mime_type },
+              ];
+            }
             const res = await generateListingAiDraft(payload);
             if (res?.status === 1) {
               draft = res?.data?.draft || res?.data || res?.draft || res;
+            } else if (!failure) {
+              failure = res?.message || "Listing text was not read from the cover photo";
             }
-          } catch {
+          } catch (err) {
             draft = null;
+            if (!failure) failure = err?.message || "Listing text was not read from the cover photo";
           }
           if (!draft) {
             const kept = pickAiShare(working);
@@ -1823,6 +1867,7 @@ export default function BulkListingWizard({
       setRows(filled);
       setBusy("");
       setAiProgress(null);
+      filled.failure = failure;
       return filled;
     })();
     aiJob.current = run.finally(() => {
@@ -2027,7 +2072,13 @@ export default function BulkListingWizard({
     try {
       const filled = (await generateListingFields(merged)) || [];
       const left = filled.filter((row) => rowNeedsAiFill(row)).length;
-      if (left) notifyOnFail(`${left} row${left === 1 ? "" : "s"} still need listing details`);
+      if (left) {
+        notifyOnFail(
+          filled.failure
+            ? `${left} row${left === 1 ? "" : "s"} still need listing details. ${filled.failure}`
+            : `${left} row${left === 1 ? "" : "s"} still need listing details`,
+        );
+      }
       else notifyOnSuccess("Listing details generated");
     } catch (e) {
       lastAiKey.current = "";
