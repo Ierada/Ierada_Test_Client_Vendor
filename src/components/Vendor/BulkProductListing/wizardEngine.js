@@ -196,7 +196,7 @@ const IMAGE_EXT = /\.(jpe?g|png|webp|gif|bmp|avif)$/i;
 const SLOT_AT_END = /^(.*?)[-_ ]+(10|[1-9]|0[1-9])$/;
 const SLOT_ONLY = /^(10|[1-9]|0[1-9])$/;
 const GENERIC_DIR =
-  /^(?:__macosx|\.|images?|imgs?|photos?|pics?|uploads?|files?|assets?|media|product[\s._-]*images?)$/i;
+  /^(?:__macosx|\.|images?|imgs?|photos?|pics?|uploads?|files?|assets?|media|product[\s._-]*images?|download(?:ed)?(?:[\s._-]*images?)?)$/i;
 
 function pathParts(name) {
   return String(name || "")
@@ -255,13 +255,9 @@ export function parseSkuImageFilename(originalName) {
   if (match && match[1].trim()) {
     const parsedSku = match[1].trim();
     const order = slotNumber(match[2]);
-    const sameFolder =
-      fromFolder &&
-      (normalizeSkuKey(parsedSku) === normalizeSkuKey(fromFolder) ||
-        normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}-`) ||
-        normalizeSkuKey(parsedSku).startsWith(`${normalizeSkuKey(fromFolder)}_`));
-    const sku = fromFolder && !sameFolder ? fromFolder : parsedSku;
-    return { sku, order, filename: base, ignored: false, stem };
+    // lifeo-sku-373-1.jpg inside Downloaded_Images/ is that SKU.
+    // A folder name is the SKU only for files named 1.jpg inside the folder.
+    return { sku: parsedSku, order, filename: base, ignored: false, stem };
   }
 
   if (fromFolder) {
@@ -390,7 +386,7 @@ export function imagesForSku(imagesBySku, sku) {
   Object.entries(imagesBySku).forEach(([key, list]) => {
     (list || []).forEach((img) => {
       const parsed = parseSkuImageFilename(img.zipPath || img.originalName || img.filename || key);
-      const imgSku = img.sku || key || parsed?.sku;
+      const imgSku = parsed?.sku || img.sku || key;
       const keys = imageMatchKeys({
         sku: imgSku,
         order: img.order || parsed?.order,
