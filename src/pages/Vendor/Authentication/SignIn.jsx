@@ -219,6 +219,8 @@ export default function SellerLoginPage() {
         role: "vendor",
       });
 
+      if (!response) return;
+
       if (response?.status === 1) {
         if (!response.token) {
           toast.error("Login succeeded but session token is missing. Please try again.");
