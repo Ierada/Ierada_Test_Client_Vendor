@@ -1030,6 +1030,7 @@ export default function BulkListingWizard({
   const [busy, setBusy] = useState("");
   const [aiProgress, setAiProgress] = useState(null);
   const [aiCreditOpen, setAiCreditOpen] = useState(false);
+  const [imagesUploading, setImagesUploading] = useState(false);
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
@@ -1369,6 +1370,7 @@ export default function BulkListingWizard({
       (files[0]?.webkitRelativePath ? files[0].webkitRelativePath.split("/")[0] : "") ||
       (files.length ? `${files.length} images` : "Images");
     const localBySku = indexImageFilesBySku(files);
+    setImagesUploading(true);
     rememberLocalImageFiles(files);
     if (Object.keys(localBySku).length) {
       setImagesBySku((prev) => mergeImagesBySku(prev, localBySku));
@@ -1498,6 +1500,7 @@ export default function BulkListingWizard({
         notifyOnFail(detail);
       }
     } finally {
+      setImagesUploading(false);
       setBusy("");
       setTimeout(() => setUploadProgress(null), 600);
     }
@@ -1654,9 +1657,6 @@ export default function BulkListingWizard({
   ];
 
   const raiseLowAiCredit = () => {
-    setAiCreditOpen(true);
-    setBusy("");
-    setAiProgress(null);
     const err = new Error(LOW_AI_CREDIT_MESSAGE);
     err.code = "OPENAI_BILLING";
     throw err;
@@ -1678,6 +1678,7 @@ export default function BulkListingWizard({
       }
       setBusy("Generating listing details…");
       let failure = "";
+      let stopBilling = false;
       const unique = [];
       const seenKeys = new Set();
       source.forEach((row) => {
@@ -1874,11 +1875,13 @@ export default function BulkListingWizard({
 
       try {
         await mapLimit(unique, 8, async (row) => {
+          if (stopBilling) return;
           try {
             await fillOne(row);
           } catch (err) {
-            if (isAiBillingError(err)) raiseLowAiCredit();
+            if (isAiBillingError(err)) stopBilling = true;
           } finally {
+            if (stopBilling) return;
             done += 1;
             setAiProgress({
               current: done,
@@ -1902,6 +1905,13 @@ export default function BulkListingWizard({
       setRows(filled);
       setBusy("");
       setAiProgress(null);
+      if (stopBilling) {
+        setAiCreditOpen(true);
+        filled.failure = LOW_AI_CREDIT_MESSAGE;
+        const err = new Error(LOW_AI_CREDIT_MESSAGE);
+        err.code = "OPENAI_BILLING";
+        throw err;
+      }
       filled.failure = failure;
       return filled;
     })();
@@ -2084,6 +2094,10 @@ export default function BulkListingWizard({
   };
 
   const runAiFillNow = async () => {
+    if (imagesUploading) {
+      notifyOnFail("Image upload is still running. Listing details start after the upload finishes.");
+      return;
+    }
     if (aiJob.current) return;
     if (!mappedRows.length) {
       notifyOnFail("Upload the seller Excel file first");
@@ -2134,7 +2148,7 @@ export default function BulkListingWizard({
 
   useEffect(() => {
     const imageCount = stagedImageCount(imageSummary, imagesBySku);
-    if (!mappedRows.length || !imageCount) return undefined;
+    if (imagesUploading || !mappedRows.length || !imageCount) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
     const ready = merged.filter(
       (row) =>
@@ -2150,7 +2164,7 @@ export default function BulkListingWizard({
       else notifyOnFail(err?.message || "Could not generate listing details");
     });
     return undefined;
-  }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind]);
+  }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind, imagesUploading]);
 
   const goPreview = () => {
     const nextSelected = {};
@@ -3164,8 +3178,8 @@ export default function BulkListingWizard({
           </div>
         </div>
       ) : null}
+      <AiProgressModal progress={aiCreditOpen ? null : aiProgress} />
       <AiCreditModal open={aiCreditOpen} onClose={() => setAiCreditOpen(false)} />
-      <AiProgressModal progress={aiProgress} />
     </div>
   );
 }

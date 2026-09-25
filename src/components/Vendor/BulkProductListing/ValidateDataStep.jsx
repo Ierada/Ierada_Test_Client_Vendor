@@ -108,18 +108,22 @@ function StatusCell({ status }) {
 export function AiCreditModal({ open, onClose }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#1A2B48]/45 px-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A2B48]/45 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" role="alertdialog" aria-labelledby="ai-credit-title">
         <p id="ai-credit-title" className="text-base font-semibold text-[#1A2B48]">
           Low AI credit balance, please top up
         </p>
         <p className="mt-2 text-sm text-gray-600">
-          Listing details were not generated. Top up the AI credit balance, then run Generate AI Fields again.
+          Listings already generated stay on the file preview with their images. Top up the AI credit balance, then run Generate AI Fields again for the rest.
         </p>
         <button
           type="button"
-          onClick={onClose}
-          className="mt-5 rounded-lg bg-[#F56C43] px-4 py-2 text-sm font-semibold text-white"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onClose?.();
+          }}
+          className="relative z-10 mt-5 rounded-lg bg-[#F56C43] px-4 py-2 text-sm font-semibold text-white"
         >
           OK
         </button>
