@@ -1492,6 +1492,15 @@ export default function BulkListingWizard({
         msg += `. ${failed} failed${names ? `: ${names}` : ""}`;
       }
       notifyOnSuccess(msg);
+      if (mappedRows.some((row) => rowNeedsAiFill(row))) {
+        setAiProgress({
+          current: 0,
+          total: mappedRows.length,
+          sku: "",
+          percent: 0,
+          label: "Starting listing details…",
+        });
+      }
     } catch (e) {
       const detail = getApiErrorMessage(e, "Could not store images on the server");
       if (Object.keys(localBySku).length) {
@@ -1667,16 +1676,6 @@ export default function BulkListingWizard({
     const run = (async () => {
       const source = list || [];
       const groupFill = new Map();
-      let catalog = taxonomy;
-      if (!catalog?.categories?.length) {
-        try {
-          const lookups = await loadLookups();
-          catalog = lookups.taxonomy || catalog;
-        } catch {
-          /* keep current taxonomy */
-        }
-      }
-      setBusy("Generating listing details…");
       let failure = "";
       let stopBilling = false;
       const unique = [];
@@ -1689,6 +1688,23 @@ export default function BulkListingWizard({
       });
       const total = unique.length;
       let done = 0;
+      setBusy("Generating listing details…");
+      setAiProgress({
+        current: 0,
+        total,
+        sku: "",
+        percent: 0,
+        label: total ? `Filled 0 of ${total}` : "Starting listing details…",
+      });
+      let catalog = taxonomy;
+      if (!catalog?.categories?.length) {
+        try {
+          const lookups = await loadLookups();
+          catalog = lookups.taxonomy || catalog;
+        } catch {
+          /* keep current taxonomy */
+        }
+      }
       const fillOne = async (row) => {
         const cacheKey = variationAiCacheKey(row, listingKind);
         let working = { ...row };
