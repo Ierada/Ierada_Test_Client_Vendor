@@ -33,7 +33,7 @@ import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
-import { getBulkListingWizardJob, discardBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
+import { getBulkListingWizardJob, discardBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
 import ValidateDataStep, { AiCreditModal, AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
@@ -1052,7 +1052,6 @@ export default function BulkListingWizard({
   const aiJob = useRef(null);
   const lastAiKey = useRef("");
   const lastAutoFixKey = useRef("");
-  const lastRecoverKey = useRef("");
   const filesByKind = useRef({ single: {}, color_size: {}, custom: {} });
   const kindSwitchGen = useRef(0);
   const activeKindRef = useRef("single");
@@ -1286,7 +1285,6 @@ export default function BulkListingWizard({
     setUploadProgress(null);
     lastAiKey.current = "";
     lastAutoFixKey.current = "";
-    lastRecoverKey.current = "";
     aiJob.current = null;
   };
 
@@ -1471,7 +1469,6 @@ export default function BulkListingWizard({
       setUploadProgress({ percent: 100, label: "Upload complete" });
       // Let the AI pass run again now that photos are mapped to SKUs.
       lastAiKey.current = "";
-      lastRecoverKey.current = "";
       const mapped = Object.keys(mergeImagesBySku(localBySku, lastSummary?.by_sku || {})).length;
       const stored = Number(lastSummary?.total_images || mapped);
       const ignored = Number(lastSummary?.ignored || 0);
@@ -1524,7 +1521,6 @@ export default function BulkListingWizard({
     setMapping([]);
     setRows([]);
     lastAiKey.current = "";
-    lastRecoverKey.current = "";
     dropClonedKindSessions(mode, vendorId, previous, listingKind).forEach((kind) => {
       filesByKind.current[kind] = {};
     });
@@ -1575,7 +1571,6 @@ export default function BulkListingWizard({
       setRawRows(parsed.rows);
       setMapping(applySavedMappingTemplate(parsed.headers, loadMappingTemplate()));
       lastAiKey.current = "";
-      lastRecoverKey.current = "";
       notifyOnSuccess(`${parsed.rows.length} rows read from Excel`);
       if (jobId) {
         try {
@@ -1676,6 +1671,10 @@ export default function BulkListingWizard({
     if (aiJob.current) return aiJob.current;
     const run = (async () => {
       const source = list || [];
+      const hasUploadedImages = source.some(
+        (row) => imagesForSku(imagesBySku, rowImageKey(row) || row.sku).length,
+      );
+      if (!hasUploadedImages) return source;
       const groupFill = new Map();
       let failure = "";
       let stopBilling = false;
@@ -1958,7 +1957,10 @@ export default function BulkListingWizard({
       const lookups = await loadLookups();
       const merged = expandMappedRowsBySize(mergeGeneratedRows(mappedRows, rows));
       let filled = merged;
-      if (merged.some((row) => rowNeedsAiFill(row))) {
+      if (
+        stagedImageCount(imageSummary, imagesBySku) &&
+        merged.some((row) => rowNeedsAiFill(row))
+      ) {
         filled = (await generateListingFields(merged)) || merged;
       } else {
         setRows(merged);
@@ -2030,11 +2032,8 @@ export default function BulkListingWizard({
 
   const goMap = async () => {
     if (!stagedImageCount(imageSummary, imagesBySku)) {
-      const recovered = await recoverStagedImages(mappedRows);
-      if (!recovered.total) {
-        explainMissingImages(recovered);
-        return;
-      }
+      notifyOnFail("Upload product images first. Listing details start only after the images are stored.");
+      return;
     }
     if (!rawRows.length) {
       notifyOnFail("Upload the seller Excel file after images are stored");
@@ -2046,6 +2045,10 @@ export default function BulkListingWizard({
   const goValidate = async () => {
     if (missingMandatory.length) {
       notifyOnFail(`Map mandatory fields: ${missingMandatory.map((f) => f.label).join(", ")}`);
+      return;
+    }
+    if (!stagedImageCount(imageSummary, imagesBySku)) {
+      notifyOnFail("Upload product images first. Listing details start only after the images are stored.");
       return;
     }
     lastAiKey.current = "";
@@ -2066,51 +2069,6 @@ export default function BulkListingWizard({
     [filePreviewRows],
   );
 
-  /** A session can lose its job id while the photos are still staged on the server. */
-  const recoverStagedImages = async (list) => {
-    const skus = [...new Set((list || []).map((row) => rowImageKey(row)).filter(Boolean))];
-    if (!skus.length) return { total: 0, reason: "no_sku" };
-    try {
-      const res = await lookupStagedBulkListingImages({ vendorId, skus });
-      if (res?.status !== 1) {
-        return { total: 0, reason: "failed", message: res?.message };
-      }
-      const summary = res.data?.summary;
-      const total = Number(summary?.total_images || 0);
-      if (!total) {
-        return { total: 0, reason: "no_match", skus, staged: res.data?.staged_skus || [] };
-      }
-      if (res.data?.job_id && !jobId) setJobId(res.data.job_id);
-      mergeImageSummary(summary);
-      return { total, reason: "ok" };
-    } catch (e) {
-      return { total: 0, reason: "failed", message: e?.message };
-    }
-  };
-
-  /** Says which SKU the wizard looked for, instead of asking for another upload. */
-  const explainMissingImages = (result) => {
-    if (result?.reason === "failed") {
-      notifyOnFail(
-        result.message ||
-          "Could not check the photos already stored for these SKUs. Reload the page and try again.",
-      );
-      return;
-    }
-    if (result?.reason === "no_match") {
-      const asked = (result.skus || []).slice(0, 2);
-      const have = (result.staged || []).slice(0, 2).join(", ");
-      const wanted = asked.map((sku) => `${sku}-1`).join(", ") || "{SKU}-1";
-      notifyOnFail(
-        have
-          ? `No stored photo is named for ${asked.join(", ")}. Stored photos use ${have}. The cover file is ${wanted}.`
-          : `No stored photo is named for ${asked.join(", ")}. Upload the cover as ${wanted}.`,
-      );
-      return;
-    }
-    notifyOnFail("Store product images first, then generate listing details");
-  };
-
   const runAiFillNow = async () => {
     if (imagesUploading) {
       notifyOnFail("Image upload is still running. Listing details start after the upload finishes.");
@@ -2122,14 +2080,8 @@ export default function BulkListingWizard({
       return;
     }
     if (!stagedImageCount(imageSummary, imagesBySku)) {
-      const recovered = await recoverStagedImages(mappedRows);
-      if (!recovered.total) {
-        explainMissingImages(recovered);
-        return;
-      }
-      notifyOnSuccess(
-        `Re-attached ${recovered.total} stored image${recovered.total === 1 ? "" : "s"}`,
-      );
+      notifyOnFail("Upload product images first. Listing details start only after the images are stored.");
+      return;
     }
     const merged = mergeGeneratedRows(mappedRows, rows);
     if (!merged.some((row) => rowNeedsAiFill(row))) {
@@ -2155,18 +2107,9 @@ export default function BulkListingWizard({
   };
 
   useEffect(() => {
-    if (!mappedRows.length) return undefined;
-    if (stagedImageCount(imageSummary, imagesBySku)) return undefined;
-    const key = `${excelName}|${mappedRows.length}|${listingKind}`;
-    if (lastRecoverKey.current === key) return undefined;
-    lastRecoverKey.current = key;
-    recoverStagedImages(mappedRows);
-    return undefined;
-  }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind]);
-
-  useEffect(() => {
     const imageCount = stagedImageCount(imageSummary, imagesBySku);
     if (imagesUploading || !mappedRows.length || !imageCount) return undefined;
+    if (!jobId && !String(imageSourceName || "").trim()) return undefined;
     const merged = mergeGeneratedRows(mappedRows, rows);
     const ready = merged.filter(
       (row) =>
@@ -2182,7 +2125,7 @@ export default function BulkListingWizard({
       else notifyOnFail(err?.message || "Could not generate listing details");
     });
     return undefined;
-  }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind, imagesUploading]);
+  }, [excelName, mappedRows.length, imageSummary?.total_images, imagesBySku, listingKind, imagesUploading, jobId, imageSourceName]);
 
   const goPreview = () => {
     const nextSelected = {};
@@ -2716,10 +2659,17 @@ export default function BulkListingWizard({
       fileName: excelName,
     };
     if (success && !failed.length) {
+      const finishedJobId = jobId;
+      if (finishedJobId) {
+        try {
+          await discardBulkListingWizardJob(finishedJobId);
+        } catch {
+          /* Listed photos stay on the product. Dropping the draft only stops the next Excel from reusing them. */
+        }
+      }
       const previous = snapshotKindSession(listingKind);
       filesByKind.current[listingKind] = {};
       lastAiKey.current = "";
-      lastRecoverKey.current = "";
       aiJob.current = null;
       setJobId("");
       setExcelName("");
