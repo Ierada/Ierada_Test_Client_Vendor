@@ -10,6 +10,11 @@ export async function getBulkListingWizardJob(jobId) {
   return res.data;
 }
 
+export async function discardBulkListingWizardJob(jobId) {
+  const res = await apiClient.delete(`/bulk-listing-wizard/jobs/${jobId}`);
+  return res.data;
+}
+
 export async function downloadBulkListingTemplate(kind = "single") {
   const res = await apiClient.get(`/bulk-listing-wizard/templates/${kind}`, {
     responseType: "blob",

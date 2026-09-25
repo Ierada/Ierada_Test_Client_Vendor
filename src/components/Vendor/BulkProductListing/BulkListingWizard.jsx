@@ -33,13 +33,14 @@ import { getAllColors } from "../../../services/api.color";
 import { getAllSizes } from "../../../services/api.size";
 import { addProduct, getProductsByVendorId } from "../../../services/api.product";
 import { generateListingAiDraft, suggestListingCategory } from "../../../services/api.smartListing";
-import { getBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
+import { getBulkListingWizardJob, discardBulkListingWizardJob, uploadBulkListingImagesInSlices, uploadBulkListingZipInChunks, waitForStagedBulkListingImages, lookupStagedBulkListingImages, downloadBulkListingTemplate } from "../../../services/api.bulkListingWizard";
 import { loadWizardSession, saveWizardSession, stripPreviewUrls, loadMappingTemplate, saveMappingTemplate, clampWizardStep, readWizardStepFromLocation, loadLastListingKind, saveLastListingKind, normalizeListingKind, emptyKindSession, dropClonedKindSessions, kindSessionHasUploads } from "./wizardSession";
 import MapFieldsStep, { MapFieldsFooterStats } from "./MapFieldsStep";
 import ValidateDataStep, { AiCreditModal, AiProgressModal, ValidateFooterStats } from "./ValidateDataStep";
 import PreviewConfirmStep from "./PreviewConfirmStep";
 import SubmitCompleteStep from "./SubmitCompleteStep";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
+import { confirmDialog } from "../../../utils/confirmDialog";
 import { getApiErrorMessage } from "../../../utils/apiError";
 import { buildSmartListingFormData } from "../SmartListing/utils/buildFormData";
 import {
@@ -2760,6 +2761,36 @@ export default function BulkListingWizard({
     setStep(1);
   };
 
+  const discardDraft = async () => {
+    const ok = await confirmDialog({
+      title: "Discard this draft?",
+      message:
+        "The uploaded Excel, staged images, and this preview will be removed. Products already submitted stay listed.",
+      confirmLabel: "Discard draft",
+      cancelLabel: "Keep draft",
+      variant: "danger",
+    });
+    if (!ok) return;
+    if (jobId) {
+      try {
+        await discardBulkListingWizardJob(jobId);
+      } catch (error) {
+        notifyOnFail(getApiErrorMessage(error, "Could not discard the saved images"));
+        return;
+      }
+    }
+    const cleared = emptyKindSession(listingKind, { step: 1 });
+    filesByKind.current[listingKind] = {};
+    setImageFilesBySku({});
+    applyKindState(cleared);
+    saveWizardSession(mode, vendorId, listingKind, cleared);
+    notifyOnSuccess("Draft discarded");
+  };
+
+  const draftInProgress = Boolean(
+    jobId || excelName || rawRows.length || Object.keys(imagesBySku || {}).length,
+  );
+
   const previewRows = validatedRows;
   const activeTemplate = listingTemplate(listingKind);
 
@@ -2781,6 +2812,15 @@ export default function BulkListingWizard({
             />
           </div>
           <div className="flex items-center gap-2">
+            {draftInProgress ? (
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-rose-600"
+              >
+                <X className="h-3.5 w-3.5" /> Discard draft
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => downloadTemplate(listingKind)}

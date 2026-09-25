@@ -644,6 +644,13 @@ export default function PreviewConfirmStep({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={onBackToValidate}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-medium text-[#1A2B48]"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" /> Back
+            </button>
+            <button
+              type="button"
               onClick={onEditMapping}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-medium text-[#1A2B48]"
             >
