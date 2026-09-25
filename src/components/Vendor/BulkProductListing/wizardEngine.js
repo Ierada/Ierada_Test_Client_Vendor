@@ -426,6 +426,14 @@ export function imagesForSku(imagesBySku, sku) {
 function imageMatchKeys({ sku, order, stem } = {}) {
   const keys = [sku, stem];
   const n = Number(order);
+  // lifeo-001-green1-2.png is photo 2 of lifeo-001-green, not a different SKU.
+  if (sku && n >= 2 && n <= 10) {
+    const glued = String(n - 1);
+    const cut = sku.length - glued.length;
+    if (cut > 0 && sku.endsWith(glued) && /[a-z]/i.test(sku.charAt(cut - 1))) {
+      keys.push(sku.slice(0, cut));
+    }
+  }
   if (sku && n >= 1 && n <= 10) {
     keys.push(`${sku}-${n}`, `${sku}_${n}`);
   }
@@ -842,7 +850,11 @@ export function duplicateSkuKeys(rows) {
     if (!key) return;
     // Parent SKU is allowed to repeat. If a row's "SKU" is actually the parent,
     // the parent-equals-variant check reports that — do not call it a duplicate.
-    if (parent && key === parent) return;
+    if (parent && key === parent) {
+      if (seen.has(`parent:${parent}`)) dupes.add(parent);
+      else seen.add(`parent:${parent}`);
+      return;
+    }
     if (seen.has(key)) dupes.add(key);
     else seen.add(key);
   });
@@ -1573,15 +1585,13 @@ export function validateListingRow(
 
   const skuKey = normalizeSkuKey(sku);
   const parentKey = normalizeSkuKey(row.parent_sku);
-  if ((isColorSize || isCustom) && skuKey && parentKey && skuKey === parentKey) {
+  if (skuKey && duplicateSkus?.has(skuKey)) {
     errors.push(
-      `Variant SKU cannot be the same as the Parent SKU "${row.parent_sku}". The parent SKU is allowed to repeat — put the unique colour SKU in Variant SKU (for example ${row.parent_sku}-BLK)`,
-    );
-  } else if (skuKey && duplicateSkus?.has(skuKey)) {
-    errors.push(
-      isColorSize || isCustom
-        ? `Variant SKU "${sku}" is used on more than one colour row — each colour needs its own Variant SKU. Repeating the Parent SKU is fine.`
-        : `SKU "${sku}" is used on more than one row — every listing needs its own SKU`,
+      (isColorSize || isCustom) && parentKey && skuKey === parentKey
+        ? `Parent SKU "${row.parent_sku}" can match only one variant. Give the other colours their own Variant SKU.`
+        : isColorSize || isCustom
+          ? `Variant SKU "${sku}" is used on more than one colour row — each colour needs its own Variant SKU. One colour may use the Parent SKU.`
+          : `SKU "${sku}" is used on more than one row — every listing needs its own SKU`,
     );
   }
 

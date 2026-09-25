@@ -648,7 +648,7 @@ function ImportantInstructions({ tab, setTab, listingKind = "single" }) {
     listingKind === "color_size"
       ? [
           { icon: ScanLine, text: "Colour × Size: Products sheet has one parent SKU per listing. Do not put colour or size on that sheet." },
-          { icon: Layers, text: "Variations sheet: one row per colour under the same Parent SKU. Parent SKU is meant to repeat — that is not a duplicate SKU. Each colour needs its own Variant SKU." },
+          { icon: Layers, text: "Variations sheet: one row per colour under the same Parent SKU. One colour may use that Parent SKU as its Variant SKU. Every other colour needs its own Variant SKU." },
           { icon: Package, text: "Size can be one value per row, or several on the same colour row (6,7,8,9). We create one size variation each and append the size to the Variant SKU." },
           { icon: Package, text: "Example: parent lifeo-zimmi-black-312 with Brown 6,7,8,9 (lifeo-zimmi-brown-277) and Tan 6,8,10 (lifeo-zimmi-tan-977) = one listing, two colours." },
           { icon: Package, text: "Kids Fashion sizes: pick an age-group size from the Size dropdown (6-9 Months, 9-12 Months, 12-15 Months, 18-21 Months, 2-2.5 Years, 3-3.5 Years, 5-5.5 Years). Do not use adult S/M/L for kids apparel." },
@@ -2098,12 +2098,13 @@ export default function BulkListingWizard({
       return;
     }
     if (result?.reason === "no_match") {
-      const asked = (result.skus || []).slice(0, 2).join(", ");
+      const asked = (result.skus || []).slice(0, 2);
       const have = (result.staged || []).slice(0, 2).join(", ");
+      const wanted = asked.map((sku) => `${sku}-1`).join(", ") || "{SKU}-1";
       notifyOnFail(
         have
-          ? `No stored photo is named for ${asked}. Stored photos use ${have}. Fix the Image SKU column or upload files named {SKU}-1.`
-          : `No stored photo is named for ${asked}. Upload images named ${asked ? `${asked}-1` : "{SKU}-1"} first.`,
+          ? `No stored photo is named for ${asked.join(", ")}. Stored photos use ${have}. The cover file is ${wanted}.`
+          : `No stored photo is named for ${asked.join(", ")}. Upload the cover as ${wanted}.`,
       );
       return;
     }
@@ -3219,7 +3220,7 @@ export default function BulkListingWizard({
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm text-gray-700">
               <li>Pick listing type: Single Products, Colour × Size, or Custom Variations. Download that Excel.</li>
               <li>Upload images named {"{SKU}"}-1 (cover) through {"{SKU}"}-10. Colour × Size can share photos with Image SKU.</li>
-              <li>Single: one SKU, one colour and one size per Products row. Colour × Size: parent SKU on Products (repeats on Variations), unique Variant SKU per colour; sizes can be comma-separated. Custom: Products + Attributes + Variations.</li>
+              <li>Single: one SKU, one colour and one size per Products row. Colour × Size: parent SKU on Products (repeats on Variations). One colour may use that parent SKU as its Variant SKU; every other colour needs its own. Sizes can be comma-separated. Custom: Products + Attributes + Variations.</li>
               <li>Kids Fashion sizes: pick an age-group size (6-9 Months, 12-15 Months, 2-2.5 Years…) from the Size dropdown, not adult S/M/L.</li>
               <li>Map columns. The wizard matches Image SKU or SKU to staged photos, then AI writes title, category, HSN/GST and copy from SKU-1.</li>
               <li>Validate, download the completed Excel, edit if needed, re-upload on Preview, then submit. Vendor listings stay Hidden until review.</li>
