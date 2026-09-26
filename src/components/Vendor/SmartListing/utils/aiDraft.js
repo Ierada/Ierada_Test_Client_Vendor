@@ -56,9 +56,16 @@ export function resolveListingBrand(state, vendorContext = {}) {
 }
 
 function resolveListingColors(state) {
-  return (Array.isArray(state.colorGroups) ? state.colorGroups : [])
+  const fromGroups = (Array.isArray(state.colorGroups) ? state.colorGroups : [])
     .map((g) => scrubPlatformBranding(g.color_name || g.colorName || ""))
     .filter(Boolean);
+  const fromNotes = [];
+  const notes = String(state.extraNotes || "");
+  for (const hit of notes.matchAll(/\b(?:colou?r)\s*:\s*([^.;,\n]+)/gi)) {
+    const v = scrubPlatformBranding(hit[1]);
+    if (v) fromNotes.push(v);
+  }
+  return [...new Set([...fromGroups, ...fromNotes])];
 }
 
 function stripBrandFromName(name, brand) {
@@ -84,18 +91,103 @@ function escapeRegExp(s) {
   return String(s || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function isMultiColorVariationListing(state) {
-  const colors = resolveListingColors(state);
-  if (colors.length < 2) return false;
-  const lt = String(state.listingType || "")
+function listingTypeKey(state) {
+  return String(state.listingType || state.listing_type || state.listing_kind || "")
     .toLowerCase()
     .replace(/-/g, "_");
-  if (lt === "color_size" || lt === "colorsize" || lt === "variation" || lt.includes("color")) {
+}
+
+function isVariationListing(state) {
+  const lt = listingTypeKey(state);
+  if (
+    lt === "color_size" ||
+    lt === "colorsize" ||
+    lt === "variation" ||
+    lt === "custom" ||
+    lt === "custom_variation"
+  ) {
     return true;
   }
-  if (Array.isArray(state.colorGroups) && state.colorGroups.length > 1) return true;
-  return true;
+  return Array.isArray(state.colorGroups) && state.colorGroups.length > 1;
 }
+
+const VARIATION_TITLE_COLOR_PHRASES = [
+  "navy blue",
+  "sky blue",
+  "royal blue",
+  "light blue",
+  "dark blue",
+  "jet black",
+  "hot pink",
+  "light pink",
+  "dark pink",
+  "rani pink",
+  "wine red",
+  "forest green",
+  "bottle green",
+  "sea green",
+  "pista green",
+  "dark green",
+  "light green",
+  "off white",
+  "off-white",
+  "offwhite",
+  "light grey",
+  "dark grey",
+  "light gray",
+  "dark gray",
+  "multicolor",
+  "multi-color",
+  "multi colour",
+  "multicolour",
+  "multi-colour",
+  "dual tone",
+  "two tone",
+  "black",
+  "white",
+  "red",
+  "blue",
+  "green",
+  "yellow",
+  "pink",
+  "purple",
+  "orange",
+  "brown",
+  "grey",
+  "gray",
+  "navy",
+  "maroon",
+  "beige",
+  "cream",
+  "ivory",
+  "khaki",
+  "olive",
+  "teal",
+  "turquoise",
+  "magenta",
+  "burgundy",
+  "wine",
+  "rust",
+  "mustard",
+  "peach",
+  "coral",
+  "lavender",
+  "lilac",
+  "mint",
+  "charcoal",
+  "indigo",
+  "fuchsia",
+  "cyan",
+  "aqua",
+  "pista",
+  "rani",
+  "firozi",
+  "mehendi",
+  "mehandi",
+  "chikoo",
+  "mauve",
+  "coffee",
+];
 
 function stripColorsFromName(name, colors) {
   let n = String(name || "").trim();
@@ -106,9 +198,10 @@ function stripColorsFromName(name, colors) {
     n = n.replace(new RegExp(`\\b${escapeRegExp(c)}\\b`, "gi"), " ");
   }
   return n
-    .replace(/\(\s*[\/|,]*\s*\)/g, "")
+    .replace(/\(\s*(?:[\/|,]\s*)*\)/g, "")
     .replace(/\s*[-–—|:]\s*$/g, "")
     .replace(/^\s*[-–—|:]\s*/g, "")
+    .replace(/\s+(?:in|with)\s*$/i, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -121,11 +214,9 @@ function buildDefaultProductName(state) {
     "Product";
   const type = titleCaseWords(scrubPlatformBranding(leaf));
   const colors = resolveListingColors(state).map(titleCaseWords);
-  if (isMultiColorVariationListing(state) || colors.length > 1) {
-    return type;
-  }
-  if (colors.length === 1) {
-    return `${type} - ${colors[0]}`.replace(/\s{2,}/g, " ").trim();
+  if (isVariationListing(state)) return type;
+  if (colors.length) {
+    return `${type} - ${colors.join(" / ")}`.replace(/\s{2,}/g, " ").trim();
   }
   return type;
 }
@@ -135,8 +226,8 @@ function polishProductName(name, state, brand) {
   if (!n) n = buildDefaultProductName(state);
   n = n.replace(/\s{2,}/g, " ").trim();
   const colors = resolveListingColors(state);
-  if (isMultiColorVariationListing(state) || colors.length > 1) {
-    n = stripColorsFromName(n, colors);
+  if (isVariationListing(state)) {
+    n = stripColorsFromName(n, [...colors, ...VARIATION_TITLE_COLOR_PHRASES]);
     if (!n) n = buildDefaultProductName(state);
     return scrubRestrictedText(n);
   }
