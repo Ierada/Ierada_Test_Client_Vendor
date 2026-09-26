@@ -65,11 +65,7 @@ function inputClsErr(error, extra = inputCls) {
 }
 
 function swatchColor(color) {
-  const code = color?.code || color?.color_code;
-  if (code && /^#?[0-9a-f]{3,8}$/i.test(String(code).trim())) {
-    return String(code).startsWith("#") ? code : `#${code}`;
-  }
-  const name = String(color?.name || color?.color_name || "").toLowerCase();
+  const name = String(color?.name || color?.color_name || "").toLowerCase().trim();
   const map = {
     black: "#111827",
     white: "#F9FAFB",
@@ -85,8 +81,22 @@ function swatchColor(color) {
     brown: "#92400E",
     yellow: "#EAB308",
     orange: "#F56C43",
+    purple: "#7C3AED",
+    maroon: "#9F1239",
+    cream: "#F5E6C8",
+    gold: "#D4A017",
+    silver: "#9CA3AF",
   };
-  return map[name] || "#D1D5DB";
+  if (map[name]) return map[name];
+  const partial = Object.keys(map)
+    .filter((key) => name.includes(key))
+    .sort((a, b) => b.length - a.length || name.indexOf(a) - name.indexOf(b))[0];
+  if (partial) return map[partial];
+  const code = color?.code || color?.color_code;
+  if (code && /^#?[0-9a-f]{3,8}$/i.test(String(code).trim())) {
+    return String(code).startsWith("#") ? code : `#${code}`;
+  }
+  return "#D1D5DB";
 }
 
 function SelectionSummary({ state }) {

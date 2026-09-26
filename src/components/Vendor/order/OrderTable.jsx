@@ -232,7 +232,7 @@ const OrderActions = ({
         reject_reason: rejectReason.trim(),
       });
       if (res?.status === 1) {
-        notifyOnSuccess("Order rejected");
+        notifyOnSuccess(res.message || "Order rejected");
         setShowRejectModal(false);
         setRejectReason("");
         onOrderUpdate?.();
