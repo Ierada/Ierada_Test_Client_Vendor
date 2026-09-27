@@ -155,22 +155,6 @@ export const addMoneyToWalletOrCoins = async (userId, transactionData) => {
   }
 };
 
-export const redeemCoinsToWallet = async (userId, amount) => {
-  try {
-    const res = await apiClient.post(`/wallet-coin/redeem`, {
-      userId,
-      amount,
-    });
-    if (res.data.status === 1) {
-      return res.data;
-    } else {
-      notifyOnFail(res.data.message);
-    }
-  } catch (error) {
-    notifyOnFail(getApiErrorMessage(error, "Error processing redemption"));
-    console.log(error);
-  }
-};
 
 export const deductMoneyFromWalletOrCoins = async ({
   userId,
