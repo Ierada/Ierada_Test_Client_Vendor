@@ -106,6 +106,17 @@ function uniqById(list) {
   });
 }
 
+/** Staged photo → its variant group; photos shared by several groups stay main photos. */
+function stagedImageGroups(stagedIds, imageGroups) {
+  return (stagedIds || []).map((id) => {
+    const groups = imageGroups.get(id);
+    return {
+      id,
+      grouping_key: groups && groups.size === 1 ? [...groups][0] : null,
+    };
+  });
+}
+
 const STEPS = [
   { id: 1, label: "Upload File", hint: "File uploaded successfully" },
   { id: 2, label: "Map Fields", hint: "Columns mapped" },
@@ -2238,11 +2249,17 @@ export default function BulkListingWizard({
           const colorMap = new Map();
           const images = [];
           const seenImages = new Set();
+          const imageGroups = new Map();
           let stockTotal = 0;
           checked.forEach(({ row, result }) => {
             const colour = result.resolved.colour;
             if (!colour?.id) return;
             const key = String(colour.id);
+            (result.resolved.images || []).forEach((img) => {
+              if (!img?.id) return;
+              if (!imageGroups.has(img.id)) imageGroups.set(img.id, new Set());
+              imageGroups.get(img.id).add(key);
+            });
             if (!colorMap.has(key)) {
               colorMap.set(key, {
                 color_id: colour.id,
@@ -2371,6 +2388,10 @@ export default function BulkListingWizard({
             "staged_image_ids",
             JSON.stringify(stagedIds),
           );
+          built.formData.append(
+            "staged_image_groups",
+            JSON.stringify(stagedImageGroups(stagedIds, imageGroups)),
+          );
           const res = await addProduct(built.formData);
           if (res?.status === 1) {
             success += 1;
@@ -2439,10 +2460,16 @@ export default function BulkListingWizard({
           }
           const images = [];
           const seenImages = new Set();
+          const imageGroups = new Map();
           const customRows = [];
           let stockTotal = 0;
           checked.forEach(({ row, result }, i) => {
             stockTotal += Number(row.stock) || 0;
+            (result.resolved.images || []).forEach((img) => {
+              if (!img?.id) return;
+              if (!imageGroups.has(img.id)) imageGroups.set(img.id, new Set());
+              imageGroups.get(img.id).add(String(i));
+            });
             (result.resolved.images || []).forEach((img) => {
               const token = img?.id || img?.filename || img?.originalName;
               if (!token || seenImages.has(token)) return;
@@ -2538,6 +2565,10 @@ export default function BulkListingWizard({
             adminPublish: mode === "admin",
           });
           built.formData.append("staged_image_ids", JSON.stringify(stagedIds));
+          built.formData.append(
+            "staged_image_groups",
+            JSON.stringify(stagedImageGroups(stagedIds, imageGroups)),
+          );
           const res = await addProduct(built.formData);
           if (res?.status === 1) {
             success += 1;
