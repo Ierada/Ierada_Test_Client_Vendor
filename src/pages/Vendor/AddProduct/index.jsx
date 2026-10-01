@@ -3138,7 +3138,7 @@ const AddEditProduct = () => {
                 const rows = [
                   ["GST", q.gstAmount],
                   ["TDS (Rs.)", q.tds],
-                  ["Bank Settlement Value", q.bankSettlement],
+                  ["Bank Settlement Amount", q.bankSettlement],
                   ["Shipping Fee", q.shipping],
                   ["Other Charges", q.platformFee],
                 ];
@@ -3221,7 +3221,7 @@ const AddEditProduct = () => {
                             ["Sale Amount", `₹${discounted.toFixed(2)}`],
                             ["GST", `₹${gstAmount.toFixed(2)}`],
                             ["TDS", `-₹${tds.toFixed(2)}`],
-                            ["Bank Settlement", `₹${settlement.toFixed(2)}`],
+                            ["Bank Settlement Amount", `₹${settlement.toFixed(2)}`],
                             ["Shipping", `₹${shipping.toFixed(2)}`],
                             ["Other Charges", `₹${platform.toFixed(2)}`],
                           ].map(([label, val]) => (
@@ -3320,7 +3320,7 @@ const AddEditProduct = () => {
                                   ["GST", `₹${gstAmount.toFixed(2)}`],
                                   ["TDS", `-₹${tds.toFixed(2)}`],
                                   [
-                                    "Bank Settlement",
+                                    "Bank Settlement Amount",
                                     `₹${settlement.toFixed(2)}`,
                                   ],
                                   ["Shipping", `₹${shipping.toFixed(2)}`],

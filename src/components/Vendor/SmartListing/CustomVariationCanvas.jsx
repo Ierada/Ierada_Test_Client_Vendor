@@ -1208,7 +1208,7 @@ export default function CustomVariationCanvas({
           ],
           ["Total Variants", String(stats.variantCount || 0)],
           ["Total Stock", `${stats.totalStock || 0}`],
-          ["You Earn (est.)", stats.youEarnTotal ? `₹${Number(stats.youEarnTotal).toLocaleString("en-IN")}` : "₹ —"],
+          ["Bank Settlement Amount", stats.youEarnTotal ? `₹${Number(stats.youEarnTotal).toLocaleString("en-IN")}` : "₹ —"],
         ].map(([label, value]) => (
           <div key={label} className="rounded-xl px-3 py-2.5 bg-white" style={{ border: `1px solid ${CARD_BORDER}` }}>
             <p className="text-[10px] text-slate-400 font-medium">{label}</p>

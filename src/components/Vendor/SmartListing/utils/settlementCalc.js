@@ -1,4 +1,4 @@
-/** Shared settlement / You Earn calc — rates come from Admin Settings > Commerce. */
+/** Bank settlement amount = sale − inclusive GST − TDS. Rates come from Admin Settings > Commerce. */
 export const TDS_RATE = 0.02;
 
 /** Same rule as server helpers.applyPlatformFeeRules: % of price, then min(%, max). */
@@ -48,11 +48,12 @@ export function calcSettlement({
   const fee = sale > 0 ? Number(platformFee) || 0 : 0;
   const otherPct = Number(otherChargesPct) || 0;
 
-  const gstAmount =
-    gstPct > 0 ? (sale * gstPct) / (100 + gstPct) : 0;
-  const tds = sale * TDS_RATE;
-  const otherCharges = (sale * otherPct) / 100;
-  const youEarn = Math.max(0, sale - tds - fee - ship - otherCharges);
+  const gstAmount = round2(
+    sale > 0 && gstPct > 0 ? (sale * gstPct) / (100 + gstPct) : 0,
+  );
+  const tds = round2(sale > 0 ? sale * TDS_RATE : 0);
+  const otherCharges = round2(sale > 0 ? (sale * otherPct) / 100 : 0);
+  const bankSettlement = sale > 0 ? round2(sale - gstAmount - tds) : 0;
   // Listing price = sale + shipping + platform fee — stay 0 until selling price is set.
   const listingPrice = sale > 0 ? round2(sale + ship + fee) : 0;
   const discountPct =
@@ -65,13 +66,13 @@ export function calcSettlement({
     sale,
     discountPct,
     listingPrice,
-    gstAmount: round2(gstAmount),
-    tds: round2(tds),
+    gstAmount,
+    tds,
     shipping: ship,
     platformFee: fee,
-    otherCharges: round2(otherCharges),
-    youEarn: round2(youEarn),
-    bankSettlement: round2(youEarn),
+    otherCharges,
+    youEarn: bankSettlement,
+    bankSettlement,
   };
 }
 

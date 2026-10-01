@@ -1142,7 +1142,7 @@ export function ListingStickyFooter({
             <FooterStat label="Selling Price Range" value={stats.sellRange} />
             <FooterStat label="Total Variants" value={stats.variantCount} />
             <FooterStat label="Total Stock" value={stats.totalStock} />
-            <FooterStat label="You Earn (Est.)" value={stats.youEarn} accent />
+            <FooterStat label="Bank Settlement Amount" value={stats.youEarn} accent />
           </div>
         ) : (
           <div className="flex-1 min-w-0" />

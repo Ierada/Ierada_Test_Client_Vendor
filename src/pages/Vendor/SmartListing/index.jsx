@@ -710,6 +710,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [supportPhone, setSupportPhone] = useState("9211736358");
   const autosaveTimer = useRef(null);
   const priceToastKey = useRef("");
+  const settlementPreviewToastAt = useRef(0);
 
   useEffect(() => {
     const bothFilled =
@@ -1460,6 +1461,19 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     const timer = setTimeout(async () => {
+      const toastPreviewFail = (errOrMsg) => {
+        const now = Date.now();
+        if (now - settlementPreviewToastAt.current < 8000) return;
+        settlementPreviewToastAt.current = now;
+        notifyOnWarning(
+          typeof errOrMsg === "string"
+            ? errOrMsg
+            : getApiErrorMessage(
+                errOrMsg,
+                "Settlement preview unavailable — using local estimate.",
+              ),
+        );
+      };
       try {
         const res = await previewListingSettlement({
           original_price: state.original_price,
@@ -1478,7 +1492,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           inner_sub_category_id: state.inner_sub_category_id,
           size_ids: listingSizeIds(state),
           color_id: state.color_id,
-        });
+        }, { silent: true });
         if (res?.status === 1 && res.data) {
           setRemoteSettlement(res.data);
           const fee = res.data.platformFee;
@@ -1501,9 +1515,16 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             next.shipping_charges = res.data.shipping;
           }
           if (Object.keys(next).length) patch(next);
+        } else if (res && res.status !== 1) {
+          setRemoteSettlement(null);
+          toastPreviewFail(
+            res?.message ||
+              "Settlement preview unavailable — using local estimate.",
+          );
         }
-      } catch {
-        /* keep local calc */
+      } catch (e) {
+        setRemoteSettlement(null);
+        toastPreviewFail(e);
       }
     }, 280);
     return () => clearTimeout(timer);

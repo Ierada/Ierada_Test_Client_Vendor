@@ -745,7 +745,7 @@ const Product = () => {
       },
       {
         accessorKey: "bank_settlement_amount",
-        header: "Settlement",
+        header: "Bank Settlement Amount",
         cell: ({ row }) =>
           formatPrice(
             row.original.settlement_quote ?? row.original.bank_settlement_amount,

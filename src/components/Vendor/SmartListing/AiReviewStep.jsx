@@ -355,7 +355,7 @@ export function StorefrontPreviewCard({ state, previewUrl, settlement }) {
             <span className="font-semibold tabular-nums text-slate-800">{money(sale)}</span>
           </div>
           <div className="flex items-baseline justify-between gap-2 text-[12px]">
-            <span className="text-slate-500">You Earn</span>
+            <span className="text-slate-500">Bank Settlement Amount</span>
             <span className="font-semibold tabular-nums text-emerald-700">{money(quote.youEarn)}</span>
           </div>
         </div>
@@ -427,7 +427,7 @@ export function BankSettlementSummary({ state, settlement }) {
         className="mt-1 flex justify-between items-center rounded-md px-2 py-1 text-[11.5px] font-bold"
         style={{ backgroundColor: "#F0FFF4", border: "1px solid #C6F6D5", color: "#276749" }}
       >
-        <span>You Earn</span>
+        <span>Bank Settlement Amount</span>
         <span>{money(settlement?.youEarn)}</span>
       </div>
       <p className="mt-1.5 text-[9px] italic text-slate-400 leading-snug">
