@@ -31,6 +31,7 @@ import {
 } from "../../../services/api.product";
 import { seedDuplicateListingDraft } from "../../../components/Vendor/SmartListing/utils/duplicateListing";
 import { notifyOnFail, notifyOnSuccess } from "../../../utils/notification/toast";
+import { getApiErrorMessage } from "../../../utils/apiError";
 import { useAppContext } from "../../../context/AppContext";
 import config from "../../../config/config";
 import { motion } from "framer-motion";
@@ -301,7 +302,9 @@ const Product = () => {
       }
     } catch (error) {
       console.error("Update error:", error);
-      notifyOnFail("Unable to update product");
+      notifyOnFail(
+        getApiErrorMessage(error, "Unable to reach the server. Please try again."),
+      );
     } finally {
       setIsUpdating(false);
       setIsUpdateModalOpen(false);
@@ -457,14 +460,14 @@ const Product = () => {
                 e.stopPropagation();
                 if (product.price_editable === false) {
                   notifyOnFail(
-                    "This listing has variants. Change MRP and selling price in the listing editor. Settlement follows the selling price.",
+                    "This listing has variants. Change MRP and selling price in the listing editor. The product page uses each variant price.",
                   );
                   return;
                 }
                 startEditing(
                   product.id,
                   "original_price",
-                  product.original_price,
+                  product.display_mrp ?? product.original_price,
                 );
               }}
               title="Click to edit MRP. This does not change vendor settlement."
@@ -540,14 +543,14 @@ const Product = () => {
                 e.stopPropagation();
                 if (product.price_editable === false) {
                   notifyOnFail(
-                    "This listing has variants. Change MRP and selling price in the listing editor. Settlement follows the selling price.",
+                    "This listing has variants. Change MRP and selling price in the listing editor. The product page uses each variant price.",
                   );
                   return;
                 }
                 startEditing(
                   product.id,
                   "discounted_price",
-                  product.discounted_price,
+                  product.display_selling ?? product.discounted_price,
                 );
               }}
               title="Click to edit Discounted Price"

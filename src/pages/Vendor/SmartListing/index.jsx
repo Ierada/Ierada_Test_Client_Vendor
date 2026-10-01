@@ -2107,10 +2107,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       state.brandType === "branded" &&
       !state.brandAuthApproved
     ) {
-      setBanner({
-        type: "error",
-        text: "Branded listings need Admin-approved brand authorization before publish request. Save as draft, then request publish after approval.",
-      });
+      const text =
+        "Branded listings need Admin-approved brand authorization before publish request. Save as draft, then request publish after approval.";
+      setBanner({ type: "error", text });
+      notifyOnFail(text);
       return;
     }
 
@@ -2190,16 +2190,17 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           );
         }
       } else {
-        setBanner({
-          type: "error",
-          text: res?.message || "Could not save listing. Please fix and retry.",
-        });
+        const text = res?.message || "Could not save listing. Please fix and retry.";
+        setBanner({ type: "error", text });
+        notifyOnFail(text);
       }
     } catch (error) {
-      setBanner({
-        type: "error",
-        text: getApiErrorMessage(error, "Unable to reach the server. Draft is kept locally."),
-      });
+      const text = getApiErrorMessage(
+        error,
+        "Unable to reach the server. Draft is kept locally.",
+      );
+      setBanner({ type: "error", text });
+      notifyOnFail(text);
     } finally {
       setSubmitting(false);
     }
@@ -2691,7 +2692,10 @@ function ReviewPanel({
               sellLabel="Selling Price"
               mrpId="ai-review-mrp"
               sellId="ai-review-sale"
-              readOnly
+              readOnly={
+                state.listingType === "color_size" ||
+                state.listingType === "custom"
+              }
             />
             {state.listingType === "color_size" || state.listingType === "custom" ? (
               <p className="w-full col-span-full text-xs text-slate-500 bg-[#FFF5F0] border border-[#FDE4D8] rounded-lg px-3 py-2">
