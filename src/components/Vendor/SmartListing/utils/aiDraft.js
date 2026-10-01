@@ -18,7 +18,7 @@ export function scrubPlatformBranding(text) {
     .trim();
 }
 
-function withIeradaSeoSuffix(text, maxLength) {
+export function withIeradaSeoSuffix(text, maxLength) {
   const stripped = String(text || "")
     .replace(/\s*\|\s*ierada\s*$/i, "")
     .replace(/[|\s]+$/g, "")

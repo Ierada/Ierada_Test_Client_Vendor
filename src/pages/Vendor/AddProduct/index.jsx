@@ -30,6 +30,7 @@ import {
   notifyOnFail,
   notifyOnSuccess,
 } from "../../../utils/notification/toast";
+import { calcSettlement } from "../../../components/Vendor/SmartListing/utils/settlementCalc";
 import {
   generateAutoSKU,
   validateSKUFormat,
@@ -581,6 +582,23 @@ const AddEditProduct = () => {
     return calculatedFee;
   };
 
+  const priceBreakdown = (mrp, selling) => {
+    const fee = calcPlatformFee(
+      selling,
+      formData.platform_fee,
+      platformFeeMaxCharge,
+    );
+    return calcSettlement({
+      mrp,
+      sellingPrice: selling,
+      gstPercent: formData.gst,
+      shippingCharges: formData.shipping_charges,
+      platformFee: fee,
+      freeShipping:
+        formData.free_shipping === true || formData.free_shipping === "true",
+    });
+  };
+
   const handleGenerateMainSKU = () => {
     setFormData((prev) => ({ ...prev, sku: generateAutoSKU() }));
     setMainProductErrors((prev) => ({ ...prev, main_sku: "" }));
@@ -644,20 +662,54 @@ const AddEditProduct = () => {
   // ────────────────────────────────────────────────────────────────────────────
   //  Handlers
   // ────────────────────────────────────────────────────────────────────────────
+  const applyLockedSeo = (prev, patch) => {
+    const next = { ...prev, ...patch };
+    const plain = (html) =>
+      String(html || "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const autoTitle = (n) => {
+      const label = String(n || "").trim();
+      return label ? `${label} | IERADA` : "";
+    };
+    const autoDesc = (text) => plain(text).slice(0, 160);
+
+    if (Object.prototype.hasOwnProperty.call(patch, "name")) {
+      const prevTitle = String(prev.meta_title || "");
+      if (!prevTitle.trim() || prevTitle === autoTitle(prev.name)) {
+        next.meta_title = autoTitle(next.name);
+      }
+      const prevSlug = String(prev.slug || "");
+      if (!prevSlug.trim() || (!isEditMode && prevSlug === generateSlug(prev.name || ""))) {
+        next.slug = generateSlug(next.name || "");
+      }
+      const prevDesc = String(prev.meta_description || "");
+      if (!prevDesc.trim() || prevDesc === autoDesc(prev.name)) {
+        next.meta_description = autoDesc(next.name);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, "product_details")) {
+      const prevDesc = String(prev.meta_description || "");
+      const follows =
+        !prevDesc.trim() ||
+        prevDesc === autoDesc(prev.name) ||
+        prevDesc === autoDesc(prev.product_details);
+      const fromDetails = autoDesc(next.product_details);
+      if (follows && fromDetails) next.meta_description = fromDetails;
+    }
+    return next;
+  };
+
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
 
     if (name === "name") {
-      const newSlug = generateSlug(value);
       const capitalizedValue = value.replace(/\b\w/g, (char) =>
         char.toUpperCase(),
       );
-      setFormData((prev) => ({
-        ...prev,
-        [name]: capitalizedValue,
-        slug: newSlug,
-        meta_title: `${value} | IERADA`,
-      }));
+      setFormData((prev) => applyLockedSeo(prev, { name: capitalizedValue }));
       setPriceErrors((prev) => ({ ...prev, main: "" }));
     } else if (name === "category_id") {
       setFormData((prev) => ({
@@ -1160,9 +1212,12 @@ const AddEditProduct = () => {
       }
     }
 
-    const sellingPrice = parseFloat(formData.discounted_price) || 0;
-    const tdsAmount = sellingPrice * 0.02;
-    const bankSettlementAmount = sellingPrice - tdsAmount;
+    const quote = priceBreakdown(
+      formData.original_price,
+      formData.discounted_price,
+    );
+    const tdsAmount = quote.tds;
+    const bankSettlementAmount = quote.bankSettlement;
 
     const formDataToSend = new FormData();
     Object.entries(formData).forEach(([key, val]) => {
@@ -2169,7 +2224,7 @@ const AddEditProduct = () => {
                   const charCount = plainText.length;
                   setProductDetailsCharCount(charCount);
                   if (charCount <= MAX_PRODUCT_DETAILS_CHARS) {
-                    setFormData((prev) => ({ ...prev, product_details: data }));
+                    setFormData((prev) => applyLockedSeo(prev, { product_details: data }));
                   } else {
                     editor.setData(formData.product_details);
                   }
@@ -3075,86 +3130,37 @@ const AddEditProduct = () => {
                   ₹{parseFloat(formData.discounted_price || 0).toFixed(2)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600 font-semibold">GST</span>
-                <span className="font-medium">
-                  - ₹
-                  {(
-                    (parseFloat(formData.discounted_price || 0) *
-                      parseFloat(formData.gst || 0)) /
-                    100
-                  ).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">TDS (Rs.)</span>
-                <span className="font-medium">
-                  -₹
-                  {(parseFloat(formData.discounted_price || 0) * 0.02).toFixed(
-                    2,
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Bank Settlement Value</span>
-                <span className="font-medium">
-                  ₹
-                  {(
-                    parseFloat(formData.discounted_price || 0) -
-                    parseFloat(formData.discounted_price || 0) * 0.02 -
-                    (parseFloat(formData.discounted_price || 0) *
-                      parseFloat(formData.gst || 0)) /
-                    100
-                  ).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Shipping Fee</span>
-                <span className="font-medium">
-                  ₹{parseFloat(formData.shipping_charges || 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">
-                  Other Charges
-                  {(() => {
-                    const feePercent = parseFloat(formData.platform_fee || 0);
-                    const maxCharge = parseFloat(platformFeeMaxCharge || 0);
-                    const calculatedFee = (parseFloat(formData.discounted_price || 0) * feePercent) / 100;
-                    const actualFee = maxCharge > 0 ? Math.min(calculatedFee, maxCharge) : calculatedFee;
-                    const isCapped = maxCharge > 0 && calculatedFee > maxCharge;
-
-                    if (isCapped) {
-                      return ``;
-                    }
-                    return `(${feePercent}%)`;
-                  })()}
-
-                </span>
-                <span className="font-medium">
-                  ₹
-                  {calcPlatformFee(
-                    formData.discounted_price,
-                    formData.platform_fee,
-                    platformFeeMaxCharge
-                  ).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm font-bold border-t pt-2">
-                <span className="text-gray-600">Listing Price</span>
-                <span className="font-medium">
-                  ₹
-                  {(
-                    parseFloat(formData.discounted_price || 0) +
-                    parseFloat(formData.shipping_charges || 0) +
-                    calcPlatformFee(
-                      formData.discounted_price,
-                      formData.platform_fee,
-                      platformFeeMaxCharge
-                    )
-                  ).toFixed(2)}
-                </span>
-              </div>
+              {(() => {
+                const q = priceBreakdown(
+                  formData.original_price,
+                  formData.discounted_price,
+                );
+                const rows = [
+                  ["GST", q.gstAmount],
+                  ["TDS (Rs.)", q.tds],
+                  ["Bank Settlement Value", q.bankSettlement],
+                  ["Shipping Fee", q.shipping],
+                  ["Other Charges", q.platformFee],
+                ];
+                return (
+                  <>
+                    {rows.map(([label, amount]) => (
+                      <div key={label} className="flex justify-between text-sm">
+                        <span className="text-gray-600">{label}</span>
+                        <span className="font-medium">
+                          ₹{Number(amount || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between text-sm font-bold border-t pt-2">
+                      <span className="text-gray-600">Listing Price</span>
+                      <span className="font-medium">
+                        ₹{Number(q.listingPrice || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
 
@@ -3176,17 +3182,13 @@ const AddEditProduct = () => {
                   const discounted = parseFloat(
                     variation.discounted_price || 0,
                   );
-                  const gstRate = parseFloat(formData.gst || 0);
-                  const gstAmount = (discounted * gstRate) / 100;
-                  const tds = discounted * 0.02;
-                  const settlement = discounted - tds - gstAmount;
-                  const shipping = parseFloat(formData.shipping_charges || 0);
-                  const platform = calcPlatformFee(
-                    variation.discounted_price,
-                    formData.platform_fee,
-                    platformFeeMaxCharge
-                  );
-                  const listing = discounted + shipping + platform;
+                  const q = priceBreakdown(original, discounted);
+                  const gstAmount = q.gstAmount;
+                  const tds = q.tds;
+                  const settlement = q.bankSettlement;
+                  const shipping = q.shipping;
+                  const platform = q.platformFee;
+                  const listing = q.listingPrice;
                   return (
                     <div
                       key={index}
@@ -3217,7 +3219,7 @@ const AddEditProduct = () => {
                           {[
                             ["MRP", `₹${original.toFixed(2)}`],
                             ["Sale Amount", `₹${discounted.toFixed(2)}`],
-                            ["GST", `- ₹${gstAmount.toFixed(2)}`],
+                            ["GST", `₹${gstAmount.toFixed(2)}`],
                             ["TDS", `-₹${tds.toFixed(2)}`],
                             ["Bank Settlement", `₹${settlement.toFixed(2)}`],
                             ["Shipping", `₹${shipping.toFixed(2)}`],
@@ -3296,17 +3298,13 @@ const AddEditProduct = () => {
                             const discounted = parseFloat(
                               size.discounted_price || 0,
                             );
-                            const gstRate = parseFloat(formData.gst || 0);
-                            const gstAmount = (discounted * gstRate) / 100;
-                            const tds = discounted * 0.02;
-                            const settlement = discounted - tds - gstAmount;
-                            const shipping = parseFloat(
-                              formData.shipping_charges || 0,
-                            );
-                            const platform = parseFloat(
-                              formData.platform_fee || 0,
-                            );
-                            const listing = discounted + shipping + platform;
+                            const q = priceBreakdown(original, discounted);
+                            const gstAmount = q.gstAmount;
+                            const tds = q.tds;
+                            const settlement = q.bankSettlement;
+                            const shipping = q.shipping;
+                            const platform = q.platformFee;
+                            const listing = q.listingPrice;
 
                             return (
                               <div
@@ -3319,7 +3317,7 @@ const AddEditProduct = () => {
                                 {[
                                   ["MRP", `₹${original.toFixed(2)}`],
                                   ["Sale Amount", `₹${discounted.toFixed(2)}`],
-                                  ["GST", `- ₹${gstAmount.toFixed(2)}`],
+                                  ["GST", `₹${gstAmount.toFixed(2)}`],
                                   ["TDS", `-₹${tds.toFixed(2)}`],
                                   [
                                     "Bank Settlement",

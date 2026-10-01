@@ -239,23 +239,35 @@ const Product = () => {
     } else {
       value = parseFloat(editValueRef.current);
     }
-    if (column === "original_price" || column === "discounted_price") {
+      if (column === "original_price" || column === "discounted_price") {
       if (isNaN(value) || value <= 0) {
         errorRef.current = "Must be a positive number";
+        notifyOnFail("Enter a price greater than 0.");
         forceRender();
         return false;
       }
-      if (
-        column === "discounted_price" &&
-        value > (currentProduct.original_price || 0)
-      ) {
-        errorRef.current = "Discounted price cannot exceed original price";
+      const mrp = parseFloat(
+        column === "original_price"
+          ? value
+          : currentProduct.original_price || 0,
+      );
+      const selling = parseFloat(
+        column === "discounted_price"
+          ? value
+          : currentProduct.discounted_price || 0,
+      );
+      if (selling > mrp) {
+        errorRef.current = "Selling price cannot be higher than MRP";
+        notifyOnFail(
+          "Selling price cannot be higher than MRP. Vendor settlement follows the selling price.",
+        );
         forceRender();
         return false;
       }
     } else if (column === "stock") {
       if (isNaN(value) || value < 0) {
         errorRef.current = "Must be a non-negative integer";
+        notifyOnFail("Stock must be zero or more.");
         forceRender();
         return false;
       }
@@ -390,7 +402,9 @@ const Product = () => {
           const isEditing =
             editingCellRef.current?.rowId === product.id &&
             editingCellRef.current?.column === "original_price";
-          const displayValue = formatPrice(product.original_price);
+          const displayValue = formatPrice(
+            product.display_mrp ?? product.original_price,
+          );
           if (isEditing) {
             return (
               <div className="flex items-center gap-2 p-1 bg-gray-50 rounded">
@@ -441,13 +455,19 @@ const Product = () => {
               className="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
+                if (product.price_editable === false) {
+                  notifyOnFail(
+                    "This listing has variants. Change MRP and selling price in the listing editor. Settlement follows the selling price.",
+                  );
+                  return;
+                }
                 startEditing(
                   product.id,
                   "original_price",
                   product.original_price,
                 );
               }}
-              title="Click to edit MRP"
+              title="Click to edit MRP. This does not change vendor settlement."
             >
               <span className="text-sm font-medium text-gray-900">
                 {displayValue}
@@ -465,7 +485,9 @@ const Product = () => {
           const isEditing =
             editingCellRef.current?.rowId === product.id &&
             editingCellRef.current?.column === "discounted_price";
-          const displayValue = formatPrice(product.discounted_price);
+          const displayValue = formatPrice(
+            product.display_selling ?? product.discounted_price,
+          );
           if (isEditing) {
             return (
               <div className="flex items-center gap-2 p-1 bg-gray-50 rounded">
@@ -516,6 +538,12 @@ const Product = () => {
               className="flex items-center gap-1 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
               onClick={(e) => {
                 e.stopPropagation();
+                if (product.price_editable === false) {
+                  notifyOnFail(
+                    "This listing has variants. Change MRP and selling price in the listing editor. Settlement follows the selling price.",
+                  );
+                  return;
+                }
                 startEditing(
                   product.id,
                   "discounted_price",
@@ -708,9 +736,20 @@ const Product = () => {
         },
       },
       {
+        accessorKey: "customer_price",
+        header: "Listing Price",
+        cell: ({ row }) =>
+          formatPrice(
+            row.original.customer_price ?? row.original.display_selling,
+          ),
+      },
+      {
         accessorKey: "bank_settlement_amount",
         header: "Settlement",
-        cell: ({ row }) => formatPrice(row.original.bank_settlement_amount),
+        cell: ({ row }) =>
+          formatPrice(
+            row.original.settlement_quote ?? row.original.bank_settlement_amount,
+          ),
       },
       {
         id: "actions",

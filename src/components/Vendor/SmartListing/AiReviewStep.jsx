@@ -20,6 +20,7 @@ import {
   selectedColorPreviewSrc,
   firstColorMirrorsPrimaryGallery,
 } from "./utils/listingMediaCache";
+import { applyPlatformFeeRules, calcSettlement } from "./utils/settlementCalc";
 
 const NAVY = "#1A2B48";
 const ORANGE = "#F56C43";
@@ -65,12 +66,6 @@ export const REVIEW_SECTIONS = [
   { id: "benefits", label: "Benefits", Icon: Star },
   { id: "size_chart", label: "Size Chart", Icon: Ruler },
 ];
-
-function inr(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v) || v <= 0) return "₹ —";
-  return `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
 
 export function AiReviewHeader({ aiGenerating, onRegenerate, onEdit }) {
   return (
@@ -249,15 +244,18 @@ export function StorefrontPreviewCard({ state, previewUrl, settlement }) {
   const row = selectedGroup?.sizes?.find((s) => Number(s.discounted_price) > 0) || selectedGroup?.sizes?.[0];
   const sale = Number(row?.discounted_price || settlement?.sale || state?.discounted_price) || 0;
   const mrp = Number(row?.original_price || settlement?.mrp || state?.original_price) || 0;
-  const listingPrice = Number(settlement?.listingPrice) || 0;
-  const off =
-    mrp > 0 && sale > 0 && mrp > sale
-      ? Math.round(((mrp - sale) / mrp) * 100)
-      : settlement?.discountPct != null && Number(settlement.discountPct) > 0
-        ? Number(settlement.discountPct)
-        : mrp > 0 && listingPrice > 0 && mrp > listingPrice
-          ? Math.round(((mrp - listingPrice) / mrp) * 100)
-          : 0;
+  const feePct = Number(settlement?.platform_fee_pct ?? state?.platform_fee_pct) || 0;
+  const feeMax = Number(settlement?.platform_fee_max ?? state?.platform_fee_max) || 0;
+  const platformFee = sale > 0 ? applyPlatformFeeRules(sale, feePct, feeMax).amount : 0;
+  const quote = calcSettlement({
+    mrp,
+    sellingPrice: sale,
+    gstPercent: state?.gst,
+    shippingCharges: settlement?.shipping ?? state?.shipping_charges,
+    platformFee,
+    freeShipping: state?.free_shipping === true || state?.free_shipping === "true",
+  });
+  const off = quote.discountPct;
   const title = state?.name || "Product name";
   const firstColorId = String(groups[0]?.color_id || groups[0]?.color?.id || "");
   const selectedColorId = String(selectedGroup?.color_id || selectedGroup?.color?.id || "");
@@ -336,16 +334,30 @@ export function StorefrontPreviewCard({ state, previewUrl, settlement }) {
         <p className="text-[13px] font-semibold line-clamp-2 leading-snug" style={{ color: NAVY }}>
           {title}
         </p>
-        <div className="flex items-baseline gap-2 mt-1.5 flex-wrap">
-          <span className="text-[20px] font-extrabold" style={{ color: NAVY }}>
-            {sale > 0 ? inr(sale) : inr(mrp)}
-          </span>
-          {mrp > sale && sale > 0 ? (
-            <span className="text-[13px] text-slate-400 line-through">{inr(mrp)}</span>
-          ) : null}
-          {off > 0 ? (
-            <span className="text-[12px] font-bold text-emerald-600">{off}% OFF</span>
-          ) : null}
+        <div className="mt-1.5 space-y-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] text-slate-500">Listing Price</span>
+            <span className="text-[20px] font-extrabold tabular-nums" style={{ color: NAVY }}>
+              {money(quote.listingPrice)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] text-slate-500">MRP</span>
+            <span className="flex items-baseline gap-1.5">
+              <span className="text-[13px] text-slate-400 line-through tabular-nums">{money(mrp)}</span>
+              {off > 0 ? (
+                <span className="text-[12px] font-bold text-emerald-600">{off}% OFF</span>
+              ) : null}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="text-slate-500">Sale</span>
+            <span className="font-semibold tabular-nums text-slate-800">{money(sale)}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="text-slate-500">You Earn</span>
+            <span className="font-semibold tabular-nums text-emerald-700">{money(quote.youEarn)}</span>
+          </div>
         </div>
         <p className="text-[12px] text-slate-500 flex items-center gap-1 mt-1.5">
           {[0, 1, 2, 3, 4].map((i) => (

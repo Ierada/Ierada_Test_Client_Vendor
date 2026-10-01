@@ -198,6 +198,18 @@ function draftFromRow(row) {
   return draft;
 }
 
+function generatedMetaTitle(name) {
+  const body = String(name || "").replace(/\s*\|\s*ierada\s*$/i, "").trim();
+  if (!body) return "";
+  return `${body.slice(0, 51).trim()} | Ierada`;
+}
+
+function generatedMetaDescription(text) {
+  const body = String(text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  if (!body) return "";
+  return `${body.slice(0, 146).trim()} | Ierada`;
+}
+
 function taxFromTree(taxonomy, categoryName, subName, innerName) {
   const category = (taxonomy?.categories || []).find((c) => c.name === categoryName);
   const sub = (taxonomy?.subCategories || []).find(
@@ -267,6 +279,18 @@ function ListingEditModal({ row, imagesBySku, taxonomy, colors, sizes, onClose, 
         );
         if (tax.hsn_code) next.hsn_code = tax.hsn_code;
         if (tax.gst) next.gst = tax.gst;
+      }
+      if (key === "name") {
+        const title = generatedMetaTitle(value);
+        if (title) next.meta_title = title;
+      }
+      if (key === "short_description") {
+        const desc = generatedMetaDescription(value);
+        if (desc) next.meta_description = desc;
+      }
+      if (key === "product_details" && !String(prev.short_description || "").trim()) {
+        const desc = generatedMetaDescription(value);
+        if (desc) next.meta_description = desc;
       }
       return next;
     });
@@ -470,10 +494,10 @@ function ListingEditModal({ row, imagesBySku, taxonomy, colors, sizes, onClose, 
 
           <Section title="SEO & other">
             <Field label="Meta Title" className="sm:col-span-2">
-              <input className={inputCls} value={draft.meta_title} onChange={(e) => setField("meta_title", e.target.value)} />
+              <input className={`${inputCls} bg-slate-50 cursor-not-allowed`} value={draft.meta_title} readOnly />
             </Field>
             <Field label="Meta Description" className="sm:col-span-2">
-              <textarea className={`${inputCls} min-h-[72px]`} value={draft.meta_description} onChange={(e) => setField("meta_description", e.target.value)} />
+              <textarea className={`${inputCls} min-h-[72px] bg-slate-50 cursor-not-allowed`} value={draft.meta_description} readOnly />
             </Field>
             <Field label="Tags" className="sm:col-span-2">
               <input className={inputCls} value={draft.tags} onChange={(e) => setField("tags", e.target.value)} />

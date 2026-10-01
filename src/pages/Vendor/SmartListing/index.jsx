@@ -33,7 +33,7 @@ import {
   saveLocalDraft,
   clearLocalDraft,
 } from "../../../components/Vendor/SmartListing/utils/draftStorage";
-import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload, firstListingImageFile } from "../../../components/Vendor/SmartListing/utils/aiDraft";
+import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload, firstListingImageFile, withIeradaSeoSuffix } from "../../../components/Vendor/SmartListing/utils/aiDraft";
 import apiClient from "../../../axios.config";
 import { gstFromBands } from "../../../components/Vendor/SmartListing/utils/gstBands";
 import innerHsnGstLookup from "../../../components/Vendor/SmartListing/utils/innerHsnGstLookup.json";
@@ -2522,7 +2522,19 @@ function ReviewPanel({
                 className={`${inputCls} min-h-[72px] max-h-[200px] resize-y leading-snug`}
                 rows={2}
                 value={state.name}
-                onChange={(e) => patch({ name: e.target.value })}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const next = { name };
+                  if (name.trim()) {
+                    next.metaTitle = withIeradaSeoSuffix(name, 60);
+                    next.metaKeywords = [state.brand, state.categoryTitle, state.subCategoryTitle, name]
+                      .map((part) => String(part || "").trim())
+                      .filter(Boolean)
+                      .join(", ")
+                      .slice(0, 250);
+                  }
+                  patch(next);
+                }}
               />
             </Field>
             <Field label="Short Description">
@@ -2530,7 +2542,14 @@ function ReviewPanel({
                 className={`${inputCls} min-h-[176px] h-44 resize-y leading-relaxed`}
                 rows={8}
                 value={state.shortDescription}
-                onChange={(e) => patch({ shortDescription: e.target.value })}
+                onChange={(e) => {
+                  const shortDescription = e.target.value;
+                  const next = { shortDescription };
+                  if (shortDescription.trim()) {
+                    next.metaDescription = withIeradaSeoSuffix(shortDescription.replace(/\s+/g, " "), 155);
+                  }
+                  patch(next);
+                }}
                 placeholder="3–5 lines — product-specific summary for shoppers"
               />
             </Field>
@@ -2741,22 +2760,23 @@ function ReviewPanel({
 
         {reviewSection === "seo" ? (
           <div className="grid gap-3">
+            <p className="text-xs text-slate-500">Generated automatically. This section cannot be edited.</p>
             <Field label="Meta Title">
-              <input className={inputCls} value={state.metaTitle} onChange={(e) => patch({ metaTitle: e.target.value })} />
+              <input className={`${inputCls} bg-slate-50 cursor-not-allowed`} value={state.metaTitle} readOnly />
             </Field>
             <Field label="Meta Description">
               <textarea
-                className={inputCls}
+                className={`${inputCls} bg-slate-50 cursor-not-allowed`}
                 rows={3}
                 value={state.metaDescription}
-                onChange={(e) => patch({ metaDescription: e.target.value })}
+                readOnly
               />
             </Field>
             <Field label="Meta Keywords">
               <input
-                className={inputCls}
+                className={`${inputCls} bg-slate-50 cursor-not-allowed`}
                 value={state.metaKeywords}
-                onChange={(e) => patch({ metaKeywords: e.target.value })}
+                readOnly
               />
             </Field>
             {(() => {
@@ -2766,7 +2786,7 @@ function ReviewPanel({
               if (!hits.length) return null;
               return (
                 <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                  Soft warning — avoid restricted claims: {hits.join(", ")}. AI draft already scrubs these; please revise before publish.
+                  Soft warning — restricted claims: {hits.join(", ")}.
                 </p>
               );
             })()}
