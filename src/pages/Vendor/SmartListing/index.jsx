@@ -683,10 +683,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     bulkMode && !editProductId ? getBulkSession() : null,
   );
   const [stableId, setStableId] = useState(() => {
+    if (editProductId) return `edit-${mode}-${editProductId}`;
     if (freshStart || bulkMode) return newStableId(mode);
     const existing = loadLocalDraft();
     return existing?.stableId || newStableId(mode);
   });
+  const savedListingRef = useRef(null);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [innerSubCategories, setInnerSubCategories] = useState([]);
@@ -971,6 +973,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           stashListingMedia(stableId, next);
           return next;
         });
+        savedListingRef.current = {
+          category_id: String(hydrated.category_id || ""),
+          sub_category_id: String(hydrated.sub_category_id || ""),
+          inner_sub_category_id: String(hydrated.inner_sub_category_id || ""),
+          original_price: String(hydrated.original_price || ""),
+          discounted_price: String(hydrated.discounted_price || ""),
+          package_length: String(hydrated.package_length || ""),
+          package_width: String(hydrated.package_width || ""),
+          package_height: String(hydrated.package_height || ""),
+          package_weight: String(hydrated.package_weight || ""),
+          free_shipping: hydrated.free_shipping ? "1" : "0",
+        };
         setPhase("review");
         setReviewSection("product_info");
         setSaveHint("Loaded product for edit");
@@ -1044,7 +1058,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   // Photos are blobs, so localStorage cannot hold them — pull them back from IndexedDB.
   useEffect(() => {
-    if (freshStart) return undefined;
+    if (freshStart || editProductId) return undefined;
     let cancelled = false;
     (async () => {
       const stored = await loadListingFiles(stableId);
@@ -1116,7 +1130,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     return () => {
       cancelled = true;
     };
-  }, [stableId, freshStart]);
+  }, [stableId, freshStart, editProductId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1228,6 +1242,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       gst_raw: lookup?.gst_raw || "",
       gst_mixed: !!lookup?.mixed,
     };
+    const savedTax = savedListingRef.current;
+    const keepSavedTax =
+      isEditMode &&
+      savedTax &&
+      String(state.category_id || "") === savedTax.category_id &&
+      String(state.sub_category_id || "") === savedTax.sub_category_id &&
+      String(state.inner_sub_category_id || "") === savedTax.inner_sub_category_id &&
+      String(state.discounted_price || "") === savedTax.discounted_price;
+    if (keepSavedTax) {
+      patch(next);
+      return;
+    }
     // Prefer Ops export when present (until DB migrate applied everywhere)
     if (lookup?.hsn) next.hsn_code = lookup.hsn;
     else if (tax.hsn_code) next.hsn_code = tax.hsn_code;
@@ -1260,6 +1286,17 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   // Volumetric (kg) + shipping charge from Admin weight slabs (chargeable grams).
   useEffect(() => {
+    const savedShip = savedListingRef.current;
+    const keepSavedShip =
+      isEditMode &&
+      savedShip &&
+      String(state.package_length || "") === savedShip.package_length &&
+      String(state.package_width || "") === savedShip.package_width &&
+      String(state.package_height || "") === savedShip.package_height &&
+      String(state.package_weight || "") === savedShip.package_weight &&
+      (state.free_shipping ? "1" : "0") === savedShip.free_shipping &&
+      String(state.discounted_price || "") === savedShip.discounted_price;
+    if (keepSavedShip) return;
     const L = Number(state.package_length) || 0;
     const W = Number(state.package_width) || 0;
     const H = Number(state.package_height) || 0;
@@ -1577,6 +1614,18 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           price,
         });
         if (cancelled || res?.status !== 1 || !res?.data) return;
+        const savedGst = savedListingRef.current;
+        if (
+          isEditMode &&
+          savedGst &&
+          String(state.category_id || "") === savedGst.category_id &&
+          String(state.sub_category_id || "") === savedGst.sub_category_id &&
+          String(state.inner_sub_category_id || "") === savedGst.inner_sub_category_id &&
+          String(state.discounted_price || "") === savedGst.discounted_price &&
+          String(state.original_price || "") === savedGst.original_price
+        ) {
+          return;
+        }
         const rule = res.data;
         patch({
           ...(rule.gst_percent != null ? { gst: rule.gst_percent } : {}),
@@ -1915,6 +1964,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         setStep(extra);
         return;
       }
+      if (isEditMode) {
+        setPhase("review");
+        return;
+      }
       runAiGenerate();
       return;
     }
@@ -1923,7 +1976,39 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       setStep(steps[idx + 1]);
       return;
     }
+    if (isEditMode) {
+      setPhase("review");
+      return;
+    }
     runAiGenerate();
+  };
+
+  const leaveEdit = async () => {
+    let ok = false;
+    try {
+      ok = await confirmDialog({
+        title: "Discard",
+        message: "Leave this product without saving? The listed product stays as it is.",
+        variant: "brand",
+      });
+    } catch (e) {
+      notifyOnFail(getApiErrorMessage(e, "Could not close this edit"));
+      return;
+    }
+    if (!ok) return;
+    setDiscarding(true);
+    try {
+      if (autosaveTimer.current) {
+        clearTimeout(autosaveTimer.current);
+        autosaveTimer.current = null;
+      }
+      clearLocalDraft(stableId);
+      clearListingFiles(stableId);
+      navigate("/product", { replace: true });
+    } catch (e) {
+      setDiscarding(false);
+      notifyOnFail(getApiErrorMessage(e, "Could not leave this edit. The listed product was not changed."));
+    }
   };
 
   const goBack = () => {
@@ -2066,11 +2151,11 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const submitListing = async ({ asDraft }) => {
     if (!asDraft) {
       const vErr = validateSmartListingState(state);
-      if (state.listingType === "single" && !state.files?.length) {
-        vErr.files = "Add at least one image before submit";
-      }
-      if (state.listingType === "combo" && !state.files?.length) {
-        vErr.files = "Add at least one cover image for the combo listing";
+      const photoCount = (state.files || []).length + (state.existingMedia || []).length;
+      if ((state.listingType === "single" || state.listingType === "combo") && photoCount === 0) {
+        vErr.files = state.listingType === "combo"
+          ? "Add at least one cover image for the combo listing"
+          : "Add at least one image before submit";
       }
       const firstErr = firstValidationError(vErr);
       if (firstErr) {
@@ -2104,6 +2189,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     // branded publish blocked client — need approved auth (server also enforces)
     if (
       !asDraft &&
+      !isPublishedLive &&
       state.brandType === "branded" &&
       !state.brandAuthApproved
     ) {
@@ -2267,6 +2353,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           />
         ) : (
           <AiReviewHeader
+            savedListing={isEditMode}
             aiGenerating={aiGenerating}
             onRegenerate={() => runAiGenerate({ confirmDirty: true })}
             onEdit={() => {
@@ -2342,6 +2429,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         discarding={discarding}
         isPublishedLive={isPublishedLive}
         showDraft={!isPublishedLive}
+        showExit={isPublishedLive && isEditMode}
+        saveLabel="Save"
+        onSave={() => submitListing({ asDraft: false })}
         showBack={phase === "basics" && step === "matrix"}
         stats={
           (state.listingType === "color_size" || state.listingType === "custom") &&
@@ -2350,7 +2440,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             : null
         }
         onSaveDraft={() => submitListing({ asDraft: true })}
-        onDiscard={discardDraft}
+        onDiscard={isPublishedLive && isEditMode ? leaveEdit : discardDraft}
         phase={phase}
         primaryVariant={
           phase === "basics" || (phase === "review" && reviewSection !== "size_chart")
@@ -2382,7 +2472,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
               ? "Writing listing…"
               : SETUP_STEPS.includes(step) && steps.some((s) => !SETUP_STEPS.includes(s))
                 ? "Next →"
-                : "Next: AI Auto Generate →"
+                : isEditMode
+                  ? "Review saved details →"
+                  : "Next: AI Auto Generate →"
             : phase === "review" && reviewSection !== "size_chart"
               ? "Next →"
               : isPublishedLive

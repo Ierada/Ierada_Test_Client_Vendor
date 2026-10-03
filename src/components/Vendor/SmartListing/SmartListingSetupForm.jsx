@@ -1098,6 +1098,9 @@ export function ListingStickyFooter({
   isPublishedLive,
   showDraft,
   onSaveDraft,
+  onSave,
+  saveLabel = "Save",
+  showExit = false,
   onDiscard,
   phase,
   onPrimary,
@@ -1148,7 +1151,28 @@ export function ListingStickyFooter({
           <div className="flex-1 min-w-0" />
         )}
         <div className="flex items-center gap-3 flex-nowrap justify-end ml-auto shrink-0">
-          {showDraft ? (
+          {showExit ? (
+            <>
+              <button
+                type="button"
+                disabled={submitting || discarding}
+                onClick={onDiscard}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50 inline-flex items-center gap-2"
+                style={{ color: "#B42318", border: "1.5px solid #FECDCA" }}
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                disabled={aiGenerating || submitting || discarding}
+                onClick={onSave}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
+                style={{ backgroundColor: "#059669" }}
+              >
+                {submitting ? "Saving…" : saveLabel}
+              </button>
+            </>
+          ) : showDraft ? (
             <>
               <button
                 type="button"
