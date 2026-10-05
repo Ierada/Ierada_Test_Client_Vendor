@@ -122,6 +122,12 @@ import {
   typeLabel,
 } from "../../../components/Vendor/SmartListing/utils/bulkSessionStorage";
 import { isVendorProductWizardPath } from "../../../config/productSection";
+import {
+  findApprovedBrand,
+  isBrandAuthReadyToContinue,
+  isBrandAuthApprovedForPublish,
+  safeBrandList,
+} from "../../../components/Vendor/SmartListing/utils/brandAuthHelpers";
 
 function basicsStepsFor(listingType) {
   const base = [...SETUP_STEPS];
@@ -147,6 +153,9 @@ const emptyState = () => ({
   brandAuthDocType: "authorization_letter",
   brandAuthApproved: false,
   brandAuthStatus: "",
+  brandAuthMode: "",
+  approvedBrands: [],
+  pendingBrands: [],
   listingType: "",
   category_id: "",
   sub_category_id: "",
@@ -1011,25 +1020,45 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         const res = await getBrandAuthStatus({
           vendor_id: vid,
           product_id: state.productId || editProductId || undefined,
+          brand: state.brand || undefined,
         });
         if (cancelled || res?.status !== 1) return;
-        const approved = !!res.data?.approved;
-        const status = res.data?.status || "none";
+        const brands = safeBrandList(res.data?.approved_brands);
+        const pending = safeBrandList(res.data?.pending_brands);
         setState((prev) => {
-          if (prev.brandAuthApproved === approved && prev.brandAuthStatus === status) {
+          const match = findApprovedBrand(brands, prev.brand);
+          const approved = !!(match || res.data?.approved);
+          const status = match
+            ? "approved"
+            : res.data?.status || (approved ? "approved" : "none");
+          const sameLists =
+            JSON.stringify(prev.approvedBrands || []) === JSON.stringify(brands) &&
+            JSON.stringify(prev.pendingBrands || []) === JSON.stringify(pending);
+          if (
+            sameLists &&
+            prev.brandAuthApproved === approved &&
+            prev.brandAuthStatus === status
+          ) {
             return prev;
           }
-          return { ...prev, brandAuthApproved: approved, brandAuthStatus: status };
+          return {
+            ...prev,
+            approvedBrands: brands,
+            pendingBrands: pending,
+            brandAuthApproved: approved,
+            brandAuthStatus: status,
+            brandAuthMode: match ? "approved" : prev.brandAuthMode || (brands.length ? "" : "new"),
+          };
         });
       } catch {
-        /* soft — server still enforces */
+        /* soft — server still enforces; dropdown stays empty so they can request a new brand */
       }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-fetch on identity keys
-  }, [state.brandType, state.vendor_id, state.productId, vendorId, editProductId, user?.id]);
+  }, [state.brandType, state.vendor_id, state.productId, state.brand, vendorId, editProductId, user?.id]);
 
   // Restore local draft once (skip when editing existing product or fresh Add Product)
   useEffect(() => {
@@ -1883,8 +1912,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     const setupPage = SETUP_STEPS.includes(step);
     if (setupPage || step === "brand") {
       if (!state.brandType) err.brandType = "Select brand type";
-      if (state.brandType === "branded" && !state.brandAuthDocName && !state.brandAuthFile) {
-        err.brandAuth = "Upload brand authorization document";
+      if (state.brandType === "branded" && !isBrandAuthReadyToContinue(state)) {
+        err.brandAuth = findApprovedBrand(state.approvedBrands, state.brand)
+          ? "Select the authorized brand to continue"
+          : "Enter the brand name and upload authorization, or pick an already authorized brand";
       }
     }
     if (setupPage || step === "type") {
@@ -2191,10 +2222,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       !asDraft &&
       !isPublishedLive &&
       state.brandType === "branded" &&
-      !state.brandAuthApproved
+      !isBrandAuthApprovedForPublish(state)
     ) {
       const text =
-        "Branded listings need Admin-approved brand authorization before publish request. Save as draft, then request publish after approval.";
+        "This brand is not authorized yet for your account. Select an approved brand, or save as draft until Admin approves the new letter.";
       setBanner({ type: "error", text });
       notifyOnFail(text);
       return;
@@ -2669,7 +2700,22 @@ function ReviewPanel({
             </Field>
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label="Brand">
-                <input className={inputCls} value={state.brand} onChange={(e) => patch({ brand: e.target.value })} />
+                <input
+                  className={inputCls}
+                  value={state.brand}
+                  onChange={(e) =>
+                    patch({
+                      brand: e.target.value,
+                      brandAuthMode: "new",
+                      brandAuthApproved: false,
+                    })
+                  }
+                />
+                {state.brandType === "branded" ? (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Changing the brand name requires authorization for that brand. Pick an authorized brand on the Brand step to skip the letter.
+                  </p>
+                ) : null}
               </Field>
               <Field label="HSN Code" required>
                 <input id="ai-review-hsn" className={inputClsErr(fieldErrors.hsn_code)} value={state.hsn_code} onChange={(e) => patch({ hsn_code: e.target.value })} />

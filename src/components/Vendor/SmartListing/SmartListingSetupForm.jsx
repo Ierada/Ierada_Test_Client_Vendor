@@ -16,6 +16,13 @@ import {
 } from "lucide-react";
 import SearchablePicker from "./SearchablePicker";
 import { BRAND_AUTH_DOC_TYPES } from "./utils/brandAuthConfig";
+import {
+  NEW_BRAND_AUTH_VALUE,
+  brandAuthSelectValue,
+  findApprovedBrand,
+  normalizeBrandName,
+  safeBrandList,
+} from "./utils/brandAuthHelpers";
 import { notifyOnFail } from "../../../utils/notification/toast";
 import { resolveMediaUrl } from "./utils/listingMediaCache";
 import { StorefrontPreviewCard, BankSettlementSummary } from "./AiReviewStep";
@@ -815,36 +822,122 @@ export default function SmartListingSetupForm({
               Brand Authorization / Approval (Required)
             </p>
             <p className="text-[12px] text-slate-400">
-              To sell branded products, upload brand registration certificate or authorization letter.
+              Already authorized brands for this seller can be selected and listed again. A new brand needs a new letter. Another seller must authorize the same brand separately.
             </p>
             <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-3 pt-1">
               <div className="space-y-2.5">
-                <label className="block text-[12px] font-semibold" style={{ color: NAVY }}>
-                  Select Document Type
-                  <select
-                    className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-normal text-slate-700"
-                    value={state.brandAuthDocType || "brand_registration"}
-                    onChange={(e) => patch({ brandAuthDocType: e.target.value })}
-                  >
-                    {BRAND_AUTH_DOC_TYPES.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div>
-                  <p className="text-[12px] font-semibold mb-1" style={{ color: NAVY }}>
-                    Upload Document
-                  </p>
-                  <BrandAuthDropzone state={state} patch={patch} />
-                </div>
-                {state.brandAuthStatus ? (
-                  <p className={`text-xs ${state.brandAuthApproved ? "text-emerald-700" : "text-amber-700"}`}>
-                    Auth status: {state.brandAuthStatus}
-                  </p>
-                ) : null}
-                {fieldErrors.brandAuth ? <p className="text-xs text-red-600">{fieldErrors.brandAuth}</p> : null}
+                {(() => {
+                  const approvedBrands = safeBrandList(state.approvedBrands);
+                  const selectValue = brandAuthSelectValue(state);
+                  const selectedApproved = findApprovedBrand(approvedBrands, state.brand);
+                  const showNewBrandForm =
+                    !approvedBrands.length || selectValue === NEW_BRAND_AUTH_VALUE;
+                  const onBrandChoice = (value) => {
+                    try {
+                      if (value === NEW_BRAND_AUTH_VALUE) {
+                        patch({
+                          brandAuthMode: "new",
+                          brandAuthApproved: false,
+                          brandAuthStatus: "none",
+                          brand: selectedApproved ? "" : state.brand,
+                        });
+                        return;
+                      }
+                      const picked = findApprovedBrand(approvedBrands, value);
+                      if (!picked) return;
+                      patch({
+                        brand: picked.name,
+                        brandAuthMode: "approved",
+                        brandAuthApproved: true,
+                        brandAuthStatus: "approved",
+                        brandAuthFile: null,
+                        brandAuthDocName: "",
+                      });
+                    } catch (err) {
+                      console.error("brand auth select", err);
+                    }
+                  };
+                  return (
+                    <>
+                      {approvedBrands.length ? (
+                        <label className="block text-[12px] font-semibold" style={{ color: NAVY }}>
+                          Authorized brands
+                          <select
+                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-normal text-slate-700"
+                            value={selectValue}
+                            onChange={(e) => onBrandChoice(e.target.value)}
+                          >
+                            <option value="">Select an authorized brand</option>
+                            {approvedBrands.map((b) => (
+                              <option key={`${b.id || b.name}-${b.name}`} value={b.name}>
+                                {b.name}
+                              </option>
+                            ))}
+                            <option value={NEW_BRAND_AUTH_VALUE}>
+                              Request authorization for a new brand
+                            </option>
+                          </select>
+                        </label>
+                      ) : (
+                        <p className="text-[12px] text-slate-500">
+                          No authorized brands yet for this seller. Enter the brand and upload a letter.
+                        </p>
+                      )}
+                      {selectedApproved && !showNewBrandForm ? (
+                        <p className="text-xs text-emerald-700">
+                          {selectedApproved.name} is already authorized. You can continue without uploading again.
+                        </p>
+                      ) : null}
+                      {showNewBrandForm ? (
+                        <>
+                          <label className="block text-[12px] font-semibold" style={{ color: NAVY }}>
+                            New brand name
+                            <input
+                              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-normal text-slate-700"
+                              value={state.brand || ""}
+                              onChange={(e) =>
+                                patch({
+                                  brand: e.target.value,
+                                  brandAuthMode: "new",
+                                  brandAuthApproved: false,
+                                })
+                              }
+                              placeholder="e.g. Nike"
+                            />
+                          </label>
+                          <label className="block text-[12px] font-semibold" style={{ color: NAVY }}>
+                            Select Document Type
+                            <select
+                              className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-normal text-slate-700"
+                              value={state.brandAuthDocType || "authorization_letter"}
+                              onChange={(e) => patch({ brandAuthDocType: e.target.value })}
+                            >
+                              {BRAND_AUTH_DOC_TYPES.map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div>
+                            <p className="text-[12px] font-semibold mb-1" style={{ color: NAVY }}>
+                              Upload Document
+                            </p>
+                            <BrandAuthDropzone state={state} patch={patch} />
+                          </div>
+                        </>
+                      ) : null}
+                      {state.brandAuthStatus ? (
+                        <p className={`text-xs ${state.brandAuthApproved || selectedApproved ? "text-emerald-700" : "text-amber-700"}`}>
+                          Auth status: {selectedApproved ? "approved" : state.brandAuthStatus}
+                          {normalizeBrandName(state.brand) ? ` · ${normalizeBrandName(state.brand)}` : ""}
+                        </p>
+                      ) : null}
+                      {fieldErrors.brandAuth ? <p className="text-xs text-red-600">{fieldErrors.brandAuth}</p> : null}
+                      {fieldErrors.brand ? <p className="text-xs text-red-600">{fieldErrors.brand}</p> : null}
+                    </>
+                  );
+                })()}
               </div>
               <div className="rounded-lg bg-[#F4F6F8] p-3.5 relative" style={{ border: `1px solid ${CARD_BORDER}` }}>
                 <p className="text-[13px] font-bold pr-6 mb-2.5" style={{ color: NAVY }}>

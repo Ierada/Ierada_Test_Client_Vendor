@@ -1,11 +1,12 @@
 import apiClient from "../axios.config";
 
-export async function getBrandAuthStatus({ vendor_id, product_id } = {}) {
+export async function getBrandAuthStatus({ vendor_id, product_id, brand } = {}) {
   try {
     const res = await apiClient.get("/brand-auth/status", {
       params: {
         ...(vendor_id ? { vendor_id } : {}),
         ...(product_id ? { product_id } : {}),
+        ...(brand ? { brand } : {}),
       },
     });
     return res.data;
