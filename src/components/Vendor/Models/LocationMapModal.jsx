@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { X, MapPin, Search } from "lucide-react";
+import {
+  englishLocationError,
+  pickEnglishGeocodeResult,
+} from "../../../utils/englishLocation";
 
 const LocationMapModal = ({ isOpen, onClose, onSave }) => {
   const mapRef = useRef(null);
   const searchInputRef = useRef(null);
-  
-  const [mapInstance, setMapInstance] = useState(null);
-  const [marker, setMarker] = useState(null);
   
   const [currentAddress, setCurrentAddress] = useState("Locating...");
   const [selectedLatLng, setSelectedLatLng] = useState(null);
@@ -32,22 +33,19 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
     // Check if Google Maps script is already in the DOM (loading or loaded)
     const existingScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
     if (existingScript) {
-      existingScript.addEventListener("load", initMap);
+      existingScript.addEventListener("load", initMap, { once: true });
       return;
     }
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&language=en&region=IN`;
     script.async = true;
     script.defer = true;
     script.onload = initMap;
     document.head.appendChild(script);
 
     return () => {
-      // Cleanup: remove the script if it was added by this component
-      if (script && script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
+      /* keep Maps script loaded so later opens still work */
     };
   }, [isOpen, apiKey]);
 
@@ -74,12 +72,12 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
         animation: google.maps.Animation.DROP,
       });
 
-      setMapInstance(map);
-      setMarker(newMarker);
-
       // Setup Search Autocomplete
       if (searchInputRef.current) {
-        const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current);
+        const autocomplete = new google.maps.places.Autocomplete(searchInputRef.current, {
+          componentRestrictions: { country: "in" },
+          fields: ["geometry", "formatted_address", "address_components", "name"],
+        });
         autocomplete.bindTo('bounds', map);
 
         autocomplete.addListener('place_changed', () => {
@@ -124,7 +122,7 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
             handleLocationChange(pos.lat, pos.lng);
           },
           () => {
-            // Fallback, do nothing
+            setCurrentAddress("Allow location, or search the place in English");
           }
         );
       }
@@ -141,19 +139,35 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
 
     try {
       const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}&language=en&region=in`
       );
       const data = await response.json();
+      const picked = pickEnglishGeocodeResult(data.results);
+      const locErr = picked
+        ? englishLocationError(picked.city, picked.state, picked.fullAddress)
+        : "Could not capture this location in English. Search the place in English.";
 
-      if (data.results && data.results[0]) {
-        setCurrentAddress(data.results[0].formatted_address);
-        setGeocodeResult(data.results[0]);
-      } else {
-        setCurrentAddress("Unknown Location");
+      if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+        setCurrentAddress("Could not fetch this address. Search the place in English.");
         setGeocodeResult(null);
+        return;
       }
+
+      if (!picked || locErr) {
+        setCurrentAddress(locErr);
+        setGeocodeResult(null);
+        return;
+      }
+
+      setCurrentAddress(picked.fullAddress || [picked.city, picked.state].filter(Boolean).join(", "));
+      setGeocodeResult({
+        ...picked,
+        address_components: [],
+      });
     } catch (error) {
-      setCurrentAddress("Error fetching address");
+      setCurrentAddress(
+        "Could not fetch this address. Search the place in English.",
+      );
       setGeocodeResult(null);
     } finally {
       setIsGeocoding(false);
@@ -162,34 +176,28 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
 
   const handleSave = () => {
     if (!selectedLatLng || currentAddress === "Locating..." || currentAddress === "Fetching address...") return;
-    
-    // Extract address components from geocode result
-    let addressData = {
-      fullAddress: currentAddress,
-      lat: selectedLatLng.lat,
-      lng: selectedLatLng.lng,
-    };
+    if (!geocodeResult) return;
 
-    // Try to extract components from geocode result
-    if (geocodeResult && geocodeResult.address_components) {
-      const components = geocodeResult.address_components;
-      const getComponent = (types) => {
-        return components.find(comp => 
-          comp.types.some(type => types.includes(type))
-        );
-      };
-
-      addressData = {
-        ...addressData,
-        street: getComponent(['street_number', 'route'])?.long_name || '',
-        city: getComponent(['locality', 'administrative_area_level_2'])?.long_name || '',
-        state: getComponent(['administrative_area_level_1'])?.long_name || '',
-        country: getComponent(['country'])?.long_name || '',
-        zipCode: getComponent(['postal_code'])?.long_name || '',
-      };
+    const locErr = englishLocationError(
+      geocodeResult.city,
+      geocodeResult.state,
+      geocodeResult.fullAddress || currentAddress,
+    );
+    if (locErr) {
+      setCurrentAddress(locErr);
+      return;
     }
 
-    onSave(addressData);
+    onSave({
+      fullAddress: geocodeResult.fullAddress || currentAddress,
+      lat: selectedLatLng.lat,
+      lng: selectedLatLng.lng,
+      street: geocodeResult.street || "",
+      city: geocodeResult.city || "",
+      state: geocodeResult.state || "",
+      country: geocodeResult.country || "India",
+      zipCode: geocodeResult.zipCode || "",
+    });
   };
 
   if (!isOpen) return null;
@@ -242,7 +250,7 @@ const LocationMapModal = ({ isOpen, onClose, onSave }) => {
           
           <button 
             onClick={handleSave} 
-            disabled={!selectedLatLng || isGeocoding}
+            disabled={!selectedLatLng || isGeocoding || !geocodeResult}
             className="w-full py-3 px-4 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors"
           >
             {isGeocoding ? "Fetching Location..." : "Confirm Location"}

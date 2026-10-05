@@ -32,6 +32,10 @@ import {
   loadLocalDraft,
   saveLocalDraft,
   clearLocalDraft,
+  initialListingStableId,
+  canRestoreAddDraft,
+  writeAddSessionId,
+  consumeAddDraftResume,
 } from "../../../components/Vendor/SmartListing/utils/draftStorage";
 import { taxFromCategoryTree, mergeAiDraft, buildListingAiPayload, firstListingImageFile, withIeradaSeoSuffix } from "../../../components/Vendor/SmartListing/utils/aiDraft";
 import apiClient from "../../../axios.config";
@@ -672,7 +676,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const navigate = useNavigate();
   const location = useLocation();
   const keepProductPills = !isVendorProductWizardPath(location.pathname);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const freshStart = searchParams.get("fresh") === "1";
   const bulkMode = searchParams.get("bulk") === "1";
   const openReview = searchParams.get("review") === "1";
@@ -688,15 +692,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const isPublishedLive =
     String(state.listing_status || "").toLowerCase() === "published" ||
     String(state.visibility || "").toLowerCase() === "published";
+  const isDraftListing =
+    !isPublishedLive &&
+    ["", "draft"].includes(String(state.listing_status || "draft").toLowerCase());
   const [bulkSession, setBulkSession] = useState(() =>
     bulkMode && !editProductId ? getBulkSession() : null,
   );
-  const [stableId, setStableId] = useState(() => {
-    if (editProductId) return `edit-${mode}-${editProductId}`;
-    if (freshStart || bulkMode) return newStableId(mode);
-    const existing = loadLocalDraft();
-    return existing?.stableId || newStableId(mode);
-  });
+  const [stableId, setStableId] = useState(() =>
+    initialListingStableId({ mode, editProductId, freshStart, bulkMode }),
+  );
   const savedListingRef = useRef(null);
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
@@ -720,6 +724,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   const [fieldErrors, setFieldErrors] = useState({});
   const [supportPhone, setSupportPhone] = useState("9211736358");
   const autosaveTimer = useRef(null);
+  const listingClosedRef = useRef(false);
   const priceToastKey = useRef("");
   const settlementPreviewToastAt = useRef(0);
 
@@ -866,6 +871,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   }, []);
 
   const resetForNextBulkListing = useCallback(() => {
+    listingClosedRef.current = false;
     clearLocalDraft(stableId);
     clearListingFiles(stableId);
     const newId = newStableId(mode);
@@ -1060,11 +1066,12 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-fetch on identity keys
   }, [state.brandType, state.vendor_id, state.productId, state.brand, vendorId, editProductId, user?.id]);
 
-  // Restore local draft once (skip when editing existing product or fresh Add Product)
+  // Restore local draft once (skip edit, fresh Add Product, or leftover published/edit drafts)
   useEffect(() => {
     if (editProductId || freshStart) return;
-    const local = loadLocalDraft(stableId) || loadLocalDraft();
-    if (local?.payload) {
+    try {
+      const local = loadLocalDraft(stableId);
+      if (!canRestoreAddDraft(local)) return;
       setState((prev) => {
         const payload = { ...omitLiveCommerceRates(local.payload) };
         if (payload.listingType === "combo") {
@@ -1082,8 +1089,37 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         setReviewSection(local.reviewSection);
       }
       setSaveHint("Restored local draft");
+    } catch (e) {
+      console.error("restore listing draft", e);
     }
   }, [stableId, editProductId, freshStart]);
+
+  useEffect(() => {
+    if (editProductId) return;
+    consumeAddDraftResume();
+  }, [editProductId]);
+
+  useEffect(() => {
+    if (editProductId || bulkMode) return;
+    if (searchParams.get("fresh") !== "1") return;
+    if (autosaveTimer.current) {
+      clearTimeout(autosaveTimer.current);
+      autosaveTimer.current = null;
+    }
+    const id = newStableId(mode);
+    writeAddSessionId(id);
+    setStableId(id);
+    setState(emptyState());
+    setPhase("basics");
+    setStep("brand");
+    setReviewSection("product_info");
+    setFieldErrors({});
+    setBanner(null);
+    setSaveHint("Ready");
+    const next = new URLSearchParams(searchParams);
+    next.delete("fresh");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, editProductId, bulkMode, mode, setSearchParams]);
 
   // Photos are blobs, so localStorage cannot hold them — pull them back from IndexedDB.
   useEffect(() => {
@@ -1366,8 +1402,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   // Autosave local + server (debounced)
   useEffect(() => {
+    if (listingClosedRef.current) return undefined;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(async () => {
+      if (listingClosedRef.current) return;
       const payload = stripFilesForDraft(state);
       stashListingMedia(stableId, state);
       saveListingFiles(stableId, state);
@@ -1377,6 +1415,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         step,
         reviewSection,
       });
+      if (listingClosedRef.current) return;
       setSaveHint("Saving…");
       setSaving(true);
       try {
@@ -1395,12 +1434,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             vendor_id: vendorId || undefined,
           },
         });
+        if (listingClosedRef.current) return;
         if (res?.status === 1) setSaveHint("All changes saved");
         else setSaveHint(res?.message || "Saved locally (server draft pending)");
       } catch {
-        setSaveHint("Saved locally — server unreachable");
+        if (!listingClosedRef.current) setSaveHint("Saved locally — server unreachable");
       } finally {
-        setSaving(false);
+        if (!listingClosedRef.current) setSaving(false);
       }
     }, 900);
     return () => clearTimeout(autosaveTimer.current);
@@ -2027,6 +2067,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       return;
     }
     if (!ok) return;
+    listingClosedRef.current = true;
     setDiscarding(true);
     try {
       if (autosaveTimer.current) {
@@ -2035,10 +2076,13 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
       }
       clearLocalDraft(stableId);
       clearListingFiles(stableId);
-      navigate("/product", { replace: true });
+      writeAddSessionId("");
+      navigate("/product/list", { replace: true });
     } catch (e) {
-      setDiscarding(false);
+      listingClosedRef.current = false;
       notifyOnFail(getApiErrorMessage(e, "Could not leave this edit. The listed product was not changed."));
+    } finally {
+      setDiscarding(false);
     }
   };
 
@@ -2135,44 +2179,38 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
 
   const discardDraft = async () => {
     const savedId = editProductId || state.productId;
-    const msg = savedId
+    if (!isDraftListing) {
+      notifyOnFail("This listing is not a draft. Use Exit — discard will not delete it.");
+      return;
+    }
+    const canDeleteServerDraft = !!savedId && isDraftListing;
+    const msg = canDeleteServerDraft
       ? "Discard this draft? It will be permanently deleted and cannot be undone."
-      : "Discard this listing? All local progress, images, and variant data will be cleared.";
+      : "Discard this listing? Progress will be cleared and you can add a new product anytime.";
     if (!(await confirmDialog({ title: "Discard", message: msg, variant: "danger" }))) return;
 
+    listingClosedRef.current = true;
     setDiscarding(true);
     try {
       if (autosaveTimer.current) {
         clearTimeout(autosaveTimer.current);
         autosaveTimer.current = null;
       }
-      if (savedId) {
+      if (canDeleteServerDraft) {
         const res = await deleteProduct(savedId);
         if (res?.status !== 1) {
+          listingClosedRef.current = false;
           notifyOnFail(res?.message || "Could not discard draft");
           return;
         }
-        clearLocalDraft(stableId);
-        clearListingFiles(stableId);
-        notifyOnSuccess("Draft discarded");
-        navigate("/product", { replace: true });
-        return;
       }
-
       clearLocalDraft(stableId);
       clearListingFiles(stableId);
-      const nextId = newStableId(mode);
-      setStableId(nextId);
-      setState(emptyState());
-      setPhase("basics");
-      setStep("brand");
-      setReviewSection("product_info");
-      setFieldErrors({});
-      setBanner(null);
-      setSaveHint("Draft discarded");
-      notifyOnSuccess("Listing progress cleared");
+      writeAddSessionId("");
+      notifyOnSuccess(canDeleteServerDraft ? "Draft discarded" : "Listing progress cleared");
       navigate("/product", { replace: true });
     } catch (e) {
+      listingClosedRef.current = false;
       notifyOnFail(getApiErrorMessage(e, "Could not discard draft"));
     } finally {
       setDiscarding(false);
@@ -2256,13 +2294,15 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         ? await updateProduct(pid, formData)
         : await addProduct(formData);
       if (res?.status === 1) {
-        clearLocalDraft(stableId);
-        clearListingFiles(stableId);
         const session = bulkSession || getBulkSession();
         const hasMoreBulk =
           bulkMode &&
           session &&
           (session.completed || 0) + 1 < session.total;
+        if (!hasMoreBulk) listingClosedRef.current = true;
+        clearLocalDraft(stableId);
+        clearListingFiles(stableId);
+        writeAddSessionId("");
 
         if (hasMoreBulk) {
           const next = advanceBulkSession({
@@ -2358,6 +2398,21 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           listingType={state.listingType}
           bulkProgress={bulkProgress}
           skipBulkListing={skipBulkListing}
+          leaveAction={{
+            label: isEditMode && !isDraftListing ? "Exit" : "Discard",
+            variant: isEditMode && !isDraftListing ? "exit" : "discard",
+            busy: discarding,
+            onClick: isEditMode && !isDraftListing ? leaveEdit : discardDraft,
+          }}
+          draftAction={
+            isDraftListing
+              ? {
+                  label: "Save as Draft",
+                  busy: submitting,
+                  onClick: () => submitListing({ asDraft: true }),
+                }
+              : null
+          }
           onExitBulk={async () => {
             if (await confirmDialog({ title: "Stop", message: "Stop bulk session? Progress is saved per listing already submitted.", variant: "danger" })) {
               clearBulkSession();
@@ -2459,8 +2514,10 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
         submitting={submitting}
         discarding={discarding}
         isPublishedLive={isPublishedLive}
-        showDraft={!isPublishedLive}
-        showExit={isPublishedLive && isEditMode}
+        showDraft={isDraftListing}
+        showDiscard={isDraftListing}
+        showExit={isEditMode}
+        onExit={leaveEdit}
         saveLabel="Save"
         onSave={() => submitListing({ asDraft: false })}
         showBack={phase === "basics" && step === "matrix"}
@@ -2471,7 +2528,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
             : null
         }
         onSaveDraft={() => submitListing({ asDraft: true })}
-        onDiscard={isPublishedLive && isEditMode ? leaveEdit : discardDraft}
+        onDiscard={discardDraft}
         phase={phase}
         primaryVariant={
           phase === "basics" || (phase === "review" && reviewSection !== "size_chart")

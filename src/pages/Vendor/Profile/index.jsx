@@ -16,6 +16,7 @@ import {
   notifyOnSuccess,
   notifyOnWarning,
 } from "../../../utils/notification/toast";
+import { englishLocationError } from "../../../utils/englishLocation";
 
 const INITIAL_STATE = {
   firstName: "",
@@ -457,11 +458,26 @@ const Profile = () => {
   };
 
   const handleLocationSelect = (locationData) => {
+    const lat = Number(locationData?.lat);
+    const lng = Number(locationData?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      notifyOnFail("Could not read that map pin. Search the place in English and try again.");
+      return;
+    }
+    const locErr = englishLocationError(
+      locationData?.city,
+      locationData?.state,
+      locationData?.fullAddress,
+    );
+    if (locErr) {
+      notifyOnFail(locErr);
+      return;
+    }
     setUserData((prev) => ({
       ...prev,
-      shop_latitude: locationData.lat.toFixed(6),
-      shop_longitude: locationData.lng.toFixed(6),
-      shop_google_coordinates: `${locationData.lat.toFixed(6)},${locationData.lng.toFixed(6)}`,
+      shop_latitude: lat.toFixed(6),
+      shop_longitude: lng.toFixed(6),
+      shop_google_coordinates: `${lat.toFixed(6)},${lng.toFixed(6)}`,
       shop_address: locationData.fullAddress || prev.shop_address,
       shop_city: locationData.city || prev.shop_city,
       shop_state: locationData.state || prev.shop_state,

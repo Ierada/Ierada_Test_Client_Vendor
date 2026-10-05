@@ -209,6 +209,8 @@ export function ListingPageHeader({
   skipBulkListing,
   onExitBulk,
   listingType,
+  leaveAction,
+  draftAction,
 }) {
   const name = sellerDisplayName(user);
   const initial = (name.charAt(0) || "S").toUpperCase();
@@ -239,6 +241,32 @@ export function ListingPageHeader({
           ) : null}
         </div>
         <div className="flex items-center gap-4 sm:gap-5">
+          {leaveAction?.onClick ? (
+            <button
+              type="button"
+              disabled={leaveAction.busy}
+              onClick={leaveAction.onClick}
+              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-white disabled:opacity-50"
+              style={
+                leaveAction.variant === "exit"
+                  ? { color: "#374151", border: "1.5px solid #E5E7EB" }
+                  : { color: "#B42318", border: "1.5px solid #FECDCA" }
+              }
+            >
+              {leaveAction.busy ? "…" : leaveAction.label || "Discard"}
+            </button>
+          ) : null}
+          {draftAction?.onClick ? (
+            <button
+              type="button"
+              disabled={draftAction.busy || draftAction.disabled}
+              onClick={draftAction.onClick}
+              className="px-3 py-1.5 rounded-lg text-[13px] font-semibold bg-white disabled:opacity-50"
+              style={{ color: ORANGE, border: `1.5px solid ${ORANGE}` }}
+            >
+              {draftAction.busy ? "…" : draftAction.label || "Save as Draft"}
+            </button>
+          ) : null}
           {bulkProgress ? (
             <div className="flex items-center gap-3 text-xs">
               <button type="button" className="text-primary-100 font-medium" onClick={skipBulkListing}>
@@ -1171,7 +1199,10 @@ export function ListingStickyFooter({
   discarding,
   isPublishedLive,
   showDraft,
+  showDiscard,
   onSaveDraft,
+  showExit = false,
+  onExit,
   onDiscard,
   phase,
   onPrimary,
@@ -1180,6 +1211,8 @@ export function ListingStickyFooter({
   primaryVariant,
   showBack,
   stats,
+  primaryDisabled = false,
+  draftDisabled = false,
 }) {
   const savedText =
     saveHint === "Ready"
@@ -1222,32 +1255,44 @@ export function ListingStickyFooter({
           <div className="flex-1 min-w-0" />
         )}
         <div className="flex items-center gap-3 flex-nowrap justify-end ml-auto shrink-0">
+          {showExit ? (
+            <button
+              type="button"
+              disabled={submitting || discarding}
+              onClick={onExit || onDiscard}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50 inline-flex items-center gap-2"
+              style={{ color: "#374151", border: "1.5px solid #E5E7EB" }}
+            >
+              {discarding ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Exit
+            </button>
+          ) : null}
+          {(showDiscard ?? showDraft) ? (
+            <button
+              type="button"
+              disabled={submitting || discarding}
+              onClick={onDiscard}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50 inline-flex items-center gap-2"
+              style={{ color: "#B42318", border: "1.5px solid #FECDCA" }}
+            >
+              {discarding ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Discard
+            </button>
+          ) : null}
           {showDraft ? (
-            <>
-              <button
-                type="button"
-                disabled={submitting || discarding}
-                onClick={onDiscard}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50 inline-flex items-center gap-2"
-                style={{ color: "#B42318", border: "1.5px solid #FECDCA" }}
-              >
-                {discarding ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                Discard Draft
-              </button>
-              <button
-                type="button"
-                disabled={submitting || discarding}
-                onClick={onSaveDraft}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50"
-                style={{ color: ORANGE, border: `1.5px solid ${ORANGE}` }}
-              >
-                Save as Draft
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={submitting || discarding || draftDisabled}
+              onClick={onSaveDraft}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50"
+              style={{ color: ORANGE, border: `1.5px solid ${ORANGE}` }}
+            >
+              Save as Draft
+            </button>
           ) : null}
           <button
             type="button"
-            disabled={aiGenerating || submitting || discarding}
+            disabled={aiGenerating || submitting || discarding || primaryDisabled}
             onClick={onPrimary}
             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
             style={{ backgroundColor: useNextStyle ? ORANGE : "#059669" }}

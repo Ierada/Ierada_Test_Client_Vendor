@@ -1004,7 +1004,7 @@ const Product = () => {
             </button>
             <button
               onClick={() =>
-                navigate(`${config.VITE_BASE_VENDOR_URL}/product/add?fresh=1`)
+                navigate(`${config.VITE_BASE_VENDOR_URL}/product/add`)
               }
               className="px-6 py-2.5 bg-button-gradient text-white rounded-lg font-medium hover:bg-orange-600 transition-colors w-full sm:w-auto self-start sm:self-center"
             >

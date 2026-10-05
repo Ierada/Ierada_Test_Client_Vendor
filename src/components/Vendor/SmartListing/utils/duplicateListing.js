@@ -1,5 +1,5 @@
 import { getProductById } from "../../../../services/api.product";
-import { newStableId, saveLocalDraft } from "./draftStorage";
+import { newStableId, saveLocalDraft, markAddDraftResume } from "./draftStorage";
 
 /**
  * Load a product and seed a Smart Listing local draft for "Duplicate listing".
@@ -62,11 +62,14 @@ export async function seedDuplicateListingDraft(productId, { mode = "vendor" } =
   };
 
   const stableId = newStableId(mode);
-  saveLocalDraft(stableId, {
+  const saved = saveLocalDraft(stableId, {
     payload,
     phase: "review",
     step: "brand",
     reviewSection: "product_info",
+    kind: "add",
   });
+  if (!saved) throw new Error("Could not save listing copy on this device");
+  markAddDraftResume(stableId);
   return stableId;
 }
