@@ -44,6 +44,21 @@ export function isBrandAuthReadyToContinue(state) {
 
 export function isBrandAuthApprovedForPublish(state) {
   if (state?.brandType !== "branded") return true;
-  if (findApprovedBrand(state?.approvedBrands, state?.brand)) return true;
-  return !!state?.brandAuthApproved && !!normalizeBrandName(state?.brand);
+  return !!findApprovedBrand(state?.approvedBrands, state?.brand);
+}
+
+/** This seller's listed product keeps its current brand. A different seller does not inherit it. */
+export function isSameListedBrand(state, saved) {
+  const live =
+    String(state?.listing_status || "").toLowerCase() === "published" ||
+    String(state?.visibility || "").toLowerCase() === "published";
+  if (!live || !saved) return false;
+  if (saved.vendor_id && state?.vendor_id && String(saved.vendor_id) !== String(state.vendor_id)) {
+    return false;
+  }
+  if (String(saved.brandType || "").toLowerCase() !== "branded") return false;
+  if (String(state?.brandType || "").toLowerCase() !== "branded") return false;
+  const loaded = brandNameKey(saved.brand);
+  const current = brandNameKey(state?.brand);
+  return !!loaded && loaded === current;
 }

@@ -130,6 +130,7 @@ import {
   findApprovedBrand,
   isBrandAuthReadyToContinue,
   isBrandAuthApprovedForPublish,
+  isSameListedBrand,
   safeBrandList,
 } from "../../../components/Vendor/SmartListing/utils/brandAuthHelpers";
 
@@ -702,6 +703,7 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     initialListingStableId({ mode, editProductId, freshStart, bulkMode }),
   );
   const savedListingRef = useRef(null);
+  const brandAuthVendorRef = useRef("");
   const [categories, setCategories] = useState([]);
   const [subCategories, setSubCategories] = useState([]);
   const [innerSubCategories, setInnerSubCategories] = useState([]);
@@ -989,6 +991,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
           return next;
         });
         savedListingRef.current = {
+          brand: hydrated.brand || "",
+          brandType: hydrated.brandType || "",
+          vendor_id: hydrated.vendor_id || "",
           category_id: String(hydrated.category_id || ""),
           sub_category_id: String(hydrated.sub_category_id || ""),
           inner_sub_category_id: String(hydrated.inner_sub_category_id || ""),
@@ -1018,8 +1023,20 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
   // Brand-auth approval status (publish gate)
   useEffect(() => {
     if (state.brandType !== "branded") return;
-    const vid = vendorId || state.vendor_id || user?.id;
+    const vid = String(vendorId || state.vendor_id || user?.id || "");
     if (!vid) return;
+    const vendorChanged = brandAuthVendorRef.current && brandAuthVendorRef.current !== vid;
+    brandAuthVendorRef.current = vid;
+    if (vendorChanged) {
+      setState((prev) => ({
+        ...prev,
+        approvedBrands: [],
+        pendingBrands: [],
+        brandAuthApproved: false,
+        brandAuthStatus: "none",
+        ...(prev.brandAuthMode === "approved" ? { brand: "", brandAuthMode: "" } : {}),
+      }));
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -2258,9 +2275,9 @@ export default function SmartListing({ mode = "vendor", vendorId: vendorIdProp =
     // branded publish blocked client — need approved auth (server also enforces)
     if (
       !asDraft &&
-      !isPublishedLive &&
       state.brandType === "branded" &&
-      !isBrandAuthApprovedForPublish(state)
+      !isBrandAuthApprovedForPublish(state) &&
+      !isSameListedBrand(state, savedListingRef.current)
     ) {
       const text =
         "This brand is not authorized yet for your account. Select an approved brand, or save as draft until Admin approves the new letter.";
