@@ -23,7 +23,9 @@ import {
   normalizeBrandName,
   safeBrandList,
 } from "./utils/brandAuthHelpers";
+import AuthorizedBrandSelect from "./utils/AuthorizedBrandSelect";
 import { notifyOnFail } from "../../../utils/notification/toast";
+import { sellerDisplayName } from "../../../utils/sellerName";
 import { resolveMediaUrl } from "./utils/listingMediaCache";
 import { StorefrontPreviewCard, BankSettlementSummary } from "./AiReviewStep";
 import PrimaryProductGallery from "./PrimaryProductGallery";
@@ -190,17 +192,6 @@ const CUSTOM_VARIATION_TIPS = [
   "Keep SKUs unique for each custom combination",
   "Set accurate stock so orders do not oversell",
 ];
-
-function sellerDisplayName(user) {
-  return (
-    [user?.firstName || user?.first_name, user?.lastName || user?.last_name]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    user?.name ||
-    "Seller"
-  );
-}
 
 function sellerIdLabel(user) {
   const raw = user?.vendor_code || user?.seller_id || user?.id;
@@ -822,7 +813,7 @@ export default function SmartListingSetupForm({
               Brand Authorization / Approval (Required)
             </p>
             <p className="text-[12px] text-slate-400">
-              Already authorized brands for this seller can be selected and listed again. A new brand needs a new letter. Another seller must authorize the same brand separately.
+              Already authorized brands for you can be selected and listed again. A new brand needs a new authorization.
             </p>
             <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-3 pt-1">
               <div className="space-y-2.5">
@@ -862,25 +853,15 @@ export default function SmartListingSetupForm({
                       {approvedBrands.length ? (
                         <label className="block text-[12px] font-semibold" style={{ color: NAVY }}>
                           Authorized brands
-                          <select
-                            className="mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[13px] font-normal text-slate-700"
+                          <AuthorizedBrandSelect
                             value={selectValue}
-                            onChange={(e) => onBrandChoice(e.target.value)}
-                          >
-                            <option value="">Select an authorized brand</option>
-                            {approvedBrands.map((b) => (
-                              <option key={`${b.id || b.name}-${b.name}`} value={b.name}>
-                                {b.name}
-                              </option>
-                            ))}
-                            <option value={NEW_BRAND_AUTH_VALUE}>
-                              Request authorization for a new brand
-                            </option>
-                          </select>
+                            brands={approvedBrands}
+                            onChange={onBrandChoice}
+                          />
                         </label>
                       ) : (
                         <p className="text-[12px] text-slate-500">
-                          No authorized brands yet for this seller. Enter the brand and upload a letter.
+                          You don&apos;t have an authorized brand yet. Enter the brand name and upload a letter.
                         </p>
                       )}
                       {selectedApproved && !showNewBrandForm ? (
@@ -1191,9 +1172,6 @@ export function ListingStickyFooter({
   isPublishedLive,
   showDraft,
   onSaveDraft,
-  onSave,
-  saveLabel = "Save",
-  showExit = false,
   onDiscard,
   phase,
   onPrimary,
@@ -1244,28 +1222,7 @@ export function ListingStickyFooter({
           <div className="flex-1 min-w-0" />
         )}
         <div className="flex items-center gap-3 flex-nowrap justify-end ml-auto shrink-0">
-          {showExit ? (
-            <>
-              <button
-                type="button"
-                disabled={submitting || discarding}
-                onClick={onDiscard}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white disabled:opacity-50 inline-flex items-center gap-2"
-                style={{ color: "#B42318", border: "1.5px solid #FECDCA" }}
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                disabled={aiGenerating || submitting || discarding}
-                onClick={onSave}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                style={{ backgroundColor: "#059669" }}
-              >
-                {submitting ? "Saving…" : saveLabel}
-              </button>
-            </>
-          ) : showDraft ? (
+          {showDraft ? (
             <>
               <button
                 type="button"

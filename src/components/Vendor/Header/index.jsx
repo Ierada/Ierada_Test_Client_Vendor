@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAppContext } from "../../../context/AppContext";
 import { getNotificationPreview } from "../../../services/api.notification";
+import { sellerDisplayName } from "../../../utils/sellerName";
 import "react-datepicker/dist/react-datepicker.css";
 
 const greetingForHour = (hour) => {
@@ -21,13 +22,7 @@ const greetingForHour = (hour) => {
   return "Good evening";
 };
 
-const shopLabel = (user) =>
-  user?.shopName ||
-  user?.shop_name ||
-  user?.brand_name ||
-  user?.shop ||
-  user?.name ||
-  "Selling Partner";
+const shopLabel = (user) => sellerDisplayName(user);
 
 const initialsOf = (name) => {
   const parts = String(name || "")

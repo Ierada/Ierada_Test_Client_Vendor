@@ -1,14 +1,9 @@
 import React from "react";
 import { LogOut } from "lucide-react";
+import { sellerDisplayName } from "../../../utils/sellerName";
 
 const UserProfile = ({ user, onLogout, expanded = true }) => {
-  const fullName =
-    [user?.firstName || user?.first_name, user?.lastName || user?.last_name]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    user?.name ||
-    "Selling Partner";
+  const fullName = sellerDisplayName(user);
 
   if (!expanded) {
     return (
