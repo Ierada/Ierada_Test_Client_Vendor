@@ -20,6 +20,7 @@ const AddEditProduct     = lazy(() => import("../pages/Vendor/AddProduct"));
 const SmartListing       = lazy(() => import("../pages/Vendor/SmartListing"));
 const Setting            = lazy(() => import("../pages/Vendor/Setting"));
 const Order              = lazy(() => import("../pages/Vendor/Order"));
+const PackagingShop      = lazy(() => import("../pages/Vendor/Packaging"));
 const OrdersHub          = lazy(() => import("../pages/Vendor/Order/OrdersHub.jsx"));
 const OrderPipeline      = lazy(() => import("../pages/Vendor/Order/OrderPipeline.jsx"));
 const SelfShip           = lazy(() => import("../pages/Vendor/Order/SelfShip.jsx"));
@@ -189,6 +190,7 @@ const VendorRoutes = () => {
         { path: "/settings", element: <Suspense fallback={<PageLoader />}><Setting /></Suspense> },
         { path: "/pickup-verification", element: <Suspense fallback={<PageLoader />}><PickupVerification /></Suspense> },
         { path: "/orders", element: <Suspense fallback={<PageLoader />}><OrdersHub /></Suspense> },
+        { path: "/packaging", element: <Suspense fallback={<PageLoader />}><PackagingShop /></Suspense> },
         { path: "/orders/list", element: <Suspense fallback={<PageLoader />}><Order /></Suspense> },
         { path: "/orders/pipeline", element: <Suspense fallback={<PageLoader />}><OrderPipeline /></Suspense> },
         { path: "/orders/self-ship", element: <Suspense fallback={<PageLoader />}><SelfShip /></Suspense> },

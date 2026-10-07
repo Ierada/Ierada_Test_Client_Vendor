@@ -7,6 +7,7 @@ import {
   HelpCircle,
   Zap,
   Package,
+  Box,
   RotateCcw,
   Bell,
   Wallet,
@@ -43,6 +44,7 @@ export const vendorMenuConfig = {
       ],
     },
     { text: "Products", icon: ShoppingCart, path: "/product", sectionPrefixes: ["/product", "/bulk-upload"] },
+    { text: "Packaging", icon: Box, path: "/packaging" },
     {
       text: "Payments",
       icon: Wallet,
