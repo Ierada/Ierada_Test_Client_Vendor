@@ -74,6 +74,7 @@ export default function PackagingShop() {
   const [loading, setLoading] = useState(true);
   const [gateways, setGateways] = useState({ razorpay: false, payu: false });
   const [gateway, setGateway] = useState("");
+  const [payOpen, setPayOpen] = useState(false);
   const [params, setParams] = useSearchParams();
 
   const loadShop = () => {
@@ -82,15 +83,7 @@ export default function PackagingShop() {
       .then((body) => {
         setItems(body.items || []);
         setGateways(body.gateways || { razorpay: false, payu: false });
-        setGateway((current) => {
-          if (current) return current;
-          if (body.gateways?.razorpay) return "razorpay";
-          if (body.gateways?.payu) return "payu";
-          return "";
-        });
-        if (body.address) {
-          setAddress((prev) => (prev.line ? prev : { ...emptyAddress, ...body.address }));
-        }
+        if (body.address) setAddress({ ...emptyAddress, ...body.address });
       })
       .catch((err) => notifyOnFail(err.message))
       .finally(() => setLoading(false));
@@ -143,6 +136,7 @@ export default function PackagingShop() {
       if (found) return prev.map((row) => (row.id === item.id ? { ...row, qty: nextQty } : row));
       return [...prev, { ...item, qty: item.min_qty }];
     });
+    notifyOnSuccess("Added to cart");
   };
 
   const total = useMemo(() => cart.reduce((sum, row) => {
@@ -150,27 +144,46 @@ export default function PackagingShop() {
     return sum + base + (base * row.gst_percent) / 100;
   }, 0), [cart]);
 
+  const addressReady = Boolean(address.name && address.phone && address.line && address.city && address.state && address.zip);
+
+  const openPay = () => {
+    if (!cart.length) {
+      notifyOnFail("Your packaging cart is empty");
+      return;
+    }
+    if (!addressReady) {
+      notifyOnFail("Your saved shop address is incomplete. Update it in your profile before paying.");
+      return;
+    }
+    if (!gateways.razorpay && !gateways.payu) {
+      notifyOnFail("Payment is not available right now");
+      return;
+    }
+    setGateway("");
+    setPayOpen(true);
+  };
+
   const pay = async () => {
     if (!cart.length) {
       notifyOnFail("Your packaging cart is empty");
       return;
     }
-    if (!address.name || !address.phone || !address.line || !address.city || !address.state || !address.zip) {
-      notifyOnFail("Enter the full delivery address");
+    if (!addressReady) {
+      notifyOnFail("Your saved shop address is incomplete. Update it in your profile before paying.");
+      return;
+    }
+    if (!gateway) {
+      notifyOnFail("Choose Razorpay or PayU");
       return;
     }
     setPaying(true);
     try {
-      if (!gateway) {
-        notifyOnFail("Choose Razorpay or PayU");
-        setPaying(false);
-        return;
-      }
       const session = await packagingCheckout({
         items: cart.map((row) => ({ material_id: row.id, qty: row.qty })),
         address,
         gateway,
       });
+      setPayOpen(false);
       if (session.gateway === "payu") {
         const form = document.createElement("form");
         form.method = "POST";
@@ -319,6 +332,7 @@ export default function PackagingShop() {
         </div>
       </div>
       {tab === "shop" ? (
+        <>
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <div>
             {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
@@ -350,27 +364,62 @@ export default function PackagingShop() {
               </div>
             ))}
             <p className="mt-3 text-sm font-medium">Total {money(total)}</p>
-            <p className="mt-3 text-xs text-gray-500">The server checks price, size, and stock again before charging.</p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" disabled={!gateways.razorpay} onClick={() => setGateway("razorpay")} className={`rounded-md border px-2 py-2 text-sm ${gateway === "razorpay" ? "border-[#F47954] bg-[#FFF1EC] text-[#F47954]" : "border-gray-200"} disabled:opacity-40`}>Razorpay</button>
-              <button type="button" disabled={!gateways.payu} onClick={() => setGateway("payu")} className={`rounded-md border px-2 py-2 text-sm ${gateway === "payu" ? "border-[#F47954] bg-[#FFF1EC] text-[#F47954]" : "border-gray-200"} disabled:opacity-40`}>PayU</button>
+            <div className="mt-3 rounded-lg bg-[#FFF8F6] px-3 py-2 text-sm text-gray-700">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#F47954]">Deliver to</p>
+              {loading && !address.name && !address.email ? (
+                <p className="mt-1">Loading your saved details…</p>
+              ) : address.name || address.email ? (
+                <>
+                  <p className="mt-1 font-medium text-gray-900">{address.name}</p>
+                  {address.email ? <p>{address.email}</p> : null}
+                  {address.phone ? <p>{address.phone}</p> : null}
+                  <p>{[address.line, address.city, address.state, address.zip].filter(Boolean).join(", ") || "Address is not saved on this account."}</p>
+                </>
+              ) : (
+                <p className="mt-1">No saved address on this account yet.</p>
+              )}
             </div>
-            <div className="mt-3 grid gap-2">
-              {["name", "phone", "line", "city", "state", "zip"].map((key) => (
-                <input
-                  key={key}
-                  className={inputClass}
-                  placeholder={key === "line" ? "Street address" : key === "zip" ? "PIN code" : key[0].toUpperCase() + key.slice(1)}
-                  value={address[key] || ""}
-                  onChange={(e) => setAddress({ ...address, [key]: e.target.value })}
-                />
-              ))}
-            </div>
-            <button type="button" disabled={paying} className="mt-3 w-full rounded-md bg-[#F47954] py-2 text-sm text-white disabled:opacity-60" onClick={pay}>
-              {paying ? "Waiting for payment…" : "Pay now"}
+            <button type="button" disabled={paying} className="mt-3 w-full rounded-md bg-[#F47954] py-2.5 text-sm font-medium text-white disabled:opacity-60" onClick={openPay}>
+              Pay now
             </button>
           </aside>
         </div>
+        {payOpen ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#F47954]">Ierada packaging</p>
+              <h2 className="text-lg font-semibold text-gray-900">Choose payment method</h2>
+              <p className="mt-1 text-sm text-gray-500">Total {money(total)}. UPI, cards, and net banking.</p>
+              <div className="mt-4 grid gap-2">
+                {gateways.razorpay ? (
+                  <button type="button" onClick={() => setGateway("razorpay")} className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left ${gateway === "razorpay" ? "border-[#F47954] bg-[#FFF1EC]" : "border-gray-200"}`}>
+                    <span className={`h-4 w-4 rounded-full border-2 ${gateway === "razorpay" ? "border-[#F47954] bg-[#F47954] shadow-[inset_0_0_0_3px_white]" : "border-gray-300"}`} />
+                    <span>
+                      <span className="block text-sm font-semibold">Razorpay</span>
+                      <span className="block text-xs text-gray-500">UPI, cards, and net banking</span>
+                    </span>
+                  </button>
+                ) : null}
+                {gateways.payu ? (
+                  <button type="button" onClick={() => setGateway("payu")} className={`flex items-center gap-3 rounded-xl border px-3 py-3 text-left ${gateway === "payu" ? "border-[#F47954] bg-[#FFF1EC]" : "border-gray-200"}`}>
+                    <span className={`h-4 w-4 rounded-full border-2 ${gateway === "payu" ? "border-[#F47954] bg-[#F47954] shadow-[inset_0_0_0_3px_white]" : "border-gray-300"}`} />
+                    <span>
+                      <span className="block text-sm font-semibold">PayU</span>
+                      <span className="block text-xs text-gray-500">UPI, cards, and net banking</span>
+                    </span>
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" className="rounded-md px-3 py-2 text-sm" onClick={() => setPayOpen(false)} disabled={paying}>Cancel</button>
+                <button type="button" disabled={!gateway || paying} className="rounded-md bg-[#F47954] px-4 py-2 text-sm font-medium text-white disabled:opacity-60" onClick={pay}>
+                  {paying ? "Opening payment…" : "Continue"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        </>
       ) : (
         <div className="grid gap-3">
           {orders.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">No packaging orders yet. An order appears only after payment.</div> : null}
@@ -417,9 +466,15 @@ export default function PackagingShop() {
               <div className="mt-4 grid gap-2">
                 <h3 className="font-medium">Ask a question</h3>
                 <p className="text-xs text-gray-500">This does not return the order or refund it.</p>
-                <input className={inputClass} placeholder="Subject" value={query.subject} onChange={(e) => setQuery({ ...query, subject: e.target.value })} />
-                <textarea className={inputClass} placeholder="Message" value={query.message} onChange={(e) => setQuery({ ...query, message: e.target.value })} />
-                <input className={inputClass} type="file" accept="image/*" onChange={(e) => setQuery({ ...query, file: e.target.files?.[0] || null })} />
+                <label className="block text-xs font-semibold text-gray-600">Subject
+                  <input className={`${inputClass} mt-1`} placeholder="Damaged pack" value={query.subject} onChange={(e) => setQuery({ ...query, subject: e.target.value })} />
+                </label>
+                <label className="block text-xs font-semibold text-gray-600">Message
+                  <textarea className={`${inputClass} mt-1`} placeholder="What should we look at?" value={query.message} onChange={(e) => setQuery({ ...query, message: e.target.value })} />
+                </label>
+                <label className="block text-xs font-semibold text-gray-600">Photo, optional
+                  <input className={`${inputClass} mt-1`} type="file" accept="image/*" onChange={(e) => setQuery({ ...query, file: e.target.files?.[0] || null })} />
+                </label>
                 <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={sendQuery}>Send query</button>
               </div>
             ) : null}

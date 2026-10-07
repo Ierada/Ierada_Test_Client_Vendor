@@ -14,11 +14,17 @@ function messageFrom(error, fallback) {
   return error?.response?.data?.message || error?.message || fallback;
 }
 
+function raise(error, fallback) {
+  const err = new Error(messageFrom(error, fallback));
+  err.refunded = Boolean(error?.refunded || error?.response?.data?.refunded);
+  throw err;
+}
+
 export async function packagingShop() {
   try {
     return unwrap(await apiClient.get("/packaging/shop"));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not load packaging"));
+    raise(error, "Could not load packaging");
   }
 }
 
@@ -26,7 +32,7 @@ export async function packagingCheckout(payload) {
   try {
     return unwrap(await apiClient.post("/packaging/checkout", payload));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not start payment"));
+    raise(error, "Could not start payment");
   }
 }
 
@@ -34,7 +40,7 @@ export async function packagingVerify(payload) {
   try {
     return unwrap(await apiClient.post("/packaging/verify", payload));
   } catch (error) {
-    throw new Error(messageFrom(error, "Payment could not be confirmed"));
+    raise(error, "Payment could not be confirmed");
   }
 }
 
@@ -42,7 +48,7 @@ export async function packagingOrders() {
   try {
     return unwrap(await apiClient.get("/packaging/orders"));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not load your packaging orders"));
+    raise(error, "Could not load your packaging orders");
   }
 }
 
@@ -50,7 +56,7 @@ export async function packagingOrder(id) {
   try {
     return unwrap(await apiClient.get(`/packaging/orders/${id}`));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not load that packaging order"));
+    raise(error, "Could not load that packaging order");
   }
 }
 
@@ -58,7 +64,7 @@ export async function packagingReceived(id) {
   try {
     return unwrap(await apiClient.post(`/packaging/orders/${id}/received`));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not mark this order received"));
+    raise(error, "Could not mark this order received");
   }
 }
 
@@ -66,7 +72,7 @@ export async function packagingQuery(id, form) {
   try {
     return unwrap(await apiClient.post(`/packaging/orders/${id}/query`, form));
   } catch (error) {
-    throw new Error(messageFrom(error, "Could not send that query"));
+    raise(error, "Could not send that query");
   }
 }
 
