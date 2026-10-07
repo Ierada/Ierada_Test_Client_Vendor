@@ -70,6 +70,12 @@ export async function packagingQuery(id, form) {
   }
 }
 
+export function packagingImageSrc(file) {
+  if (!file) return "";
+  const base = String(import.meta.env.VITE_API_URL || "").replace(/\/?$/, "/");
+  return `${base}assets/packaging/${encodeURIComponent(file)}`;
+}
+
 export async function packagingPhotoUrl(file) {
   if (!file) return "";
   const res = await apiClient.get(`/packaging/media/${encodeURIComponent(file)}`, { responseType: "blob" });

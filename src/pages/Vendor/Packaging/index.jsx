@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   packagingCheckout,
   packagingOrder,
   packagingOrders,
+  packagingImageSrc,
   packagingPhotoUrl,
   packagingQuery,
   packagingReceived,
@@ -22,23 +23,30 @@ function money(value) {
 
 function Thumb({ file }) {
   const [src, setSrc] = useState("");
+  const [blob, setBlob] = useState("");
+  const tried = useRef(false);
   useEffect(() => {
-    if (!file) return undefined;
-    let url = "";
-    let dead = false;
-    packagingPhotoUrl(file)
-      .then((next) => {
-        url = next;
-        if (!dead) setSrc(next);
-      })
-      .catch(() => {});
-    return () => {
-      dead = true;
-      if (url) URL.revokeObjectURL(url);
-    };
+    tried.current = false;
+    setSrc(packagingImageSrc(file));
+    setBlob("");
   }, [file]);
-  if (!src) return <div className="h-28 w-full rounded bg-gray-100" />;
-  return <img src={src} alt="" className="h-28 w-full rounded object-cover" />;
+  useEffect(() => () => { if (blob) URL.revokeObjectURL(blob); }, [blob]);
+  if (!file || !src) return <div className="h-24 w-full bg-[#FFF1EC]" />;
+  return (
+    <img
+      src={src}
+      alt=""
+      className="h-24 w-full object-cover"
+      onError={() => {
+        if (tried.current || !file) {
+          setSrc("");
+          return;
+        }
+        tried.current = true;
+        packagingPhotoUrl(file).then((next) => { setBlob(next); setSrc(next); }).catch(() => setSrc(""));
+      }}
+    />
+  );
 }
 
 function loadRazorpay() {
@@ -125,6 +133,10 @@ export default function PackagingShop() {
     }
     if (nextQty % item.min_qty !== 0) {
       notifyOnFail(`Order in packs of ${item.min_qty}`);
+      return;
+    }
+    if (item.max_qty && nextQty > Number(item.max_qty)) {
+      notifyOnFail(`Maximum quantity is ${item.max_qty}`);
       return;
     }
     setCart((prev) => {
@@ -264,11 +276,24 @@ export default function PackagingShop() {
     const next = [];
     open.items.forEach((line) => {
       const live = items.find((item) => item.id === line.material_id);
+      const qty = Number(line.qty);
       if (!live || !live.is_active) {
         notifyOnWarning(`${line.name} is not available now`);
         return;
       }
-      next.push({ ...live, qty: line.qty });
+      if (!Number.isInteger(qty) || qty < Number(live.min_qty) || qty % Number(live.min_qty) !== 0) {
+        notifyOnWarning(`${line.name} no longer matches the minimum order`);
+        return;
+      }
+      if (live.max_qty && qty > Number(live.max_qty)) {
+        notifyOnWarning(`${line.name} is above the maximum order of ${live.max_qty}`);
+        return;
+      }
+      if (qty > Number(live.stock)) {
+        notifyOnWarning(`${line.name} does not have enough stock`);
+        return;
+      }
+      next.push({ ...live, qty });
     });
     if (!next.length) {
       notifyOnFail("None of those items can be ordered again");
@@ -298,18 +323,18 @@ export default function PackagingShop() {
           <div>
             {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
             {!loading && items.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-gray-500">No packaging is available right now.</div> : null}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
               {items.map((item) => (
-                <article key={item.id} className="overflow-hidden rounded-2xl border border-[#F6D2C6] bg-white shadow-sm">
+                <article key={item.id} className="flex flex-col overflow-hidden rounded-xl border border-[#F6D2C6] bg-white shadow-sm">
                   <div className="h-1 bg-[#F47954]" />
-                  <div className="p-3">
                   <Thumb file={item.thumbnail} />
-                  <h2 className="mt-2 font-medium">{item.name}</h2>
-                  <p className="text-sm text-gray-500">{item.size_label}</p>
-                  <p className="text-sm">{money(item.unit_price)} + {item.gst_percent}% GST</p>
-                  <p className="text-xs text-gray-500">{item.length_cm} × {item.breadth_cm} × {item.height_cm} cm</p>
-                  <p className="text-xs text-gray-500">Pack of {item.min_qty} · stock {item.stock}</p>
-                  <button type="button" className="mt-2 rounded-md bg-[#F47954] px-3 py-1.5 text-sm text-white" onClick={() => add(item)}>Add pack</button>
+                  <div className="flex flex-1 flex-col p-2.5">
+                    <h2 className="text-sm font-medium leading-tight text-gray-900">{item.name}</h2>
+                    <p className="text-xs text-gray-500">{item.size_label}</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">{money(item.unit_price)}</p>
+                    <p className="text-[11px] text-gray-500">{item.length_cm} × {item.breadth_cm} × {item.height_cm} cm</p>
+                    <p className="text-[11px] text-gray-500">Min {item.min_qty}{item.max_qty ? ` · max ${item.max_qty}` : ""} · stock {item.stock}</p>
+                    <button type="button" className="mt-3 w-full rounded-md bg-[#F47954] py-2 text-sm font-medium text-white" onClick={() => add(item)}>Add to cart</button>
                   </div>
                 </article>
               ))}
@@ -324,7 +349,7 @@ export default function PackagingShop() {
                 <button type="button" className="text-xs text-red-600" onClick={() => setCart(cart.filter((item) => item.id !== row.id))}>Remove</button>
               </div>
             ))}
-            <p className="mt-3 text-sm font-medium">About {money(total)} including GST</p>
+            <p className="mt-3 text-sm font-medium">Total {money(total)}</p>
             <p className="mt-3 text-xs text-gray-500">The server checks price, size, and stock again before charging.</p>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button type="button" disabled={!gateways.razorpay} onClick={() => setGateway("razorpay")} className={`rounded-md border px-2 py-2 text-sm ${gateway === "razorpay" ? "border-[#F47954] bg-[#FFF1EC] text-[#F47954]" : "border-gray-200"} disabled:opacity-40`}>Razorpay</button>
