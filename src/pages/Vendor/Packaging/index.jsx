@@ -346,7 +346,7 @@ export default function PackagingShop() {
                     <h2 className="text-sm font-medium leading-tight text-gray-900">{item.name}</h2>
                     <p className="text-xs text-gray-500">{item.size_label}</p>
                     <p className="mt-1 text-sm font-semibold text-gray-900">{money(item.unit_price)}</p>
-                    <p className="text-[11px] text-gray-500">{item.length_cm} × {item.breadth_cm} × {item.height_cm} cm</p>
+                    <p className="text-[11px] text-gray-500">{item.length_cm} × {item.breadth_cm}{Number(item.height_cm) > 0 ? ` × ${item.height_cm}` : ""} cm</p>
                     <p className="text-[11px] text-gray-500">Min {item.min_qty}{item.max_qty ? ` · max ${item.max_qty}` : ""} · stock {item.stock}</p>
                     <button type="button" className="mt-3 w-full rounded-md bg-[#F47954] py-2 text-sm font-medium text-white" onClick={() => add(item)}>Add to cart</button>
                   </div>
@@ -449,7 +449,7 @@ export default function PackagingShop() {
             {open.cancel_note ? <p className="mt-2 text-sm text-red-700">Cancelled: {open.cancel_note}. Payment refunded.</p> : null}
             {open.tracking_number ? <p className="mt-2 text-sm">{open.courier_name} · {open.tracking_number} · {open.dispatch_date || ""}</p> : null}
             <ul className="mt-3 space-y-1 text-sm">
-              {(open.items || []).map((item) => <li key={item.line_code || item.sku}>{item.line_code ? `${item.line_code} · ` : ""}{item.name} ({item.size_label}) {item.length_cm}×{item.breadth_cm}×{item.height_cm} cm × {item.qty}</li>)}
+              {(open.items || []).map((item) => <li key={item.line_code || item.sku}>{item.line_code ? `${item.line_code} · ` : ""}{item.name} ({item.size_label}) {item.length_cm}×{item.breadth_cm}{Number(item.height_cm) > 0 ? `×${item.height_cm}` : ""} cm × {item.qty}</li>)}
             </ul>
             <div className="mt-4 flex flex-wrap gap-2">
               <button type="button" className="rounded-md border px-3 py-2 text-sm" onClick={reorder}>Reorder</button>
