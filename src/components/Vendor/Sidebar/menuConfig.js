@@ -5,16 +5,9 @@ import {
   Settings,
   ArrowLeftRight,
   HelpCircle,
-  Zap,
-  Package,
-  Box,
-  RotateCcw,
   Bell,
   Wallet,
-  FileText,
-  CreditCard,
-  ScrollText,
-  Percent,
+  Box,
 } from "lucide-react";
 import { BsHandbag } from "react-icons/bs";
 
@@ -26,22 +19,7 @@ export const vendorMenuConfig = {
       text: "Orders",
       icon: BsHandbag,
       path: "/orders",
-      subItems: [
-        { text: "All Orders", icon: Package, path: "/orders/list" },
-        { text: "Order Pipeline", icon: Zap, path: "/orders/pipeline" },
-        {
-          text: "Self Ship",
-          icon: Package,
-          path: "/orders/self-ship",
-          badgeColor: "bg-[#FF6012]",
-        },
-        {
-          text: "Returns & RTO",
-          icon: RotateCcw,
-          path: "/orders/returns",
-          badgeColor: "bg-[#F04438]",
-        },
-      ],
+      sectionPrefixes: ["/orders"],
     },
     { text: "Products", icon: ShoppingCart, path: "/product", sectionPrefixes: ["/product", "/bulk-upload"] },
     { text: "Packaging", icon: Box, path: "/packaging" },
@@ -49,30 +27,7 @@ export const vendorMenuConfig = {
       text: "Payments",
       icon: Wallet,
       path: "/payments",
-      subItems: [
-        { text: "Overview", icon: LayoutDashboard, path: "/payments/overview" },
-        {
-          text: "Settlements",
-          icon: ScrollText,
-          path: "/payments/settlements",
-        },
-        {
-          text: "Transactions",
-          icon: CreditCard,
-          path: "/payments/transactions",
-          badgeColor: "bg-[#FF6012]",
-        },
-        {
-          text: "Payment Advice",
-          icon: FileText,
-          path: "/payments/payment-advice",
-        },
-        {
-          text: "GST & Tax Center",
-          icon: Percent,
-          path: "/payments/gst-center",
-        },
-      ],
+      sectionPrefixes: ["/payments"],
     },
     { text: "Report", icon: ArrowLeftRight, path: "/report" },
     { text: "Support", icon: HelpCircle, path: "/support" },

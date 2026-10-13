@@ -11,6 +11,10 @@ const OrdersHub = () => {
   const counts = useSidebarCounts(user);
   const items = filterVendorOrderItems(VENDOR_ORDERS_SECTION_ITEMS, {
     selfShipEnabled: counts.selfShipEnabled,
+  }).map((item) => {
+    if (item.path === "/orders/self-ship") return { ...item, badge: counts.selfShip };
+    if (item.path === "/orders/returns") return { ...item, badge: counts.returns };
+    return item;
   });
 
   return (

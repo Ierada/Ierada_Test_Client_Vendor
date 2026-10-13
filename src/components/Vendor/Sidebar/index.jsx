@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAppContext } from "../../../context/AppContext";
 import LogoutModal from "../LogoutModal";
 import { useSidebarCounts } from "./useSidebarCounts";
@@ -16,21 +16,12 @@ const VendorSidebar = ({ sidebarOpen, setSidebarOpen, expanded = true }) => {
   const { user } = useAppContext();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const sidebarRef = useRef(null);
-  const [openSubMenus, setOpenSubMenus] = useState({ Orders: false });
+  const [openSubMenus, setOpenSubMenus] = useState({});
   const [hoveredSubMenu, setHoveredSubMenu] = useState(null);
 
   const counts = useSidebarCounts(user);
 
-  const menuItems = useMemo(() => {
-    if (counts.selfShipEnabled) return vendorMenuConfig.mainMenuItems;
-    return vendorMenuConfig.mainMenuItems.map((item) => {
-      if (item.text !== "Orders" || !item.subItems) return item;
-      return {
-        ...item,
-        subItems: item.subItems.filter((s) => s.text !== "Self Ship"),
-      };
-    });
-  }, [counts.selfShipEnabled]);
+  const menuItems = vendorMenuConfig.mainMenuItems;
 
   useEffect(() => {
     const scroll = localStorage.getItem(SCROLL_POSITION_KEY);

@@ -217,12 +217,11 @@ const Settlements = () => {
           "Period End": s.settlement_period_end ? new Date(s.settlement_period_end).toLocaleDateString("en-IN") : "—",
           "Settlement Cycle": s.settlement_cycle || "—",
           "Orders": s.orders_count || 0,
-          "Order Value (₹)": parseFloat(s.order_value) || 0,
-          "Commission (₹)": parseFloat(s.commission) || 0,
-          "GST (₹)": parseFloat(s.gst) || 0,
+          "Selling Value (₹)": parseFloat(s.order_value) || 0,
+          "Inclusive GST (₹)": parseFloat(s.gst) || 0,
           "TDS (₹)": parseFloat(s.tds) || 0,
           "Adjustments (₹)": parseFloat(s.adjustments) || 0,
-          "Net Payable (₹)": parseFloat(s.net_payable) || 0,
+          "Bank Settlement (₹)": parseFloat(s.net_payable) || 0,
           "Status": s.status,
           "UTR Number": s.utr_number || "—",
           "Bank Name": s.bank_name || "—",
@@ -407,11 +406,10 @@ const Settlements = () => {
                       <th className="py-2.5 px-4">Settlement Period</th>
                       <th className="py-2.5 px-4">Cycle ID</th>
                       <th className="py-2.5 px-4 text-right">Orders</th>
-                      <th className="py-2.5 px-4 text-right">Gross Sales (₹)</th>
-                      <th className="py-2.5 px-4 text-right">Commission (₹)</th>
-                      <th className="py-2.5 px-4 text-right">GST (₹)</th>
+                      <th className="py-2.5 px-4 text-right">Selling Value (₹)</th>
+                      <th className="py-2.5 px-4 text-right">Inclusive GST (₹)</th>
                       <th className="py-2.5 px-4 text-right">TDS (₹)</th>
-                      <th className="py-2.5 px-4 text-right">Net Payable (₹)</th>
+                      <th className="py-2.5 px-4 text-right">Bank Settlement (₹)</th>
                       <th className="py-2.5 px-4">Status</th>
                       <th className="py-2.5 px-4">UTR No.</th>
                       <th className="py-2.5 px-4 text-right">Action</th>
@@ -420,7 +418,7 @@ const Settlements = () => {
                   <tbody>
                     {settlements.length === 0 ? (
                       <tr>
-                        <td colSpan={13} className="py-12 text-center">
+                        <td colSpan={12} className="py-12 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <Wallet className="w-12 h-12 text-gray-300 mb-3" />
                             <p className="text-gray-500 font-medium">No settlements to show</p>
@@ -451,10 +449,9 @@ const Settlements = () => {
                         <td className="py-2.5 px-4 text-gray-500">{s.settlement_cycle || "—"}</td>
                         <td className="py-2.5 px-4 text-right text-gray-700">{s.orders_count || 0}</td>
                         <td className="py-2.5 px-4 text-right text-gray-700">{parseFloat(s.order_value).toLocaleString("en-IN")}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">{parseFloat(s.commission).toLocaleString("en-IN")}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">{parseFloat(s.gst).toLocaleString("en-IN")}</td>
-                        <td className="py-2.5 px-4 text-right text-gray-700">{parseFloat(s.tds).toLocaleString("en-IN")}</td>
-                        <td className="py-2.5 px-4 text-right font-medium text-gray-900">{parseFloat(s.net_payable).toLocaleString("en-IN")}</td>
+                        <td className="py-2.5 px-4 text-right text-red-500">-{parseFloat(s.gst || 0).toLocaleString("en-IN")}</td>
+                        <td className="py-2.5 px-4 text-right text-red-500">-{parseFloat(s.tds || 0).toLocaleString("en-IN")}</td>
+                        <td className="py-2.5 px-4 text-right font-medium text-green-600">{parseFloat(s.net_payable).toLocaleString("en-IN")}</td>
                         <td className="py-2.5 px-4"><StatusPill status={s.status} /></td>
                         <td className="py-2.5 px-4 text-gray-500">{s.utr_number || "—"}</td>
                         <td className="py-2.5 px-4 text-right">
@@ -476,7 +473,6 @@ const Settlements = () => {
                     <tr className="bg-gray-50 font-semibold text-gray-800">
                       <td className="py-3 px-4" colSpan={5}>Total Summary</td>
                       <td className="py-3 px-4 text-right">{parseFloat(totals.total_order_value || 0).toLocaleString("en-IN")}</td>
-                      <td className="py-3 px-4 text-right">{parseFloat(totals.total_commission || 0).toLocaleString("en-IN")}</td>
                       <td className="py-3 px-4 text-right">{parseFloat(totals.total_gst || 0).toLocaleString("en-IN")}</td>
                       <td className="py-3 px-4 text-right">{parseFloat(totals.total_tds || 0).toLocaleString("en-IN")}</td>
                       <td className="py-3 px-4 text-right">{parseFloat(totals.total_net_payable || 0).toLocaleString("en-IN")}</td>
@@ -590,15 +586,11 @@ const Settlements = () => {
                       <dd className="text-gray-800 font-medium">{selectedSettlement.orders_count || 0}</dd>
                     </div>
                     <div className="flex items-center justify-between">
-                      <dt className="text-gray-400">Gross Sales</dt>
+                      <dt className="text-gray-400">Selling Value</dt>
                       <dd className="text-gray-800 font-medium">{currency(parseFloat(selectedSettlement.order_value))}</dd>
                     </div>
                     <div className="flex items-center justify-between">
-                      <dt className="text-gray-400">Commission</dt>
-                      <dd className="text-red-500 font-medium">- {currency(parseFloat(selectedSettlement.commission))}</dd>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <dt className="text-gray-400">GST</dt>
+                      <dt className="text-gray-400">Inclusive GST</dt>
                       <dd className="text-red-500 font-medium">- {currency(parseFloat(selectedSettlement.gst))}</dd>
                     </div>
                     <div className="flex items-center justify-between">
@@ -610,7 +602,7 @@ const Settlements = () => {
                       <dd className="text-gray-500 font-medium">{selectedSettlement.adjustments ? `- ${currency(parseFloat(selectedSettlement.adjustments))}` : "- ₹0"}</dd>
                     </div>
                     <div className="flex items-center justify-between pt-2 mt-1 border-t border-gray-100">
-                      <dt className="text-green-600 font-semibold">Net Payable</dt>
+                      <dt className="text-green-600 font-semibold">Bank Settlement</dt>
                       <dd className="text-green-600 font-semibold">{currency(parseFloat(selectedSettlement.net_payable))}</dd>
                     </div>
                   </dl>

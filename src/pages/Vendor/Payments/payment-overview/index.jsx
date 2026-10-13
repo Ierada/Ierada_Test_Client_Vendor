@@ -123,8 +123,8 @@ export default function PaymentsDashboard() {
     delivered: { value: 0, delta: "0%", up: true },
     rto: { value: 0, delta: "0%", up: false },
     returns: { value: 0, delta: "0%", up: false },
-    commission: { value: "₹0.00", delta: "0%", up: true },
     gst: { value: "₹0.00", delta: "0%", up: true },
+    tds: { value: "₹0.00", delta: "0%", up: true },
     netPayable: { value: "₹0.00", delta: "0%", up: true, highlight: true }
   };
 
@@ -261,9 +261,9 @@ export default function PaymentsDashboard() {
           <StatChip label="Delivered" value={statistics.delivered.value} delta={statistics.delivered.delta} up={statistics.delivered.up} icon={Truck} />
           <StatChip label="RTO" value={statistics.rto.value} delta={statistics.rto.delta} up={statistics.rto.up} icon={RotateCcw} />
           <StatChip label="Returns" value={statistics.returns.value} delta={statistics.returns.delta} up={statistics.returns.up} icon={RefreshCcw} />
-          <StatChip label="Commission" value={statistics.commission.value} delta={statistics.commission.delta} up={statistics.commission.up} icon={Percent} />
-          <StatChip label="GST Collected" value={statistics.gst.value} delta={statistics.gst.delta} up={statistics.gst.up} icon={Receipt} />
-          <StatChip label="Net Payable" value={statistics.netPayable.value} delta={statistics.netPayable.delta} up={statistics.netPayable.up} icon={Banknote} highlight={statistics.netPayable.highlight} />
+          <StatChip label="Inclusive GST" value={statistics.gst.value} delta={statistics.gst.delta} up={statistics.gst.up} icon={Receipt} />
+          <StatChip label="TDS (2%)" value={statistics.tds?.value || "₹0.00"} delta={statistics.tds?.delta} up={statistics.tds?.up} icon={Percent} />
+          <StatChip label="Bank Settlement" value={statistics.netPayable.value} delta={statistics.netPayable.delta} up={statistics.netPayable.up} icon={Banknote} highlight={statistics.netPayable.highlight} />
         </div>
 
         {/* Settlement journey */}
@@ -402,12 +402,11 @@ export default function PaymentsDashboard() {
                   <th className="py-2 px-3">ID</th>
                   <th className="py-2 px-3">Date</th>
                   <th className="py-2 px-3">Orders</th>
-                  <th className="py-2 px-3">Gross Sales</th>
-                  <th className="py-2 px-3">Commission</th>
-                  <th className="py-2 px-3">Tax &amp; GST</th>
+                  <th className="py-2 px-3">Selling Value</th>
+                  <th className="py-2 px-3">Inclusive GST</th>
                   <th className="py-2 px-3">TDS</th>
                   <th className="py-2 px-3">Adjustment</th>
-                  <th className="py-2 px-3">Net Payout</th>
+                  <th className="py-2 px-3">Bank Settlement</th>
                   <th className="py-2 px-3">Status</th>
                 </tr>
               </thead>
@@ -418,7 +417,6 @@ export default function PaymentsDashboard() {
                     <td className="py-2.5 px-3 text-xs text-gray-500">{s.date}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{s.orders}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{s.gross}</td>
-                    <td className="py-2.5 px-3 text-xs text-gray-500">{s.commission}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{s.tax}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{s.tds}</td>
                     <td className="py-2.5 px-3 text-xs text-red-500">{s.adj}</td>
@@ -478,11 +476,10 @@ export default function PaymentsDashboard() {
                   <th className="py-2 px-3">Date</th>
                   <th className="py-2 px-3">Product SKU</th>
                   <th className="py-2 px-3">Invoice No</th>
-                  <th className="py-2 px-3">Order Value</th>
-                  <th className="py-2 px-3">Commission</th>
-                  <th className="py-2 px-3">GST</th>
+                  <th className="py-2 px-3">Selling Value</th>
+                  <th className="py-2 px-3">Inclusive GST</th>
                   <th className="py-2 px-3">TDS</th>
-                  <th className="py-2 px-3">Net Payable</th>
+                  <th className="py-2 px-3">Bank Settlement</th>
                   <th className="py-2 px-3">Status</th>
                 </tr>
               </thead>
@@ -494,7 +491,6 @@ export default function PaymentsDashboard() {
                     <td className="py-2.5 px-3 text-xs text-gray-700">{o.sku}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{o.invoice}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{o.value}</td>
-                    <td className="py-2.5 px-3 text-xs text-gray-500">{o.commission}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{o.gst}</td>
                     <td className="py-2.5 px-3 text-xs text-gray-500">{o.tds}</td>
                     <td className="py-2.5 px-3 text-xs font-semibold text-gray-800">{o.net}</td>
