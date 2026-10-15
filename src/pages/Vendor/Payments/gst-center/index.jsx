@@ -235,9 +235,9 @@ const GstTaxCenter = () => {
   ] : [];
 
   const COMMISSION_CARDS = commissionReport ? [
-    { label: "Total Order Value", value: money(commissionReport.total_order_value), icon: Receipt, iconBg: "bg-blue-50", iconColor: "text-blue-600" },
-    { label: "Average Commission Rate", value: commissionReport.average_commission_rate, icon: Percent, iconBg: "bg-orange-50", iconColor: "text-orange-500" },
-    { label: "Total Commission", value: money(commissionReport.total_commission), icon: Landmark, iconBg: "bg-red-50", iconColor: "text-red-500" },
+    { label: "Selling Value", value: money(commissionReport.total_order_value), icon: Receipt, iconBg: "bg-blue-50", iconColor: "text-blue-600" },
+    { label: "Commission Rate", value: commissionReport.average_commission_rate || "0%", icon: Percent, iconBg: "bg-orange-50", iconColor: "text-orange-500" },
+    { label: "Bank Settlement", value: money(commissionReport.total_bank_settlement || 0), icon: Landmark, iconBg: "bg-green-50", iconColor: "text-green-600" },
     { label: "Total Orders", value: commissionReport.total_orders.toString(), icon: FileText, iconBg: "bg-green-50", iconColor: "text-green-600" },
   ] : [];
 
@@ -252,7 +252,7 @@ const GstTaxCenter = () => {
   const TABS = [
     { key: "gst", label: "GST Summary" },
     { key: "tds", label: "TDS Reports" },
-    { key: "commission", label: "Commission Report" },
+    { key: "commission", label: "Payout Report" },
   ];
 
   return (
@@ -538,9 +538,9 @@ const GstTaxCenter = () => {
         {activeTab === "commission" && (
           <section className="space-y-4">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">Commission Report</h2>
+              <h2 className="text-base font-semibold text-gray-900">Payout Report</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Breakdown of marketplace commission charges on your orders.
+                Bank settlement = selling price − inclusive GST − TDS 2%. No marketplace commission.
               </p>
             </div>
 
@@ -558,12 +558,12 @@ const GstTaxCenter = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <div className={`${card} p-4`}>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Commission Breakup by Category</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Payout by Category</h3>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className={TABLE_HEAD}>
                       <th className="py-2 px-2">Category</th>
-                      <th className="py-2 px-2 text-right">Order Value (₹)</th>
+                      <th className="py-2 px-2 text-right">Selling Value (₹)</th>
                       <th className="py-2 px-2 text-right">Commission Rate</th>
                       <th className="py-2 px-2 text-right">Commission (₹)</th>
                     </tr>
@@ -596,15 +596,15 @@ const GstTaxCenter = () => {
               </div>
 
               <div className={`${card} p-4`}>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Order Wise Commission</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Order Wise Bank Settlement</h3>
                 <table className="w-full text-sm">
                   <thead>
                     <tr className={TABLE_HEAD}>
                       <th className="py-2 px-2">Order ID</th>
                       <th className="py-2 px-2">Order Date</th>
-                      <th className="py-2 px-2 text-right">Order Value (₹)</th>
-                      <th className="py-2 px-2 text-right">Commission Rate</th>
-                      <th className="py-2 px-2 text-right">Commission (₹)</th>
+                      <th className="py-2 px-2 text-right">Selling Value (₹)</th>
+                      <th className="py-2 px-2 text-right">Inclusive GST</th>
+                      <th className="py-2 px-2 text-right">Bank Settlement (₹)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -614,13 +614,13 @@ const GstTaxCenter = () => {
                           <td className="py-2 px-2 font-medium text-blue-600">{r.order_id}</td>
                           <td className="py-2 px-2 text-gray-600">{r.date}</td>
                           <td className="py-2 px-2 text-right text-gray-600">{money(r.value)}</td>
-                          <td className="py-2 px-2 text-right text-gray-600">{r.rate}</td>
-                          <td className="py-2 px-2 text-right text-gray-800">{money(r.commission)}</td>
+                          <td className="py-2 px-2 text-right text-gray-600">{money(r.gst || 0)}</td>
+                          <td className="py-2 px-2 text-right text-green-600">{money(r.bank_settlement || 0)}</td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-4 text-center text-gray-500">No order-wise commission data available</td>
+                        <td colSpan={5} className="py-4 text-center text-gray-500">No order-wise payout data available</td>
                       </tr>
                     )}
                   </tbody>
