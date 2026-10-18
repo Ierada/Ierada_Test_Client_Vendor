@@ -3137,7 +3137,7 @@ const AddEditProduct = () => {
                 );
                 const rows = [
                   ["GST", q.gstAmount],
-                  ["TDS (Rs.)", q.tds],
+                  ["TDS (0.1%)", q.tds],
                   ["Bank Settlement Amount", q.bankSettlement],
                   ["Shipping Fee", q.shipping],
                   ["Other Charges", q.platformFee],

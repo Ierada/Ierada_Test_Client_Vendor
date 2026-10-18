@@ -262,7 +262,7 @@ export default function PaymentsDashboard() {
           <StatChip label="RTO" value={statistics.rto.value} delta={statistics.rto.delta} up={statistics.rto.up} icon={RotateCcw} />
           <StatChip label="Returns" value={statistics.returns.value} delta={statistics.returns.delta} up={statistics.returns.up} icon={RefreshCcw} />
           <StatChip label="Inclusive GST" value={statistics.gst.value} delta={statistics.gst.delta} up={statistics.gst.up} icon={Receipt} />
-          <StatChip label="TDS (2%)" value={statistics.tds?.value || "₹0.00"} delta={statistics.tds?.delta} up={statistics.tds?.up} icon={Percent} />
+          <StatChip label="TDS (0.1%)" value={statistics.tds?.value || "₹0.00"} delta={statistics.tds?.delta} up={statistics.tds?.up} icon={Percent} />
           <StatChip label="Bank Settlement" value={statistics.netPayable.value} delta={statistics.netPayable.delta} up={statistics.netPayable.up} icon={Banknote} highlight={statistics.netPayable.highlight} />
         </div>
 

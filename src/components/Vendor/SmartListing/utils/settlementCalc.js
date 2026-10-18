@@ -1,5 +1,6 @@
-/** Bank settlement amount = sale − inclusive GST − TDS. Rates come from Admin Settings > Commerce. */
-export const TDS_RATE = 0.02;
+/** Bank settlement amount = sale − inclusive GST − TDS 0.1%. Listing = sale + GST + TDS + shipping + fee. */
+export const TDS_RATE = 0.001;
+export const TDS_LABEL = `${Number((TDS_RATE * 100).toFixed(2))}%`;
 
 /** Same rule as server helpers.applyPlatformFeeRules: % of price, then min(%, max). */
 export function applyPlatformFeeRules(productPrice, platformFeePercent, maxCharge) {
@@ -44,8 +45,8 @@ export function calcSettlement({
   const gstPct = Number(gstPercent) || 0;
   // Hide shipping in summary until selling price is entered.
   const ship =
-    sale > 0 && !freeShipping ? Number(shippingCharges) || 0 : 0;
-  const fee = sale > 0 ? Number(platformFee) || 0 : 0;
+    sale > 0 && !freeShipping ? Math.max(0, Number(shippingCharges) || 0) : 0;
+  const fee = sale > 0 ? Math.max(0, Number(platformFee) || 0) : 0;
   const otherPct = Number(otherChargesPct) || 0;
 
   const gstAmount = round2(
@@ -54,15 +55,16 @@ export function calcSettlement({
   const tds = round2(sale > 0 ? sale * TDS_RATE : 0);
   const otherCharges = round2(sale > 0 ? (sale * otherPct) / 100 : 0);
   const bankSettlement = sale > 0 ? round2(sale - gstAmount - tds) : 0;
-  // Listing price = sale + shipping + platform fee — stay 0 until selling price is set.
-  const listingPrice = sale > 0 ? round2(sale + ship + fee) : 0;
+  const listingPrice =
+    sale > 0 ? roundRupee(sale + ship + fee + gstAmount + tds) : 0;
+  const mrpRounded = mrpN > 0 ? roundRupee(mrpN) : 0;
   const discountPct =
-    mrpN > 0 && listingPrice > 0
-      ? Math.max(0, Math.round(((mrpN - listingPrice) / mrpN) * 100))
+    mrpRounded > 0 && listingPrice > 0
+      ? Math.max(0, Math.round(((mrpRounded - listingPrice) / mrpRounded) * 100))
       : 0;
 
   return {
-    mrp: mrpN,
+    mrp: mrpRounded,
     sale,
     discountPct,
     listingPrice,
@@ -78,6 +80,12 @@ export function calcSettlement({
 
 function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function roundRupee(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x) || x <= 0) return 0;
+  return Math.round(x);
 }
 
 export function suggestSku(name = "", brand = "") {

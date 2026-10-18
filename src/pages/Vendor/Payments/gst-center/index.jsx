@@ -540,7 +540,7 @@ const GstTaxCenter = () => {
             <div>
               <h2 className="text-base font-semibold text-gray-900">Payout Report</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Bank settlement = selling price − inclusive GST − TDS 2%. No marketplace commission.
+                Bank settlement = selling price − inclusive GST − TDS 0.1%. No marketplace commission.
               </p>
             </div>
 
