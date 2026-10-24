@@ -84,6 +84,42 @@ function beginVendorAuthRedirect(data = {}) {
   endVendorSessionAndRedirect({ redirect: true, replace: true });
 }
 
+const INTERNAL_API_TEXT =
+  /sequelize|sqlstate|\bER_[A-Z0-9_]+\b|ECONNREFUSED|ENOTFOUND|Unknown column|doesn'?t exist|node_modules|status code \d{3}/i;
+
+function publicApiMessage(error) {
+  const status = error?.response?.status;
+  const serverMsg =
+    typeof error?.response?.data?.message === "string"
+      ? error.response.data.message.trim()
+      : "";
+  if (!error?.response) {
+    if (error?.code === "ECONNABORTED" || /timeout/i.test(String(error?.message || ""))) {
+      return "This is taking longer than usual. Please try again.";
+    }
+    return "The server could not be reached. Please try again.";
+  }
+  if (serverMsg && !INTERNAL_API_TEXT.test(serverMsg)) return serverMsg;
+  if (status === 413) return "That upload is too large.";
+  if (status === 429) return "Please wait a moment and try again.";
+  if (status === 401 || status === 403) return "Please sign in again.";
+  return "Something went wrong. Please try again.";
+}
+
+function hideInternalApiError(error) {
+  if (!error || typeof error !== "object") return error;
+  const message = publicApiMessage(error);
+  error.message = message;
+  const data = error.response?.data;
+  if (data && typeof data === "object") {
+    data.message = message;
+    delete data.error;
+    delete data.stack;
+    delete data.sql;
+  }
+  return error;
+}
+
 apiClient.interceptors.response.use(
   (response) => {
     const data = response?.data;
@@ -101,8 +137,9 @@ apiClient.interceptors.response.use(
   (error) => {
     if (isAuthSessionError(error)) {
       beginVendorAuthRedirect(error.response?.data);
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+    return Promise.reject(hideInternalApiError(error));
   },
 );
 

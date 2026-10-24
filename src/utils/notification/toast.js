@@ -133,9 +133,17 @@ function normalizePayload(input, fallbackTitle) {
   return { title: fallbackTitle, message: String(input || "") };
 }
 
+const recentErrors = new Map();
+
 function showToast(tone, input) {
   const cfg = TONE[tone] || TONE.info;
   const { title, message } = normalizePayload(input, cfg.fallbackTitle);
+  if (tone === "error") {
+    const key = `${title}|${message}`;
+    const now = Date.now();
+    if (now - (recentErrors.get(key) || 0) < 4000) return;
+    recentErrors.set(key, now);
+  }
   cfg.method(React.createElement(ToastCard, { tone, title, message }), {
     ...baseConfig,
     style: {
